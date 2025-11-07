@@ -1,3 +1,5 @@
+[![Maven Central](https://img.shields.io/maven-central/v/no.entur.abt.bob.mts7/mts7-parent.svg)](https://mvnrepository.com/artifact/no.entur.abt.bob.mts7/mts7-parent)
+
 # abt-bob-mts7
 This project hosts a set of modules for [MTS7](https://samtrafiken.atlassian.net/wiki/spaces/BOB/pages/1375404281/MTS+Documentation#MTS-7) NFC tag reader support. Supports two client modi:
 
