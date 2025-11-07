@@ -11,6 +11,7 @@
     <packaging>jar</packaging>
     <name>Client reader implementation</name>
     <description>Client reader implementation classes</description>
+    <url>https://github.com/entur/abt-bob-mts7</url>
     <dependencies>
         <dependency>
             <groupId>no.entur.abt.bob.mts7</groupId>

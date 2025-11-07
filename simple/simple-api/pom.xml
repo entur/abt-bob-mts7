@@ -11,4 +11,5 @@
     <packaging>jar</packaging>
     <name>Simple MTS7 card API</name>
     <description>Simple MTS7 card API objects</description>
+    <url>https://github.com/entur/abt-bob-mts7</url>
 </project>

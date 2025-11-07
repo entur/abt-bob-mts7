@@ -12,4 +12,5 @@
     <name>MTS7 api</name>
     <description>MTS7 api classes</description>
     <dependencies></dependencies>
+    <url>https://github.com/entur/abt-bob-mts7</url>
 </project>
