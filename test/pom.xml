@@ -11,6 +11,7 @@
     <packaging>jar</packaging>
     <name>MTS7 test</name>
     <description>MTS7 test classes</description>
+    <url>https://github.com/entur/abt-bob-mts7</url>
     <dependencies>
         <dependency>
             <groupId>no.entur.abt.bob.mts7</groupId>
