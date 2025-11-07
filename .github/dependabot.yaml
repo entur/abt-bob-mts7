@@ -1,0 +1,108 @@
+version: 2
+registries:
+  jfrog-artifactory:
+    type: npm-registry
+    url: "https://entur2.jfrog.io/entur2"
+    token: ${{ secrets.ARTIFACTORY_AUTH_TOKEN }}
+updates:
+  - package-ecosystem: maven
+    ignore: #Cannot be upgraded until we support newer protobuf version.
+      - dependency-name: "build.buf:protovalidate"
+    directories:
+      - "/"
+    registries:
+      - jfrog-artifactory
+    groups:
+      ignore-protobuf:
+        patterns:
+          - "org.google.protobuf*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
+      auto-merge-map-foss-framework:
+        patterns:
+          - "org.springframework*"
+          - "org.apache*"
+          - "org.testcontainers*"
+        update-types:
+          - "patch"
+          - "minor"
+      maj-foss-framework:
+        patterns:
+          - "org.springframework*"
+          - "org.apache*"
+          - "org.testcontainers*"
+        update-types:
+          - "major"
+      auto-merge-map-entur-dependencies:
+        patterns:
+          - "no.entur*"
+        update-types:
+          - "patch"
+          - "minor"
+      maj-entur-dependencies:
+        patterns:
+          - "no.entur*"
+        update-types:
+          - "major"
+      auto-merge-map-corp-dependencies:
+        patterns:
+          - "com.google*"
+          - "org.netflix*"
+          - "io.github*"
+          - "com.github*"
+        exclude-patterns:
+          - "com.google.protobuf*"
+        update-types:
+          - "minor"
+          - "patch"
+      maj-corp-dependencies:
+        patterns:
+          - "com.google*"
+          - "org.netflix*"
+          - "io.github*"
+          - "com.github*"
+        exclude-patterns:
+          - "com.google.protobuf*"
+        update-types:
+          - "major"
+      auto-merge-minor-and-patch:
+        exclude-patterns:
+          - "com.google*"
+          - "org.netflix*"
+          - "io.github*"
+          - "com.github*"
+          - "org.springframework*"
+          - "org.apache*"
+          - "org.testcontainers*"
+          - "no.entur*"
+        update-types:
+          - "minor"
+          - "patch"
+      major-dependencies:
+        exclude-patterns:
+          - "com.google*"
+          - "org.netflix*"
+          - "io.github*"
+          - "com.github*"
+          - "org.springframework*"
+          - "org.apache*"
+          - "org.testcontainers*"
+          - "no.entur*"
+        update-types:
+          - "major"
+    schedule:
+      interval: "daily"
+  - package-ecosystem: "github-actions"
+    directory: ".github/workflows"
+    groups:
+      auto-merge-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+      major-updates:
+        update-types:
+          - "major"
+    schedule:
+      interval: "daily"

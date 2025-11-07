@@ -1,0 +1,19 @@
+90,00,I,Command correct.
+61,xx,I,Command correct. SW2 encodes the number of bytes still available in response.
+62,85,W,Selected File in termination state
+65,81,E,Memory failure
+67,00,E,Wrong length (Lc or Le)
+68,81,E,Logical channel not supported
+68,82,E,Secure messaging not supported
+68,83,E,Last command of a chain expected
+69,82,E,Security status not satisfied (Secure Messaging incorrect)
+69,85,E,Condition of use not satisfied
+62,87,E,Expected Secure Messaging DOs missing (keys, etc)
+62,88,E,Secure Messaging DOs incorrect
+6A,80,E,Incorrect parameters in data field
+6A,82,E,File or application not found
+6A,84,E,Not enough memory space in the file
+6A,88,E,Referenced data not found
+6B,00,E,Incorrect parameters in P1-P2
+6D,00,E,INS not supported
+6E,00,E,CLA not supported

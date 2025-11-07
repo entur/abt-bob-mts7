@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>no.entur.abt.bob.mts7</groupId>
+        <artifactId>mts7-parent</artifactId>
+        <version>0.1-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+    <artifactId>reader</artifactId>
+    <packaging>jar</packaging>
+    <name>Client reader implementation</name>
+    <description>Client reader implementation classes</description>
+    <dependencies>
+        <dependency>
+            <groupId>no.entur.abt.bob.mts7</groupId>
+            <artifactId>api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>no.entur.abt.bob.mts7</groupId>
+            <artifactId>utils</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>no.entur.abt.bob.mts7</groupId>
+            <artifactId>core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>no.entur.abt.bob.mts7</groupId>
+			<artifactId>simple-api</artifactId>
+		</dependency>
+		<dependency>
+            <groupId>no.entur.abt.bob.mts7</groupId>
+			<artifactId>simple-reader</artifactId>
+		</dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.nimbusds</groupId>
+            <artifactId>nimbus-jose-jwt</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-cbor</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>no.entur.abt.bob.mts7</groupId>
+            <artifactId>test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

@@ -1,0 +1,16 @@
+{
+  "v" : "1",
+  "p" : [ {
+    "alg" : "ES256",
+    "iid" : "10",
+    "kid" : "10:20230213",
+    "miv" : "6",
+    "nbf" : "20230616T110236Z",
+    "tpk" : {
+      "kty" : "EC",
+      "crv" : "P-256",
+      "x" : "gRE1EKw-cG_7AUC0h57-T5WYAnQcDWYru7JwmLGgVfo",
+      "y" : "pkQkjVch2T2da_X-KShsQAQZ0jGHZH1ywZGTdVdb6dQ"
+    }
+  }, { }, "A5D45B265A806B649F19432F05F91FAB5854AEAFCFC1B75A63072B88F2EB35BA5A7A3B53B5FC71A3C3DCC7727E9C8C9845F7DEF2756179D54D111E46E58C4603" ]
+}

@@ -1,0 +1,25 @@
+package no.entur.abt.bob.mts7.reader.processor;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import java.io.IOException;
+
+import org.junit.jupiter.api.Test;
+
+import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
+
+import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
+
+public class CBORExtractorTest {
+
+	@Test
+	public void test() throws IOException {
+		CBORExtractor extractor = new CBORExtractor(new CBORMapper());
+
+		byte[] getNextData = ByteArrayHexStringConverter.hexStringToByteArray(
+				"A26176426131617058F88358B1A663616C6765455332353663696964623130636B69646B31303A3230323330323133636D69766136636E6266703230323330363136543131303233365A6374706BA4636B74796245436363727665502D3235366178782B67524531454B772D63475F37415543306835372D54355759416E51634457597275374A776D4C476756666F6179782B706B516B6A56636832543264615F582D4B5368735141515A306A47485A483179775A47546456646236645141A05840A5D45B265A806B649F19432F05F91FAB5854AEAFCFC1B75A63072B88F2EB35BA5A7A3B53B5FC71A3C3DCC7727E9C8C9845F7DEF2756179D54D111E46E58C4603");
+
+		String algorithm = extractor.parseAlgorithm(getNextData);
+		assertEquals(algorithm, "ES256");
+	}
+}
