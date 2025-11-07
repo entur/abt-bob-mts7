@@ -11,7 +11,8 @@
     <packaging>jar</packaging>
     <name>Simple MTS7 card reader</name>
     <description>Creates simple MTS7 cards from NFC tags</description>
-    
+    <url>https://github.com/entur/abt-bob-mts7</url>
+
     <dependencies>
 		<dependency>
 	        <groupId>no.entur.abt.bob.mts7</groupId>
