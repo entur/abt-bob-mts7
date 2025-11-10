@@ -122,6 +122,8 @@ A `test` artifact for analyzing and/or testing cards are included with the proje
 
 ## Links:
 
+ - https://github.com/entur/abt-bob-openapi
  - https://bitbucket.org/samtrafiken/workspace/projects/BOBS
  - https://samtrafiken.atlassian.net/wiki/spaces/BOB/pages/110985249/How+does+it+work
  - https://samtrafiken.atlassian.net/wiki/spaces/BOB/pages/1375404281/MTS+Documentation
+ - https://github.com/kirei/mts7-javacard
