@@ -40,7 +40,7 @@
         <bob.openapi.version>2.0.0</bob.openapi.version>
         <jackson.version>2.21.0</jackson.version>
         <jreleaser-maven-plugin.version>1.22.0</jreleaser-maven-plugin.version>
-        <junit-jupiter.version>5.13.4</junit-jupiter.version>
+        <junit-jupiter.version>6.0.3</junit-jupiter.version>
         <logback.version>1.5.25</logback.version>
         <maven-javadoc-plugin.version>3.3.0</maven-javadoc-plugin.version>
         <maven-source-plugin.version>3.2.1</maven-source-plugin.version>
@@ -57,7 +57,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <slf4j.version>2.0.17</slf4j.version>
-        <spotless.version>2.44.3</spotless.version>
+        <spotless.version>3.2.1</spotless.version>
         <truth.version>1.4.5</truth.version>
         <tlv-pull-parser.version>1.0.2</tlv-pull-parser.version>
         <commons-csv.version>1.14.1</commons-csv.version>
