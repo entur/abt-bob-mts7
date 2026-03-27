@@ -12,6 +12,8 @@ updates:
       - "/"
     registries:
       - jfrog-artifactory
+    cooldown:
+      default-days: 7
     groups:
       ignore-protobuf:
         patterns:
@@ -96,6 +98,8 @@ updates:
       interval: "daily"
   - package-ecosystem: "github-actions"
     directory: ".github/workflows"
+    cooldown:
+      default-days: 7
     groups:
       auto-merge-minor-and-patch:
         update-types:
