@@ -15,6 +15,9 @@ jobs:
   deploy-maven:
     uses: entur/gha-maven-central/.github/workflows/maven-publish.yml@main
     secrets: inherit
+    permissions:
+      contents: write
+      issues: write
     with:
       next_version: ${{ inputs.version-increment }}
       version_strategy: tag
