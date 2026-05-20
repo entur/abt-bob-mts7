@@ -56,7 +56,7 @@
         <nimbus-jose-jwt.version>10.8</nimbus-jose-jwt.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-        <slf4j.version>2.0.17</slf4j.version>
+        <slf4j.version>2.0.18</slf4j.version>
         <spotless.version>3.4.0</spotless.version>
         <truth.version>1.4.5</truth.version>
         <tlv-pull-parser.version>1.0.4</tlv-pull-parser.version>
