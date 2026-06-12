@@ -38,7 +38,7 @@
 
     <properties>
         <bob.openapi.version>2.0.0</bob.openapi.version>
-        <jackson.version>2.21.3</jackson.version>
+        <jackson.version>2.22.0</jackson.version>
         <jreleaser-maven-plugin.version>1.24.0</jreleaser-maven-plugin.version>
         <junit-jupiter.version>6.0.3</junit-jupiter.version>
         <logback.version>1.5.32</logback.version>
