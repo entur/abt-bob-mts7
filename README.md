@@ -77,13 +77,14 @@ Create the factories **once** and share them between all threads and card reader
 | Shared by all threads (create once) | For one card, one thread at a time (create for each card) |
 | --- | --- |
 | `ParticipantPublicKeys`, `IssuerPublicKey` | `Mts7ApduPayloads`, `Mts7Card` |
-| `VerifyMts7CardFactory`, `VerifyKeyPairMts7CardFactory`, `LenientMts7CardFactory` | `IccPublicKey`, `IccPublicKeyBuilder` |
+| `VerifyMts7CardFactory`, `VerifyKeyPairMts7CardFactory`, `LenientMts7CardFactory` | `IccPublicKeyBuilder` |
 | `VerifyTrustChainMts7ProcessorFactory`, `VerifyKeyPairMts7ProcessorFactory` | the `Mts7Processor` created by a processor factory |
 | `InFlightMts7CardFactory`, `ProcessorMts7ApduExchangesFactory`, `Mts7ApduExchangesFactory` | `InFlightMts7Card`, `Mts7ApduExchanges`, your `Mts7Exchange` |
 | `IccPublicKeyFactory`, `IssuerSignatureFactory`, `ThumbprintFactory`, `Mts7CardEnricher` | |
 
 Notes:
 
+ * `IccPublicKey` is the key of one card, but is thread safe like `IssuerPublicKey`: both verify with a new `Signature` each time, so there is nothing to restore after a failed verification.
  * A processor can be given its input by the thread which reads the card, and be closed or waited for from any thread. `InFlightMts7Card` is closeable: close it when done, or the processor waits (at most one minute) for a card which is not there anymore.
  * The test support classes (`test` artifact: recordings, playback, pretty printers) are for one card at a time.
  * Do not modify the command constants (`Mts7ApduExchangesFactory.SELECT_BOB_COMMAND` etc.); they are shared.
@@ -121,7 +122,8 @@ The next major version has these breaking changes:
  * The processors extend `AbstractMts7Processor`. The protected `thread` field is gone, as are the (unused) `algorithmExtractor` and `timeout` fields. A processor which is closed before it is started never starts, and `start()` and `close()` can be called more than once.
  * `waitForVerify(..)` returns (and the exceptions carry) a snapshot of the card if the processor has not finished, so the card does not change after it was returned.
  * The processors and the processor factories require an `Executor`, which you provide and shut down. The constructors without one, which started a new thread for each processor, are gone.
- * `IccPublicKey` and the processors are documented as for one card only, and `VerifyMts7CardFactory`, `VerifyKeyPairMts7CardFactory` and `LenientMts7CardFactory` are thread safe (do not create one for each thread or card).
+ * `IccPublicKey` is created from a `PublicKey` too (see `IccPublicKeyFactory.create(..)`): the constructor which took a `Signature` and the protected fields `signature` and `algorithm` are gone. It is thread safe, and `getAlgorithm()` still returns `EC` or `RSA`.
+ * The processors are documented as for one card only, and `VerifyMts7CardFactory`, `VerifyKeyPairMts7CardFactory` and `LenientMts7CardFactory` are thread safe (do not create one for each thread or card).
 
 ### Testing
 A `test` artifact for analyzing and/or testing cards are included with the project.
