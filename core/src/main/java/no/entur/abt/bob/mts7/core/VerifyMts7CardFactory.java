@@ -139,9 +139,7 @@ public class VerifyMts7CardFactory {
 				try {
 					result.setThumbprint(thumbprintFactory.create(m));
 				} catch (UnableToConstructThumbprintKeyException e) {
-					// a card can be anything, so do not fill the log
-					LOGGER.info("Unable to construct thumbprint: {}", e.toString());
-					LOGGER.debug("Unable to construct thumbprint", e);
+					LOGGER.info("Unable to construct thumbprint", e);
 				}
 
 				break;
@@ -156,13 +154,9 @@ public class VerifyMts7CardFactory {
 					LOGGER.info("Unable to verify ICC trust chain");
 				}
 			} catch (SignatureException e) {
-				// a card can be anything, so do not fill the log
-				LOGGER.info("Issuer signature is not valid: {}", e.toString());
-				LOGGER.debug("Issuer signature is not valid", e);
+				LOGGER.info("Issuer signature is not valid", e);
 			} catch (UnableToConstructIccKeyException e) {
-				// a card can be anything, so do not fill the log
-				LOGGER.info("Unable to create ICC public key: {}", e.toString());
-				LOGGER.debug("Unable to create ICC public key", e);
+				LOGGER.info("Unable to create ICC public key", e);
 			}
 
 			if (iccPublicKey != null && iccPublicKey.verify(card.getInternalAuthenticateInput(), card.getInternalAuthenticateOutput())) {
@@ -172,9 +166,7 @@ public class VerifyMts7CardFactory {
 				result.setVerifiedPrivateKeyPresent(false);
 			}
 		} catch (Exception e) {
-			// a card can be anything, so do not fill the log
-			LOGGER.info("Problem processing files: {}", e.toString());
-			LOGGER.debug("Problem processing files", e);
+			LOGGER.info("Problem processing files", e);
 		}
 
 		if (!result.isVerifiedPrivateKeyPresent()) {

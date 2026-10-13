@@ -150,7 +150,7 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 				byte[] thumbprint = thumbprintFactory.create(m);
 				updateResult(card -> card.setThumbprint(thumbprint));
 			} catch (UnableToConstructThumbprintKeyException e) {
-				log("Unable to construct thumbprint", e);
+				LOGGER.info("Unable to construct thumbprint", e);
 			}
 
 			break;
@@ -167,9 +167,9 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 				LOGGER.info("Unable to verify ICC trust chain");
 			}
 		} catch (SignatureException e) {
-			log("Issuer signature is not valid", e);
+			LOGGER.info("Issuer signature is not valid", e);
 		} catch (UnableToConstructIccKeyException e) {
-			log("Unable to create ICC public key", e);
+			LOGGER.info("Unable to create ICC public key", e);
 		}
 
 		LOGGER.info("Processed 'get (next) data' response");

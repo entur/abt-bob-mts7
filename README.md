@@ -121,7 +121,6 @@ The next major version has these breaking changes:
  * `waitForVerify(..)` returns (and the exceptions carry) a snapshot of the card if the processor has not finished, so the card does not change after it was returned.
  * The constructors of the processors and the processor factories take an `Executor`; the existing constructors use the default executor.
  * `IccPublicKey` and the processors are documented as for one card only, and `VerifyMts7CardFactory`, `VerifyKeyPairMts7CardFactory` and `LenientMts7CardFactory` are thread safe (do not create one for each thread or card).
- * Failures while processing a card are logged on one line; the stack trace is logged at debug level.
 
 ### Testing
 A `test` artifact for analyzing and/or testing cards are included with the project.

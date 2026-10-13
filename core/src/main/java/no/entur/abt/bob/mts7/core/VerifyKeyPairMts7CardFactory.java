@@ -100,17 +100,13 @@ public class VerifyKeyPairMts7CardFactory {
 				try {
 					iccPublicKey = iccPublicKeyFactory.create(m);
 				} catch (UnableToConstructIccKeyException e) {
-					// a card can be anything, so do not fill the log
-					LOGGER.info("Unable to create ICC public key: {}", e.toString());
-					LOGGER.debug("Unable to create ICC public key", e);
+					LOGGER.info("Unable to create ICC public key", e);
 				}
 
 				try {
 					result.setThumbprint(thumbprintFactory.create(m));
 				} catch (UnableToConstructThumbprintKeyException e) {
-					// a card can be anything, so do not fill the log
-					LOGGER.info("Unable to construct thumbprint: {}", e.toString());
-					LOGGER.debug("Unable to construct thumbprint", e);
+					LOGGER.info("Unable to construct thumbprint", e);
 				}
 
 				break;
@@ -123,9 +119,7 @@ public class VerifyKeyPairMts7CardFactory {
 				result.setVerifiedPrivateKeyPresent(false);
 			}
 		} catch (Exception e) {
-			// a card can be anything, so do not fill the log
-			LOGGER.info("Problem processing files: {}", e.toString());
-			LOGGER.debug("Problem processing files", e);
+			LOGGER.info("Problem processing files", e);
 		}
 
 		if (!result.isVerifiedPrivateKeyPresent()) {

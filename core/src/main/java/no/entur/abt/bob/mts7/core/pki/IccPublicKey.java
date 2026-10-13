@@ -56,9 +56,7 @@ public class IccPublicKey {
 				throw new IllegalStateException();
 			}
 		} catch (Exception e) {
-			// a card can be anything, so do not fill the log
-			LOGGER.info("Unable to verify signature: {}", e.toString());
-			LOGGER.debug("Unable to verify signature", e);
+			LOGGER.info("Unable to verify signature", e);
 			return false;
 		}
 	}

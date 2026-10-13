@@ -32,8 +32,6 @@ import no.entur.abt.bob.mts7.core.Mts7Card;
 
 public abstract class AbstractMts7Processor implements Mts7Processor {
 
-	private static final Logger LOGGER = LoggerFactory.getLogger(AbstractMts7Processor.class);
-
 	/**
 	 * For how long the processing waits for the input from the card, counted from when it starts. The card has to be read within this time, no matter whether
 	 * somebody ever closes the processor, so that it cannot be left waiting for input which never arrives.
@@ -74,6 +72,9 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 			}
 		});
 	}
+
+	// log as the processor which is running
+	private final Logger logger = LoggerFactory.getLogger(getClass());
 
 	protected volatile boolean close;
 
@@ -273,7 +274,7 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 			while (!close && !available.getAsBoolean()) {
 				long remaining = deadline - System.nanoTime();
 				if (remaining <= 0) {
-					LOGGER.info("Giving up waiting for input from the card");
+					logger.info("Giving up waiting for input from the card");
 
 					return false;
 				}
@@ -281,7 +282,7 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 			}
 
 			if (close) {
-				LOGGER.info("Closing processor");
+				logger.info("Closing processor");
 			}
 			return !close;
 		}
@@ -308,8 +309,7 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 		} catch (Exception e) {
-			// a card can be anything, so do not fill the log
-			log("Problem processing card", e);
+			logger.info("Problem processing files", e);
 		} finally {
 			// notify result waiters
 			synchronized (outputMonitor) {
@@ -319,18 +319,6 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 			}
 			finished.countDown();
 		}
-	}
-
-	/**
-	 * Log a problem with a single line, and details if enabled.
-	 *
-	 * @param message message
-	 * @param e       the problem
-	 */
-
-	protected static void log(String message, Exception e) {
-		LOGGER.info("{}: {}", message, e.toString());
-		LOGGER.debug(message, e);
 	}
 
 }
