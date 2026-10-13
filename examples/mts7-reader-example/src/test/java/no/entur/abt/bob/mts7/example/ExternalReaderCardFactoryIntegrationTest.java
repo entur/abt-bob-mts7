@@ -4,7 +4,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigInteger;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeAll;
@@ -87,6 +89,12 @@ public class ExternalReaderCardFactoryIntegrationTest {
 			Mts7Card mts7Card = mts7CardFactory.create(mts7ApduPayloads);
 
 			System.out.println("MTS7 processed in " + (System.currentTimeMillis() - timestamp) + "ms");
+			
+			byte[] thumbprint = mts7Card.getThumbprint();
+			System.out.println("Thumbprint: " + (thumbprint != null ? Base64.getEncoder().encodeToString(thumbprint) : null));
+			System.out.println("Participant id: " + mts7Card.getParticipantIdentifier());
+			byte[] serial = mts7Card.getSerial();
+			System.out.println("Serial number: " + (serial != null ? new BigInteger(1, serial) : null));
 
 			if (mts7Card.isVerifiedPrivateKeyPresent()) {
 				System.out.println("Verified private key is present");
