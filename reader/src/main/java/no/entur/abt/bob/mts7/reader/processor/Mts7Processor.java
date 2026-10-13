@@ -25,7 +25,7 @@ public interface Mts7Processor extends Runnable {
 	default void onGetDataResponseApdu(byte[] response) {
 		byte[] payload = new byte[response.length - 2];
 		System.arraycopy(response, 0, payload, 0, payload.length);
-		onGetData(response);
+		onGetData(payload);
 	}
 
 	default void onInternalAuthenticateApdu(byte[] commandPayload, byte[] responseApdu) {
@@ -40,7 +40,7 @@ public interface Mts7Processor extends Runnable {
 	default void onSelectApplicationResponseApdu(byte[] response) {
 		byte[] payload = new byte[response.length - 2];
 		System.arraycopy(response, 0, payload, 0, payload.length);
-		onSelectApplication(response);
+		onSelectApplication(payload);
 	}
 
 }
