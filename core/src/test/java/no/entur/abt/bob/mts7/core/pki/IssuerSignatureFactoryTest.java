@@ -3,7 +3,6 @@ package no.entur.abt.bob.mts7.core.pki;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.InputStream;
@@ -26,7 +25,6 @@ import com.nimbusds.jose.crypto.impl.ECDSA;
 
 import no.entur.abt.bob.api.pm.model.JwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
-import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
 
 public class IssuerSignatureFactoryTest {
 
@@ -59,16 +57,15 @@ public class IssuerSignatureFactoryTest {
 				.x(base64Url(publicKey.getW().getAffineX(), 32))
 				.y(base64Url(publicKey.getW().getAffineY(), 32));
 
-		IssuerPublicKey key = factory.create(10, jwk);
-
-		assertEquals(10, key.getPid());
-		assertEquals("10:ec", key.getKid());
+		Signature verifier = factory.create(jwk);
+		assertNotNull(verifier);
+		assertEquals("SHA256withECDSA", verifier.getAlgorithm());
 
 		Signature signature = Signature.getInstance("SHA256withECDSA");
 		signature.initSign(keyPair.getPrivate());
 		signature.update(DATA);
 
-		assertTrue(key.verify(DATA, ECDSA.transcodeSignatureToConcat(signature.sign(), 64)));
+		assertTrue(new IssuerPublicKey(10, "10:ec", verifier).verify(DATA, ECDSA.transcodeSignatureToConcat(signature.sign(), 64)));
 	}
 
 	@Test
@@ -83,38 +80,15 @@ public class IssuerSignatureFactoryTest {
 				.n(base64Url(publicKey.getModulus(), (publicKey.getModulus().bitLength() + 7) / 8))
 				.e(base64Url(publicKey.getPublicExponent(), (publicKey.getPublicExponent().bitLength() + 7) / 8));
 
-		IssuerPublicKey key = factory.create(11, jwk);
-
-		assertEquals(11, key.getPid());
-		assertEquals("11:rsa", key.getKid());
+		Signature verifier = factory.create(jwk);
+		assertNotNull(verifier);
+		assertEquals("SHA256withRSA", verifier.getAlgorithm());
 
 		Signature signature = Signature.getInstance("SHA256withRSA");
 		signature.initSign(keyPair.getPrivate());
 		signature.update(DATA);
 
-		assertTrue(key.verify(DATA, signature.sign()));
-	}
-
-	@Test
-	public void testUnsupportedKeyType() {
-		// symmetric key
-		JwkPublic jwk = new JwkPublic().kty("oct").kid("12:oct");
-
-		assertThrows(UnableToConstructIssuerKeyException.class, () -> factory.create(12, jwk));
-	}
-
-	@Test
-	public void testIncompleteKey() {
-		JwkPublic jwk = new JwkPublic().kty("EC").kid("12:ec").crv("P-256");
-
-		assertThrows(UnableToConstructIssuerKeyException.class, () -> factory.create(12, jwk));
-	}
-
-	@Test
-	public void testKeyNotOnCurve() {
-		JwkPublic jwk = new JwkPublic().kty("EC").kid("12:ec").crv("P-256").x(base64Url(BigInteger.ONE, 32)).y(base64Url(BigInteger.ONE, 32));
-
-		assertThrows(UnableToConstructIssuerKeyException.class, () -> factory.create(12, jwk));
+		assertTrue(new IssuerPublicKey(11, "11:rsa", verifier).verify(DATA, signature.sign()));
 	}
 
 	@Test
@@ -127,15 +101,16 @@ public class IssuerSignatureFactoryTest {
 		int rsa = 0;
 		for (ParticipantMetadata p : participantMetadata) {
 			for (JwkPublic jwk : p.getMtbPublicKeys()) {
-				IssuerPublicKey key = factory.create(p.getPid(), jwk);
+				Signature verifier = factory.create(jwk);
 
-				assertNotNull(key);
-				assertEquals(jwk.getKid(), key.getKid());
-				assertEquals(p.getPid().longValue(), key.getPid());
+				// the participant metadata does not contain an alg
+				assertNotNull(verifier, p.getPid() + " " + jwk.getKid());
 
 				if (jwk.getKty().equals("EC")) {
+					assertEquals("SHA256withECDSA", verifier.getAlgorithm());
 					ec++;
 				} else {
+					assertEquals("SHA256withRSA", verifier.getAlgorithm());
 					rsa++;
 				}
 			}

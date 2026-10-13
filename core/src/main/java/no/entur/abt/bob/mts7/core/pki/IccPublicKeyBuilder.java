@@ -2,19 +2,9 @@ package no.entur.abt.bob.mts7.core.pki;
 
 import java.io.ByteArrayOutputStream;
 import java.security.SignatureException;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 
 import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
-
-/**
- * Builder for the ICC public key, which verifies that the key is vouched for by the issuer.
- *
- * <p>
- * The issuer signs the elements which precede the signature in the issuer signed ticket bundle. Each element is a (CBOR encoded) object, which is itself
- * encoded as a CBOR byte string. The input to the issuer signature function is a CBOR array of these byte strings.
- */
 
 public class IccPublicKeyBuilder {
 
@@ -23,7 +13,9 @@ public class IccPublicKeyBuilder {
 
 	protected final IccPublicKeyFactory iccSignatureFactory;
 
-	protected List<byte[]> signedElements = new ArrayList<>();
+	// the elements of the signed data, each encoded as a CBOR byte string
+	protected ByteArrayOutputStream payload = new ByteArrayOutputStream();
+	protected int signedElementCount;
 
 	protected IssuerPublicKey issuerPublicKey;
 
@@ -36,7 +28,7 @@ public class IccPublicKeyBuilder {
 	}
 
 	public boolean canBuild() {
-		if (signedElements.isEmpty()) {
+		if (payload.size() == 0) {
 			return false;
 		}
 		if (issuerPublicKey == null) {
@@ -55,6 +47,9 @@ public class IccPublicKeyBuilder {
 	 * Add an element of the signed data, i.e. one of the elements which precede the signature in the issuer signed ticket bundle. Elements must be added in the
 	 * order in which they appear.
 	 *
+	 * <p>
+	 * The issuer signs a CBOR array of the elements, each encoded as a byte string.
+	 *
 	 * @param buffer buffer containing the (CBOR encoded) element
 	 * @param offset offset of the element
 	 * @param length length of the element
@@ -62,10 +57,10 @@ public class IccPublicKeyBuilder {
 	 */
 
 	public IccPublicKeyBuilder withSignedData(byte[] buffer, int offset, int length) {
-		byte[] element = new byte[length];
-		System.arraycopy(buffer, offset, element, 0, length);
+		writeHead(payload, CBOR_MAJOR_TYPE_BYTE_STRING, length);
+		payload.write(buffer, offset, length);
 
-		signedElements.add(element);
+		signedElementCount++;
 		return this;
 	}
 
@@ -85,11 +80,11 @@ public class IccPublicKeyBuilder {
 	}
 
 	public void reset() {
-		signedElements.clear();
+		payload.reset();
+		signedElementCount = 0;
 
 		signature = null;
 		issuerPublicKey = null;
-		issuerSignatureProtectedHeader = null;
 	}
 
 	/**
@@ -98,15 +93,12 @@ public class IccPublicKeyBuilder {
 	 * @return the ICC public key
 	 * @throws SignatureException               if the issuer signature is not valid
 	 * @throws UnableToConstructIccKeyException if the ICC public key could not be created
-	 * @throws IllegalStateException            if there is not enough data (see {@linkplain #canBuild()})
 	 */
 
 	public IccPublicKey build() throws SignatureException, UnableToConstructIccKeyException {
-		if (!canBuild()) {
-			throw new IllegalStateException("Not enough data for verifying the issuer signature");
-		}
+		byte[] data = getSignedData();
 
-		if (!issuerPublicKey.verify(getSignedData(), signature)) {
+		if (!issuerPublicKey.verify(data, signature)) {
 			throw new SignatureException("Issuer signature is not valid");
 		}
 
@@ -122,11 +114,10 @@ public class IccPublicKeyBuilder {
 	protected byte[] getSignedData() {
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 
-		writeHead(out, CBOR_MAJOR_TYPE_ARRAY, signedElements.size());
-		for (byte[] element : signedElements) {
-			writeHead(out, CBOR_MAJOR_TYPE_BYTE_STRING, element.length);
-			out.write(element, 0, element.length);
-		}
+		writeHead(out, CBOR_MAJOR_TYPE_ARRAY, signedElementCount);
+
+		byte[] elements = payload.toByteArray();
+		out.write(elements, 0, elements.length);
 
 		return out.toByteArray();
 	}

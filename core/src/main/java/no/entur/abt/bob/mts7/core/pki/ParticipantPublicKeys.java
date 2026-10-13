@@ -1,6 +1,7 @@
 package no.entur.abt.bob.mts7.core.pki;
 
 import java.security.Provider;
+import java.security.Signature;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -69,8 +70,7 @@ public class ParticipantPublicKeys {
 
 	public static class IssuerKey {
 
-		// created lazily, possibly more than once if accessed concurrently (the key is immutable and thread safe)
-		private volatile IssuerPublicKey key;
+		private IssuerPublicKey key;
 
 		private final JwkPublic keyMaterial;
 
@@ -114,14 +114,17 @@ public class ParticipantPublicKeys {
 		public IssuerPublicKey getKey(String id) throws UnableToConstructIssuerKeyException {
 			IssuerKey issuerKey = keys.get(id);
 			if (issuerKey != null) {
-				IssuerPublicKey key = issuerKey.getKey();
-				if (key == null) {
-					key = factory.create(pid, issuerKey.getKeyMaterial());
+				if (!issuerKey.hasKey()) {
+					JwkPublic keyMaterial = issuerKey.getKeyMaterial();
+
+					Signature signature = factory.create(keyMaterial);
+
+					IssuerPublicKey key = new IssuerPublicKey(pid, keyMaterial.getKid(), signature);
 
 					issuerKey.setKey(key);
 				}
 
-				return key;
+				return issuerKey.getKey();
 			}
 			return null;
 		}
@@ -137,7 +140,7 @@ public class ParticipantPublicKeys {
 		this.keys = keys;
 	}
 
-	public IssuerPublicKey getIssuerPublicKey(long pid, String kid) throws UnableToConstructIssuerKeyException {
+	public IssuerPublicKey getIssuerPublicKey(long pid, String kid) throws Exception {
 		Issuer key = keys.get(pid);
 		if (key != null) {
 			return key.getKey(kid);
