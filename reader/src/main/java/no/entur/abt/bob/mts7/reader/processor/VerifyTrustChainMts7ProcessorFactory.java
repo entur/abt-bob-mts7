@@ -9,6 +9,14 @@ import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
 import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
 
+/**
+ * Factory for processors which verify that the card has the private key, and the key chain.
+ *
+ * <p>
+ * This class is not thread safe. The processors share (non thread safe) helper instances with the factory and with each other, so processors created by the
+ * same factory instance must not run at the same time. Use a separate factory instance per thread, or per card being read.
+ */
+
 public class VerifyTrustChainMts7ProcessorFactory implements Mts7ProcessorFactory {
 
 	protected final ParticipantPublicKeys participantPublicKeys;
