@@ -113,4 +113,27 @@ public class ParticipantPublicKeysTest {
 		assertThrows(UnableToConstructIssuerKeyException.class, () -> participantPublicKeys.getIssuerPublicKey(99, "99:invalid"));
 	}
 
+	@Test
+	public void testWarmUpSomeParticipants() throws Exception {
+		List<ParticipantMetadata> participantMetadata = new ArrayList<>(readParticipantMetadata());
+
+		// not a point on the curve
+		JwkPublic invalid = new JwkPublic().kty("EC").kid("99:invalid").crv("P-256").x("AAAA").y("AAAA");
+		participantMetadata.add(new ParticipantMetadata().pid(99L).organisationName("Invalid").addMtbPublicKeysItem(invalid));
+
+		ParticipantPublicKeys participantPublicKeys = ParticipantPublicKeys.newBuilder().withParticipants(participantMetadata).build();
+
+		// only the participants in the list are warmed up (the key of participant 99 is not valid)
+		assertTrue(participantPublicKeys.warmUp(Arrays.asList(10L, 11L)).isEmpty());
+		assertSame(participantPublicKeys.getIssuerPublicKey(10, "10:20230213"), participantPublicKeys.getIssuerPublicKey(10, "10:20230213"));
+
+		List<UnableToConstructIssuerKeyException> failures = participantPublicKeys.warmUp(Arrays.asList(10L, 99L));
+		assertEquals(1, failures.size());
+		assertTrue(failures.get(0).getMessage().contains("99:invalid"), failures.get(0).getMessage());
+
+		// unknown participants are ignored, as is an empty list
+		assertTrue(participantPublicKeys.warmUp(Arrays.asList(-1L, 12345L)).isEmpty());
+		assertTrue(participantPublicKeys.warmUp(new ArrayList<Long>()).isEmpty());
+	}
+
 }

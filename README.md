@@ -103,6 +103,7 @@ InFlightMts7CardFactory factory = new InFlightMts7CardFactory(processorFactory);
 
 new Thread(() -> {
     keys.warmUp();             // creates the issuer keys, and returns those which could not be created
+                               // (or keys.warmUp(Arrays.asList(10L, 11L)) for the participants which are expected)
     processorFactory.warmUp(); // loads classes, initializes the security provider
 }).start();
 ```

@@ -2,6 +2,7 @@ package no.entur.abt.bob.mts7.core.pki;
 
 import java.security.Provider;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,8 +15,9 @@ import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
  * 
  * Lazy key cache.
  * <p>
- * Instances are thread safe, so a single instance should be shared by all threads. The keys are created when first used; call {@linkplain #warmUp()} to create
- * them in advance, for example on a background thread when the application starts.
+ * Instances are thread safe, so a single instance should be shared by all threads. The keys are created when first used; call {@linkplain #warmUp()} (or
+ * {@linkplain #warmUp(Collection)} for the participants which are expected) to create them in advance, for example on a background thread when the
+ * application starts.
  * 
  */
 
@@ -182,6 +184,26 @@ public class ParticipantPublicKeys {
 		List<UnableToConstructIssuerKeyException> failures = new ArrayList<>();
 		for (Issuer issuer : keys.values()) {
 			failures.addAll(issuer.warmUp());
+		}
+		return failures;
+	}
+
+	/**
+	 * Create the keys of some of the participants which have not yet been created, for example those which are expected for the card readers of this device.
+	 * The keys of the other participants are still created when they are first used.
+	 *
+	 * @param participantIds participant ids; those which are not known are ignored
+	 * @return the keys which could not be created, empty if none
+	 * @see #warmUp()
+	 */
+
+	public List<UnableToConstructIssuerKeyException> warmUp(Collection<Long> participantIds) {
+		List<UnableToConstructIssuerKeyException> failures = new ArrayList<>();
+		for (Long participantId : participantIds) {
+			Issuer issuer = keys.get(participantId);
+			if (issuer != null) {
+				failures.addAll(issuer.warmUp());
+			}
 		}
 		return failures;
 	}
