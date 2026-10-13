@@ -53,8 +53,23 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 	protected volatile byte[] selectApplicationResponsePayload;
 	protected volatile byte[] getDataResponsePayload;
 
-	protected volatile byte[] internalAuthenticateResponsePayload;
-	protected volatile byte[] internalAuthenticateCommandPayload;
+	/**
+	 * The command and the response of one call of {@linkplain #onInternalAuthenticate(byte[], byte[])}. They are kept together, so that the command of one call
+	 * is never verified against the response of another.
+	 */
+
+	static final class InternalAuthenticate {
+
+		final byte[] command;
+		final byte[] response;
+
+		InternalAuthenticate(byte[] command, byte[] response) {
+			this.command = command;
+			this.response = response;
+		}
+	}
+
+	volatile InternalAuthenticate internalAuthenticate;
 
 	// never null, so that waitForVerify(..) can report on a processor which did not get any input. Only modify it using updateResult(..)
 	protected final Mts7Card result = new Mts7Card();
@@ -64,8 +79,11 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 
 	private final Executor executor;
 
-	// guarded by the input monitor
+	// guarded by the input monitor: the processor is started (or run directly), and so is expected to finish
 	private boolean started;
+
+	// guarded by the input monitor: the processing has been claimed by somebody, which is done only once
+	private boolean ran;
 
 	// guarded by the output monitor
 	private boolean processed;
@@ -106,8 +124,7 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 	@Override
 	public void onInternalAuthenticate(byte[] commandPayload, byte[] responsePayload) {
 		synchronized (inputMonitor) {
-			this.internalAuthenticateCommandPayload = commandPayload;
-			this.internalAuthenticateResponsePayload = responsePayload;
+			this.internalAuthenticate = new InternalAuthenticate(commandPayload, responsePayload);
 
 			inputMonitor.notifyAll();
 		}
@@ -262,6 +279,16 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 		}
 	}
 
+	/**
+	 * @return true if the input of internal authenticate (command and response) is available
+	 */
+
+	boolean isInternalAuthenticateAvailable() {
+		InternalAuthenticate input = internalAuthenticate;
+
+		return input != null && input.response != null;
+	}
+
 	protected long getMaxLifetimeMillis() {
 		return DEFAULT_MAX_LIFETIME_MILLIS;
 	}
@@ -275,8 +302,23 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 
 	protected abstract void process() throws Exception;
 
+	/**
+	 * Process the input from the card. This is what the executor does when the processor is started, but it can also be called directly. The card is
+	 * processed once, so a second call (from wherever) returns at once.
+	 */
+
 	@Override
 	public void run() {
+		synchronized (inputMonitor) {
+			if (ran) {
+				return;
+			}
+			ran = true;
+
+			// also when called directly rather than by start(), so that those who wait for the result wait for this too
+			started = true;
+		}
+
 		deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(getMaxLifetimeMillis());
 		try {
 			process();

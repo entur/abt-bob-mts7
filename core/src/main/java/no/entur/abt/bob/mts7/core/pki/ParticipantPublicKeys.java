@@ -78,6 +78,9 @@ public class ParticipantPublicKeys {
 		// created on demand, and visible to all threads when set
 		private volatile IssuerPublicKey key;
 
+		// the type of key is not supported, which will not change, so there is no point in trying again
+		private volatile boolean unsupported;
+
 		private final JwkPublic keyMaterial;
 
 		public IssuerKey(JwkPublic keyMaterial) {
@@ -99,6 +102,14 @@ public class ParticipantPublicKeys {
 
 		public boolean hasKey() {
 			return key != null;
+		}
+
+		public boolean isUnsupported() {
+			return unsupported;
+		}
+
+		public void setUnsupported(boolean unsupported) {
+			this.unsupported = unsupported;
 		}
 	}
 
@@ -125,12 +136,14 @@ public class ParticipantPublicKeys {
 			}
 
 			IssuerPublicKey key = issuerKey.getKey();
-			if (key == null) {
+			if (key == null && !issuerKey.isUnsupported()) {
 				// creating a key has no side effects, and the result is thread safe, so there is no need to prevent several threads from creating one at the
 				// same time: all of the keys are equivalent
 				key = factory.createIssuerPublicKey(pid, issuerKey.getKeyMaterial());
 				if (key != null) {
 					issuerKey.setKey(key);
+				} else {
+					issuerKey.setUnsupported(true);
 				}
 			}
 			return key;
@@ -139,14 +152,16 @@ public class ParticipantPublicKeys {
 		/**
 		 * Create all keys which have not yet been created.
 		 *
-		 * @return the keys which could not be created, empty if none
+		 * @return the keys which could not be created (including those of a type which is not supported), empty if none
 		 */
 
 		public List<UnableToConstructIssuerKeyException> warmUp() {
 			List<UnableToConstructIssuerKeyException> failures = new ArrayList<>();
 			for (String id : keys.keySet()) {
 				try {
-					getKey(id);
+					if (getKey(id) == null) {
+						failures.add(new UnableToConstructIssuerKeyException("Unsupported type of key " + id + " for participant " + pid));
+					}
 				} catch (UnableToConstructIssuerKeyException e) {
 					failures.add(new UnableToConstructIssuerKeyException("Unable to create key " + id + " for participant " + pid, e));
 				}

@@ -170,12 +170,14 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 		LOGGER.info("Processed 'get (next) data' response");
 
 		// most of the waiting is here
-		if (!awaitInput(() -> internalAuthenticateResponsePayload != null)) {
+		if (!awaitInput(this::isInternalAuthenticateAvailable)) {
 			return;
 		}
 
-		byte[] commandPayload = internalAuthenticateCommandPayload;
-		byte[] responsePayload = internalAuthenticateResponsePayload;
+		// the command and the response of the same call
+		InternalAuthenticate input = internalAuthenticate;
+		byte[] commandPayload = input.command;
+		byte[] responsePayload = input.response;
 
 		// process signature - the only time-critical part of the logic here
 		boolean verified = iccPublicKey != null && iccPublicKey.verify(commandPayload, responsePayload);

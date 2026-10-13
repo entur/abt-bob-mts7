@@ -11,7 +11,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
@@ -134,6 +136,49 @@ public class ParticipantPublicKeysTest {
 		// unknown participants are ignored, as is an empty list
 		assertTrue(participantPublicKeys.warmUp(Arrays.asList(-1L, 12345L)).isEmpty());
 		assertTrue(participantPublicKeys.warmUp(new ArrayList<Long>()).isEmpty());
+	}
+
+	/**
+	 * Factory which does not support the type of key, i.e. returns null.
+	 */
+
+	private static class UnsupportedKeyFactory extends IssuerSignatureFactory {
+
+		int calls;
+
+		UnsupportedKeyFactory() throws Exception {
+			super();
+		}
+
+		@Override
+		public IssuerPublicKey createIssuerPublicKey(long pid, JwkPublic jwkPublic) {
+			calls++;
+			return null;
+		}
+	}
+
+	@Test
+	public void testUnsupportedKeyIsReportedByWarmUp() throws Exception {
+		UnsupportedKeyFactory factory = new UnsupportedKeyFactory();
+
+		Map<String, ParticipantPublicKeys.IssuerKey> keys = new HashMap<>();
+		keys.put("99:unsupported", new ParticipantPublicKeys.IssuerKey(new JwkPublic().kty("EC").kid("99:unsupported")));
+
+		Map<Long, ParticipantPublicKeys.Issuer> issuers = new HashMap<>();
+		issuers.put(99L, new ParticipantPublicKeys.Issuer("Unsupported", 99L, keys, factory));
+
+		ParticipantPublicKeys participantPublicKeys = new ParticipantPublicKeys(issuers);
+
+		List<UnableToConstructIssuerKeyException> failures = participantPublicKeys.warmUp();
+		assertEquals(1, failures.size(), "warm-up must not report success for a key which was not created");
+		assertTrue(failures.get(0).getMessage().contains("99:unsupported"), failures.get(0).getMessage());
+
+		// no key, which is as for unknown keys
+		assertEquals(null, participantPublicKeys.getIssuerPublicKey(99, "99:unsupported"));
+		assertEquals(null, participantPublicKeys.getIssuerPublicKey(99, "99:unsupported"));
+
+		// and the answer is remembered, so that it does not have to be worked out again for every card
+		assertEquals(1, factory.calls);
 	}
 
 }

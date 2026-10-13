@@ -17,6 +17,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -329,6 +330,88 @@ public class ProcessorLifecycleTest extends AbstractTest {
 			}, name);
 
 			assertNoProcessorThreadsLeft(name);
+		}
+	}
+
+	/**
+	 * Processor which counts how many times it processes.
+	 */
+
+	private class CountingProcessor extends VerifyKeyPairMts7Processor {
+
+		final AtomicInteger processed = new AtomicInteger();
+
+		CountingProcessor() throws Exception {
+			super(new IccPublicKeyFactory(), new Mts7CardEnricher(), new CBORMapper(), new ThumbprintFactory(null), executor);
+		}
+
+		@Override
+		protected void process() throws Exception {
+			processed.incrementAndGet();
+
+			super.process();
+		}
+	}
+
+	@Test
+	public void testRunTwiceProcessesOnce() throws Exception {
+		CountingProcessor processor = new CountingProcessor();
+
+		processor.onSelectApplicationResponseApdu(SELECT_APPLICATION_RESPONSE);
+		processor.onGetDataResponseApdu(GET_NEXT_DATA_RESPONSE);
+		processor.onInternalAuthenticateApdu(new CommandAPDU(0, 0, 0, 0, new byte[32]).getBytes(), SIGNATURE_RESPONSE);
+
+		processor.run();
+		processor.run();
+
+		assertEquals(1, processor.processed.get());
+		assertTrue(processor.waitForVerify(0).isVerifiedPrivateKeyPresent());
+	}
+
+	@Test
+	public void testRunAfterStartProcessesOnce() throws Exception {
+		CountingProcessor processor = new CountingProcessor();
+
+		processor.onSelectApplicationResponseApdu(SELECT_APPLICATION_RESPONSE);
+		processor.onGetDataResponseApdu(GET_NEXT_DATA_RESPONSE);
+		processor.onInternalAuthenticateApdu(new CommandAPDU(0, 0, 0, 0, new byte[32]).getBytes(), SIGNATURE_RESPONSE);
+
+		processor.start();
+		assertTrue(processor.waitForVerify(0).isVerifiedPrivateKeyPresent());
+
+		// somebody else calls it too, which must not process the card again
+		processor.run();
+		processor.start();
+
+		assertEquals(1, processor.processed.get());
+	}
+
+	@Test
+	public void testDirectRunIsWaitedFor() throws Exception {
+		for (Mts7ProcessorFactory processorFactory : processorFactories()) {
+			String name = processorFactory.getClass().getSimpleName();
+
+			Mts7Processor processor = processorFactory.create();
+
+			// run by somebody else, rather than started, and waiting for input
+			Thread runner = new Thread(processor, "direct-run");
+			runner.setDaemon(true);
+			runner.start();
+			Thread.sleep(200);
+
+			try {
+				long start = System.currentTimeMillis();
+
+				UnableToVerifyKeyPairException e = assertThrows(UnableToVerifyKeyPairException.class, () -> processor.waitForVerify(500));
+				assertNotNull(e.getResult());
+
+				// it waited for the processing, which is not finished
+				assertTrue(System.currentTimeMillis() - start >= 400, name + ": did not wait for the processing which was running");
+			} finally {
+				processor.close();
+				runner.join(5000);
+			}
+			assertFalse(runner.isAlive(), name);
 		}
 	}
 
