@@ -68,6 +68,10 @@ public class Mts7CardRecordingAnalyzer extends AbstractCardRecordingAnalyzer {
 				listener.onGetNextDataCommand(commandApdu);
 				break;
 			}
+			case GET_RESPONSE: {
+				// the rest of the response to the previous command, which has no event of its own
+				break;
+			}
 			case INTERNAL_AUTHENTICATE: {
 				listener.onInternalAuthenticateCommand(commandApdu);
 				break;
@@ -88,8 +92,13 @@ public class Mts7CardRecordingAnalyzer extends AbstractCardRecordingAnalyzer {
 			listener.onSelectApplicationResponse(responseApdu);
 			break;
 		}
+		case GET_DATA_COMMAND:
 		case GET_NEXT_DATA_COMMAND: {
 			listener.onGetNextDataResponse(responseApdu);
+			break;
+		}
+		case GET_RESPONSE: {
+			// the rest of the response to the previous command, which has no event of its own
 			break;
 		}
 		case INTERNAL_AUTHENTICATE: {
