@@ -58,6 +58,13 @@ public class Mts7ApduPayloadsFactory {
 
 			byte[] command = mts7ApduExchange.getCommand();
 
+			// there might be an intermediate authenticate which was not successful; if so then ignore it.
+			if (isInternalAuthenticateCommand(command) && !isSuccess(mts7ApduExchange.getResponse())) {
+				apduIndex++;
+
+				continue;
+			}
+
 			int cla = command[0] & 0xFF;
 			int ins = command[1] & 0xFF;
 			int p1 = command[2] & 0xFF;
@@ -69,11 +76,19 @@ public class Mts7ApduPayloadsFactory {
 
 			ByteArrayOutputStream bout = new ByteArrayOutputStream(2048);
 
+			// a get (next) data response is followed by get response commands for as long as the card says there is more (61xx)
+			Mts7ApduExchange lastOfChain;
 			do {
 				mts7ApduExchange.writeResponsePayload(bout);
 
+				lastOfChain = mts7ApduExchange;
+
 				apduIndex++;
 				if (apduIndex >= exchanges.size() - 1) {
+					break;
+				}
+
+				if (!isContinue(lastOfChain.getResponse())) {
 					break;
 				}
 
@@ -84,15 +99,13 @@ public class Mts7ApduPayloadsFactory {
 				}
 			} while (true);
 
-			// last command must be success
-			if (!isSuccess(mts7ApduExchange.getResponse())) {
-				throw new UnexpectedCardResponseException(mts7ApduExchange.getCommand(), mts7ApduExchange.getResponse());
+			// the last exchange of the chain (i.e. not whatever happens to follow it) must be success
+			if (!isSuccess(lastOfChain.getResponse())) {
+				throw new UnexpectedCardResponseException(lastOfChain.getCommand(), lastOfChain.getResponse());
 			}
 
 			payloads.setGetDataOutput(bout.toByteArray());
 		}
-
-		// there might be an intermediate authenticate which was not successful; if so then ignore it.
 
 		if (payloads.getGetDataOutput() == null) {
 			throw new MissingCardCommandsException();
