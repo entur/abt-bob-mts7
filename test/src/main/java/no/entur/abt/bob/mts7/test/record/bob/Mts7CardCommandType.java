@@ -21,7 +21,10 @@ public enum Mts7CardCommandType {
 	}
 
 	public boolean isCommand(byte[] apdu) {
-		for (int i = 0; i < bytes.length && i < apdu.length; i++) {
+		if (apdu.length < bytes.length) {
+			return false;
+		}
+		for (int i = 0; i < bytes.length; i++) {
 			if (bytes[i] == -1) {
 				continue;
 			}

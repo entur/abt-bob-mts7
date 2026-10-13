@@ -2,6 +2,7 @@ package no.entur.abt.bob.mts7.test.record.bob;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.IOException;
@@ -70,6 +71,11 @@ public class Mts7CardRecordingAnalyzerTest {
 
 		assertNotNull(type);
 		assertEquals("Get response", type.getName());
+	}
+
+	@Test
+	public void testTruncatedGetResponseCommandIsUnknown() {
+		assertNull(Mts7CardCommandType.parseCommandApdu(ByteArrayHexStringConverter.hexStringToByteArray("00C0")));
 	}
 
 	@Test
