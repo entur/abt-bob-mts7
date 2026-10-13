@@ -43,19 +43,22 @@ public class ProcessorMts7ApduExchangesFactory extends Mts7ApduExchangesFactory 
 			throws IOException, Mts7Exception, InterruptedException {
 		DefaultMts7Exchange result = new DefaultMts7Exchange(mts7Exchange);
 
-		handleSelectApplication(mts7Exchange, processor, selectApplicationResponse);
+		// go via the recording exchange so that the commands and responses end up in the result
+		handleSelectApplication(result, processor, selectApplicationResponse);
 
-		handleGetNextData(mts7Exchange, processor);
+		handleGetNextData(result, processor);
 
-		handleInternalAuthenticate(mts7Exchange, processor);
+		handleInternalAuthenticate(result, processor);
 
 		return result;
 	}
 
-	protected void handleSelectApplication(Mts7Exchange mts7Exchange, Mts7Processor processor, byte[] selectApplicationResponse)
+	protected void handleSelectApplication(DefaultMts7Exchange mts7Exchange, Mts7Processor processor, byte[] selectApplicationResponse)
 			throws UnableToSelectApplicationException, IOException {
 		if (selectApplicationResponse == null) {
 			selectApplicationResponse = mts7Exchange.transceive(SELECT_BOB_COMMAND); // File Control Information (FCI) Template
+		} else {
+			mts7Exchange.add(SELECT_BOB_COMMAND, selectApplicationResponse);
 		}
 
 		if (!isSuccess(selectApplicationResponse)) {
