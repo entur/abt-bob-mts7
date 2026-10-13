@@ -11,6 +11,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
@@ -68,6 +69,14 @@ public class Mts7WarmupTest {
 		LenientMts7CardFactory lenient = new LenientMts7CardFactory();
 		lenient.warmUp();
 		assertTrue(lenient.create(payloads()).isVerifiedPrivateKeyPresent());
+	}
+
+	@Test
+	public void testSampleCardCanBeParsed() throws Exception {
+		// warming up never fails, so this is the only way to find out that the sample is not valid
+		Mts7Card card = Mts7Warmup.parseSampleCard(new CBORMapper(), new Mts7CardEnricher());
+
+		assertEquals("0000175F96B61D", ByteArrayHexStringConverter.toHexString(card.getSerial()));
 	}
 
 }
