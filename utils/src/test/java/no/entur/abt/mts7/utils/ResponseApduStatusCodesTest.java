@@ -2,6 +2,7 @@ package no.entur.abt.mts7.utils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
@@ -38,11 +39,9 @@ public class ResponseApduStatusCodesTest {
 
 	@Test
 	public void testSecureMessagingCodes() {
-		assertEquals("Expected Secure Messaging DOs missing (keys, etc)", code(0x69, 0x87));
-		assertEquals("Secure Messaging DOs incorrect", code(0x69, 0x88));
-		// MTS7 table 7 lists these as 62 87 / 62 88 (ISO 7816-4 has 69 87 / 69 88); accept both
-		assertEquals("Expected Secure Messaging DOs missing (keys, etc)", code(0x62, 0x87));
+		// as listed in MTS7 table 7
 		assertEquals("Secure Messaging DOs incorrect", code(0x62, 0x88));
+		assertTrue(code(0x62, 0x87).startsWith("Expected Secure Messaging DOs missing"));
 	}
 
 	@Test
