@@ -11,7 +11,6 @@ import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 import no.entur.abt.bob.mts7.core.Mts7Card;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
 import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
-import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
 import no.entur.abt.bob.mts7.core.UnableToConstructThumbprintKeyException;
 import no.entur.abt.bob.mts7.core.UnableToVerifyKeyPairException;
 import no.entur.abt.bob.mts7.core.UnableToVerifyTrustChainException;
@@ -230,12 +229,7 @@ public class VerifyTrustChainMts7Processor implements Runnable, Mts7Processor {
 					outputMonitor.notifyAll();
 				}
 
-				IssuerPublicKey issuerPublicKey = null;
-				try {
-					issuerPublicKey = participantPublicKeys.getIssuerPublicKey(iid, kid);
-				} catch (UnableToConstructIssuerKeyException e) {
-					LOGGER.info("Unable to create issuer public key", e);
-				}
+				IssuerPublicKey issuerPublicKey = participantPublicKeys.getIssuerPublicKey(iid, kid);
 
 				if (issuerPublicKey == null) {
 					LOGGER.info("Unable to find issuer public key");

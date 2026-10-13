@@ -94,12 +94,7 @@ public class VerifyMts7CardFactory {
 
 				iccKeyAlgorithm = (String) m.get("alg");
 
-				IssuerPublicKey issuerPublicKey = null;
-				try {
-					issuerPublicKey = participantPublicKeys.getIssuerPublicKey(iid, kid);
-				} catch (UnableToConstructIssuerKeyException e) {
-					LOGGER.info("Unable to create issuer public key", e);
-				}
+				IssuerPublicKey issuerPublicKey = participantPublicKeys.getIssuerPublicKey(iid, kid);
 
 				if (issuerPublicKey == null) {
 					LOGGER.info("Unable to find issuer public key");
