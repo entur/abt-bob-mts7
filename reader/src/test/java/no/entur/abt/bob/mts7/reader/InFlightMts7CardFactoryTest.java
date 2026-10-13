@@ -24,7 +24,7 @@ import no.entur.abt.bob.mts7.test.util.MockRandomFactory;
 import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
 import no.entur.abt.bob.mts7.utils.nfc.Card;
 
-public class InFlightMts7CardFactoryTest {
+public class InFlightMts7CardFactoryTest extends AbstractExecutorTest {
 
 	private VerifyKeyPairMts7ProcessorFactory processorFactory;
 	private InFlightMts7CardFactory factory;
@@ -34,7 +34,7 @@ public class InFlightMts7CardFactoryTest {
 		byte[] challenge = ByteArrayHexStringConverter.hexStringToByteArray("0000000000000000000000000000000000000000000000000000000000000000");
 
 		Random random = MockRandomFactory.newInstance(challenge);
-		this.processorFactory = new VerifyKeyPairMts7ProcessorFactory();
+		this.processorFactory = new VerifyKeyPairMts7ProcessorFactory(executor);
 		this.factory = new InFlightMts7CardFactory(processorFactory, random);
 	}
 

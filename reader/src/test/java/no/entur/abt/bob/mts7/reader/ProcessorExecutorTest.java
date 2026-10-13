@@ -22,7 +22,6 @@ import org.junit.jupiter.api.Test;
 
 import no.entur.abt.bob.mts7.core.Mts7Card;
 import no.entur.abt.bob.mts7.core.UnableToVerifyKeyPairException;
-import no.entur.abt.bob.mts7.reader.processor.AbstractMts7Processor;
 import no.entur.abt.bob.mts7.reader.processor.Mts7Processor;
 import no.entur.abt.bob.mts7.reader.processor.Mts7ProcessorFactory;
 import no.entur.abt.bob.mts7.reader.processor.VerifyKeyPairMts7ProcessorFactory;
@@ -120,10 +119,8 @@ public class ProcessorExecutorTest extends AbstractTest {
 	}
 
 	@Test
-	public void testReadyMadeThreadPool() throws Exception {
-		// created by the application, and shared by the factories
-		Executor executor = AbstractMts7Processor.newThreadPool();
-
+	public void testExecutorSharedByFactories() throws Exception {
+		// the same executor for both factories, which belongs to the test (see AbstractExecutorTest)
 		VerifyKeyPairMts7ProcessorFactory keyPair = new VerifyKeyPairMts7ProcessorFactory(executor);
 		VerifyTrustChainMts7ProcessorFactory trustChain = new VerifyTrustChainMts7ProcessorFactory(participantPublicKeys, executor);
 
@@ -138,6 +135,12 @@ public class ProcessorExecutorTest extends AbstractTest {
 
 			assertEquals(0, failures.size(), "Unexpected failures: " + failures);
 		}
+	}
+
+	@Test
+	public void testExecutorIsRequired() throws Exception {
+		assertThrows(NullPointerException.class, () -> new VerifyKeyPairMts7ProcessorFactory((Executor) null));
+		assertThrows(NullPointerException.class, () -> new VerifyTrustChainMts7ProcessorFactory(participantPublicKeys, (Executor) null));
 	}
 
 	@Test

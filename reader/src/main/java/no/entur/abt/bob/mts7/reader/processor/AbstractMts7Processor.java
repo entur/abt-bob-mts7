@@ -1,12 +1,9 @@
 package no.entur.abt.bob.mts7.reader.processor;
 
+import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
-import java.util.concurrent.SynchronousQueue;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
@@ -28,6 +25,11 @@ import no.entur.abt.bob.mts7.core.Mts7Card;
  * <p>
  * The processing waits for input from the card, so it needs a thread to itself while it does: an executor which cannot run all of the processors which are
  * started at the same time (a bounded pool, or one which runs the task on the calling thread) will make them wait for each other.
+ *
+ * <p>
+ * The executor is always provided by the application, which owns it and so is the one to shut it down; nothing in this library creates an executor or a thread
+ * of its own. As a processor stops waiting for the card after {@linkplain #DEFAULT_MAX_LIFETIME_MILLIS}, its thread is never blocked for much longer than
+ * that, but the threads of the executor are not daemon threads unless the application makes them so.
  */
 
 public abstract class AbstractMts7Processor implements Mts7Processor {
@@ -38,40 +40,6 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 	 */
 
 	public static final long DEFAULT_MAX_LIFETIME_MILLIS = 60 * 1000;
-
-	/**
-	 * Executor which uses a new daemon thread for each processor. The thread waits for input from the card, so never let it keep the JVM alive.
-	 */
-
-	public static final Executor NEW_DAEMON_THREAD = new Executor() {
-		@Override
-		public void execute(Runnable command) {
-			Thread thread = new Thread(command, "mts7-processor");
-			thread.setDaemon(true);
-			thread.start();
-		}
-	};
-
-	/**
-	 * Create an executor with a thread for each processor which is running at the same time (so there is always a thread to run a new processor, which waits for
-	 * the card reader), and which reuses the threads for the next card. The threads are daemon threads which are stopped when they have been idle for a while,
-	 * so there is no need to shut the executor down. Share the instance between the processor factories (or use an executor of the application).
-	 *
-	 * @return a new executor
-	 */
-
-	public static Executor newThreadPool() {
-		final AtomicInteger count = new AtomicInteger();
-
-		return new ThreadPoolExecutor(0, Integer.MAX_VALUE, 30, TimeUnit.SECONDS, new SynchronousQueue<Runnable>(), new ThreadFactory() {
-			@Override
-			public Thread newThread(Runnable r) {
-				Thread thread = new Thread(r, "mts7-processor-" + count.incrementAndGet());
-				thread.setDaemon(true);
-				return thread;
-			}
-		});
-	}
 
 	// log as the processor which is running
 	private final Logger logger = LoggerFactory.getLogger(getClass());
@@ -107,8 +75,14 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 
 	private volatile long deadline;
 
+	/**
+	 * Constructor.
+	 *
+	 * @param executor executor for running the processing. It belongs to the caller, who must shut it down when it is no longer needed; the processor does not
+	 */
+
 	protected AbstractMts7Processor(Executor executor) {
-		this.executor = executor;
+		this.executor = Objects.requireNonNull(executor, "executor");
 	}
 
 	@Override

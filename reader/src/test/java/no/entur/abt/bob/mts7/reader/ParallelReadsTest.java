@@ -69,22 +69,22 @@ public class ParallelReadsTest extends AbstractTest {
 
 	@Test
 	public void testThreeReadersVerifyKeyPair() throws Exception {
-		assertParallelReads(new VerifyKeyPairMts7ProcessorFactory(), false, 3, 30);
+		assertParallelReads(new VerifyKeyPairMts7ProcessorFactory(executor), false, 3, 30);
 	}
 
 	@Test
 	public void testThreeReadersVerifyTrustChain() throws Exception {
-		assertParallelReads(new VerifyTrustChainMts7ProcessorFactory(participantPublicKeys), true, 3, 30);
+		assertParallelReads(new VerifyTrustChainMts7ProcessorFactory(participantPublicKeys, executor), true, 3, 30);
 	}
 
 	@Test
 	public void testManyReadersVerifyTrustChain() throws Exception {
-		assertParallelReads(new VerifyTrustChainMts7ProcessorFactory(participantPublicKeys), true, 16, 10);
+		assertParallelReads(new VerifyTrustChainMts7ProcessorFactory(participantPublicKeys, executor), true, 16, 10);
 	}
 
 	@Test
 	public void testWarmedUpFactoryIsStillCorrect() throws Exception {
-		VerifyTrustChainMts7ProcessorFactory processorFactory = new VerifyTrustChainMts7ProcessorFactory(participantPublicKeys);
+		VerifyTrustChainMts7ProcessorFactory processorFactory = new VerifyTrustChainMts7ProcessorFactory(participantPublicKeys, executor);
 
 		assertTrue(participantPublicKeys.warmUp().isEmpty());
 		processorFactory.warmUp();

@@ -14,7 +14,7 @@ import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
 
-public abstract class AbstractTest {
+public abstract class AbstractTest extends AbstractExecutorTest {
 
 	protected ObjectMapper mapper = new ObjectMapper();
 

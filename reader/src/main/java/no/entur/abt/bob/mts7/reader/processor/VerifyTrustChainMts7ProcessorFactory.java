@@ -2,6 +2,7 @@ package no.entur.abt.bob.mts7.reader.processor;
 
 import java.security.NoSuchAlgorithmException;
 import java.security.Provider;
+import java.util.Objects;
 import java.util.concurrent.Executor;
 
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
@@ -22,9 +23,8 @@ import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
  * <p>
  * The processors run on the threads of an executor. A processor waits for the card reader to give it input, so the executor must be able to run all of the
  * processors which exist at the same time (a bounded pool with fewer threads than that will make them wait for each other), and must not run them on the
- * thread which reads the card (that thread would wait for itself). By default each processor gets a new daemon thread (see
- * {@linkplain AbstractMts7Processor#NEW_DAEMON_THREAD}); pass an executor to reuse threads for the next card, for example one from
- * {@linkplain AbstractMts7Processor#newThreadPool()}. The factory does not create or shut down any executors.
+ * thread which reads the card (that thread would wait for itself). The executor belongs to the application, which shuts it down when it is no longer needed;
+ * the factory neither creates nor shuts down any executors.
  */
 
 public class VerifyTrustChainMts7ProcessorFactory implements Mts7ProcessorFactory {
@@ -36,22 +36,6 @@ public class VerifyTrustChainMts7ProcessorFactory implements Mts7ProcessorFactor
 	protected final CBORMapper cborMapper;
 	protected final ThumbprintFactory thumbprintFactory;
 	protected final Executor executor;
-
-	public VerifyTrustChainMts7ProcessorFactory(ParticipantPublicKeys participantPublicKeys) throws NoSuchAlgorithmException {
-		this(participantPublicKeys, (Provider) null);
-	}
-
-	/**
-	 * Constructor.
-	 *
-	 * @param participantPublicKeys issuer keys, shared with other factories and threads
-	 * @param provider              security provider (for signatures and digests), or null for the default
-	 * @throws NoSuchAlgorithmException if the digest algorithm is not available
-	 */
-
-	public VerifyTrustChainMts7ProcessorFactory(ParticipantPublicKeys participantPublicKeys, Provider provider) throws NoSuchAlgorithmException {
-		this(participantPublicKeys, provider, AbstractMts7Processor.NEW_DAEMON_THREAD);
-	}
 
 	/**
 	 * Constructor.
@@ -97,7 +81,8 @@ public class VerifyTrustChainMts7ProcessorFactory implements Mts7ProcessorFactor
 		this.enricher = enricher;
 		this.cborMapper = cborMapper;
 		this.thumbprintFactory = thumbprintFactory;
-		this.executor = executor;
+		// fail now rather than for the first card
+		this.executor = Objects.requireNonNull(executor, "executor");
 	}
 
 	public VerifyTrustChainMts7Processor create() {

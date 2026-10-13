@@ -75,7 +75,7 @@ public class ProcessorLifecycleTest extends AbstractTest {
 	}
 
 	private List<Mts7ProcessorFactory> processorFactories() throws Exception {
-		return Arrays.asList(new VerifyKeyPairMts7ProcessorFactory(), new VerifyTrustChainMts7ProcessorFactory(participantPublicKeys));
+		return Arrays.asList(new VerifyKeyPairMts7ProcessorFactory(executor), new VerifyTrustChainMts7ProcessorFactory(participantPublicKeys, executor));
 	}
 
 	/**
@@ -111,17 +111,6 @@ public class ProcessorLifecycleTest extends AbstractTest {
 			threads = newProcessorThreads();
 		}
 		assertTrue(threads.isEmpty(), message + ": processor thread is still running");
-	}
-
-	private Thread awaitProcessorThread() throws InterruptedException {
-		long deadline = System.currentTimeMillis() + 2000;
-		Set<Thread> threads = newProcessorThreads();
-		while (threads.isEmpty() && System.currentTimeMillis() < deadline) {
-			Thread.sleep(10);
-			threads = newProcessorThreads();
-		}
-		assertTrue(threads.size() == 1, "Expected one processor thread, got " + threads.size());
-		return threads.iterator().next();
 	}
 
 	private InFlightMts7CardFactory newFactory(Mts7ProcessorFactory processorFactory) throws Exception {
@@ -198,20 +187,6 @@ public class ProcessorLifecycleTest extends AbstractTest {
 			// never started
 			UnableToVerifyKeyPairException e = assertThrows(UnableToVerifyKeyPairException.class, () -> processor.waitForVerify(1));
 			assertNotNull(e.getResult());
-		}
-	}
-
-	@Test
-	public void testProcessorThreadDoesNotPreventJvmExit() throws Exception {
-		for (Mts7ProcessorFactory processorFactory : processorFactories()) {
-			Mts7Processor processor = processorFactory.create();
-			processor.start();
-			try {
-				assertTrue(awaitProcessorThread().isDaemon(), processorFactory.getClass().getSimpleName() + ": processor thread should be a daemon thread");
-			} finally {
-				processor.close();
-			}
-			assertNoProcessorThreadsLeft(processorFactory.getClass().getSimpleName());
 		}
 	}
 
@@ -327,12 +302,12 @@ public class ProcessorLifecycleTest extends AbstractTest {
 		CBORMapper cborMapper = new CBORMapper();
 		ThumbprintFactory thumbprintFactory = new ThumbprintFactory(null);
 
-		return Arrays.<Mts7Processor>asList(new VerifyKeyPairMts7Processor(iccPublicKeyFactory, enricher, cborMapper, thumbprintFactory) {
+		return Arrays.<Mts7Processor>asList(new VerifyKeyPairMts7Processor(iccPublicKeyFactory, enricher, cborMapper, thumbprintFactory, executor) {
 			@Override
 			protected long getMaxLifetimeMillis() {
 				return 300;
 			}
-		}, new VerifyTrustChainMts7Processor(participantPublicKeys, iccPublicKeyFactory, enricher, cborMapper, thumbprintFactory) {
+		}, new VerifyTrustChainMts7Processor(participantPublicKeys, iccPublicKeyFactory, enricher, cborMapper, thumbprintFactory, executor) {
 			@Override
 			protected long getMaxLifetimeMillis() {
 				return 300;

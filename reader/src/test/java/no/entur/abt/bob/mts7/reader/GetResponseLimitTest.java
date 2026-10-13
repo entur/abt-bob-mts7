@@ -22,7 +22,7 @@ import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
  * A card which keeps saying that there is more data (61xx) must not keep the reader busy forever.
  */
 
-public class GetResponseLimitTest {
+public class GetResponseLimitTest extends AbstractExecutorTest {
 
 	private static final byte[] SELECT_APPLICATION_RESPONSE = ByteArrayHexStringConverter
 			.hexStringToByteArray("64296E274F10A0000007810101000A0000175F96B61D7A0593030000248A01007F660802020105020201029000");
@@ -91,7 +91,7 @@ public class GetResponseLimitTest {
 	}
 
 	private Mts7ApduExchanges readWithProcessor(MoreDataCard card) throws Exception {
-		Mts7Processor processor = new VerifyKeyPairMts7ProcessorFactory().create();
+		Mts7Processor processor = new VerifyKeyPairMts7ProcessorFactory(executor).create();
 
 		return new ProcessorMts7ApduExchangesFactory(random()).create(card, processor, null);
 	}

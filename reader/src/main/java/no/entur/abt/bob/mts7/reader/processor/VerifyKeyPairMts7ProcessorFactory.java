@@ -2,6 +2,7 @@ package no.entur.abt.bob.mts7.reader.processor;
 
 import java.security.NoSuchAlgorithmException;
 import java.security.Provider;
+import java.util.Objects;
 import java.util.concurrent.Executor;
 
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
@@ -21,9 +22,8 @@ import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
  * <p>
  * The processors run on the threads of an executor. A processor waits for the card reader to give it input, so the executor must be able to run all of the
  * processors which exist at the same time (a bounded pool with fewer threads than that will make them wait for each other), and must not run them on the
- * thread which reads the card (that thread would wait for itself). By default each processor gets a new daemon thread (see
- * {@linkplain AbstractMts7Processor#NEW_DAEMON_THREAD}); pass an executor to reuse threads for the next card, for example one from
- * {@linkplain AbstractMts7Processor#newThreadPool()}. The factory does not create or shut down any executors.
+ * thread which reads the card (that thread would wait for itself). The executor belongs to the application, which shuts it down when it is no longer needed;
+ * the factory neither creates nor shuts down any executors.
  */
 
 public class VerifyKeyPairMts7ProcessorFactory implements Mts7ProcessorFactory {
@@ -35,25 +35,10 @@ public class VerifyKeyPairMts7ProcessorFactory implements Mts7ProcessorFactory {
 	protected final ThumbprintFactory thumbprintFactory;
 	protected final Executor executor;
 
-	public VerifyKeyPairMts7ProcessorFactory() throws NoSuchAlgorithmException {
-		this((Provider) null);
-	}
-
 	/**
 	 * Constructor.
 	 *
-	 * @param provider security provider (for signatures and digests), or null for the default
-	 * @throws NoSuchAlgorithmException if the digest algorithm is not available
-	 */
-
-	public VerifyKeyPairMts7ProcessorFactory(Provider provider) throws NoSuchAlgorithmException {
-		this(provider, AbstractMts7Processor.NEW_DAEMON_THREAD);
-	}
-
-	/**
-	 * Constructor.
-	 *
-	 * @param executor executor for the processors
+	 * @param executor executor for the processors, which belongs to the caller
 	 * @throws NoSuchAlgorithmException if the digest algorithm is not available
 	 */
 
@@ -89,7 +74,8 @@ public class VerifyKeyPairMts7ProcessorFactory implements Mts7ProcessorFactory {
 		this.enricher = enricher;
 		this.cborMapper = cborMapper;
 		this.thumbprintFactory = thumbprintFactory;
-		this.executor = executor;
+		// fail now rather than for the first card
+		this.executor = Objects.requireNonNull(executor, "executor");
 	}
 
 	public VerifyKeyPairMts7Processor create() {

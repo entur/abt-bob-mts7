@@ -22,7 +22,7 @@ public class VerifyTrustChainMts7ProcessorTest extends AbstractTest {
 	@BeforeEach
 	public void setup() throws Exception {
 		super.setup();
-		this.processorFactory = new VerifyTrustChainMts7ProcessorFactory(participantPublicKeys);
+		this.processorFactory = new VerifyTrustChainMts7ProcessorFactory(participantPublicKeys, executor);
 	}
 
 	@Test

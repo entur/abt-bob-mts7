@@ -42,11 +42,6 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 	protected final ThumbprintFactory thumbprintFactory;
 
 	public VerifyTrustChainMts7Processor(ParticipantPublicKeys participantPublicKeys, IccPublicKeyFactory factory, Mts7CardEnricher enricher,
-			CBORMapper cborMapper, ThumbprintFactory thumbprintFactory) {
-		this(participantPublicKeys, factory, enricher, cborMapper, thumbprintFactory, NEW_DAEMON_THREAD);
-	}
-
-	public VerifyTrustChainMts7Processor(ParticipantPublicKeys participantPublicKeys, IccPublicKeyFactory factory, Mts7CardEnricher enricher,
 			CBORMapper cborMapper, ThumbprintFactory thumbprintFactory, Executor executor) {
 		super(executor);
 

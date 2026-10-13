@@ -98,7 +98,8 @@ Create the factories once when the application starts, keep them for as long as 
 
 ```java
 ParticipantPublicKeys keys = ParticipantPublicKeys.newBuilder().withParticipants(participants).build();
-VerifyTrustChainMts7ProcessorFactory processorFactory = new VerifyTrustChainMts7ProcessorFactory(keys);
+ExecutorService executor = Executors.newCachedThreadPool(); // yours: shut it down when the application stops
+VerifyTrustChainMts7ProcessorFactory processorFactory = new VerifyTrustChainMts7ProcessorFactory(keys, executor);
 InFlightMts7CardFactory factory = new InFlightMts7CardFactory(processorFactory);
 
 new Thread(() -> {
@@ -109,7 +110,7 @@ new Thread(() -> {
 ```
 
  * Use the constructors which take a `Provider` if the application uses its own security provider (for example Conscrypt or Bouncy Castle).
- * The processors run on the threads of an `Executor`. By default each processor gets a new daemon thread; the factories do not create any thread pool. Pass an `Executor` to the processor factory to reuse the threads for the next card, either one of the application, or a ready-made one from `AbstractMts7Processor.newThreadPool()` (daemon threads which stop when idle, so there is no need to shut it down). A processor waits for the reader to give it input, so the executor must have a thread for each card which is being read at the same time, and must not run the processor on the thread which reads the card.
+ * The processors run on the threads of an `Executor` which you provide to the processor factory: the library does not create any executors or threads of its own, so you own it and shut it down. You can share it with the rest of the application. A processor waits for the reader to give it input, so the executor must have a thread for each card which is being read at the same time (for example a cached thread pool, not a pool which is smaller than the number of readers), and must not run the processor on the thread which reads the card. A processor stops waiting for the card after a minute, but if the threads of your executor must not keep the JVM alive, use daemon threads.
 
 ### Upgrading from 2.x
 
@@ -119,7 +120,7 @@ The next major version has these breaking changes:
  * The protected fields `ThumbprintFactory.messageDigest` and `Mts7CardEnricher.pullParser` are gone; the objects are created when needed.
  * The processors extend `AbstractMts7Processor`. The protected `thread` field is gone, as are the (unused) `algorithmExtractor` and `timeout` fields. A processor which is closed before it is started never starts, and `start()` and `close()` can be called more than once.
  * `waitForVerify(..)` returns (and the exceptions carry) a snapshot of the card if the processor has not finished, so the card does not change after it was returned.
- * The constructors of the processors and the processor factories take an `Executor`; the existing constructors use a new daemon thread for each processor, as before.
+ * The processors and the processor factories require an `Executor`, which you provide and shut down. The constructors without one, which started a new thread for each processor, are gone.
  * `IccPublicKey` and the processors are documented as for one card only, and `VerifyMts7CardFactory`, `VerifyKeyPairMts7CardFactory` and `LenientMts7CardFactory` are thread safe (do not create one for each thread or card).
 
 ### Testing

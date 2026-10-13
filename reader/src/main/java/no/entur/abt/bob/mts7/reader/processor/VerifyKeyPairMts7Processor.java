@@ -36,10 +36,6 @@ public class VerifyKeyPairMts7Processor extends AbstractMts7Processor {
 
 	protected final ThumbprintFactory thumbprintFactory;
 
-	public VerifyKeyPairMts7Processor(IccPublicKeyFactory factory, Mts7CardEnricher enricher, CBORMapper cborMapper, ThumbprintFactory thumbprintFactory) {
-		this(factory, enricher, cborMapper, thumbprintFactory, NEW_DAEMON_THREAD);
-	}
-
 	public VerifyKeyPairMts7Processor(IccPublicKeyFactory factory, Mts7CardEnricher enricher, CBORMapper cborMapper, ThumbprintFactory thumbprintFactory,
 			Executor executor) {
 		super(executor);
