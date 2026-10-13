@@ -25,6 +25,13 @@ public class Mts7ApduExchangesFactory {
 	public static final byte[] INTERNAL_AUTHENTICATE_COMMAND_PREFIX = new byte[] { 0x00, (byte) 0x88, 0x00, 0x00, 0x20 };
 	public static final byte[] INTERNAL_AUTHENTICATE_COMMAND_POSTFIX = new byte[] { 0x00 };
 
+	/**
+	 * The maximum number of GET RESPONSE commands for a single GET (NEXT) DATA command. A card which keeps saying that there is more data must not keep the
+	 * reader busy forever. A real response is a few parts; with a typical maximum response length of a few hundred bytes this allows tens of kilobytes.
+	 */
+
+	protected static final int MAX_GET_RESPONSE_COMMANDS = 256;
+
 	protected final Random random;
 
 	public Mts7ApduExchangesFactory(Random random) {
@@ -77,10 +84,14 @@ public class Mts7ApduExchangesFactory {
 		 */
 
 		if (isContinue(getNextDataResponse)) {
-			do {
+			byte[] previousResponse = getNextDataResponse;
+
+			for (int i = 0; i < MAX_GET_RESPONSE_COMMANDS; i++) {
 				byte[] getResponseResponse = card.transceive(GET_RESPONSE_COMMAND);
 
 				if (isContinue(getResponseResponse)) {
+					previousResponse = getResponseResponse;
+
 					continue;
 				}
 
@@ -88,7 +99,10 @@ public class Mts7ApduExchangesFactory {
 					throw new UnexpectedCardResponseException(GET_RESPONSE_COMMAND, getResponseResponse);
 				}
 				return;
-			} while (true);
+			}
+
+			// still more data
+			throw new UnexpectedCardResponseException(GET_RESPONSE_COMMAND, previousResponse);
 		}
 
 		if (!isSuccess(getNextDataResponse)) {

@@ -118,8 +118,16 @@ public class ProcessorMts7ApduExchangesFactory extends Mts7ApduExchangesFactory 
 			ByteArrayOutputStream bout = new ByteArrayOutputStream();
 			bout.write(getNextDataResponse, 0, getNextDataResponse.length - 2);
 
+			byte[] getResponeRespone = getNextDataResponse;
+
+			int count = 0;
 			do {
-				byte[] getResponeRespone = mts7Exchange.transceive(GET_RESPONSE_COMMAND);
+				if (count++ >= MAX_GET_RESPONSE_COMMANDS) {
+					// still more data
+					throw new UnexpectedCardResponseException(GET_RESPONSE_COMMAND, getResponeRespone);
+				}
+
+				getResponeRespone = mts7Exchange.transceive(GET_RESPONSE_COMMAND);
 				if (!isContinue(getResponeRespone)) {
 					bout.write(getResponeRespone); // i.e. including status code
 					break;
