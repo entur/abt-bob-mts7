@@ -84,18 +84,23 @@ public class ProcessorLifecycleTest extends AbstractTest {
 
 	private void assertNoProcessorThreadsLeft(String message) throws InterruptedException {
 		long deadline = System.currentTimeMillis() + 2000;
-		while (!newProcessorThreads().isEmpty() && System.currentTimeMillis() < deadline) {
+		// use the same snapshot for the decision and the assertion; a thread which has been started but is not yet running might otherwise show up between the
+		// two
+		Set<Thread> threads = newProcessorThreads();
+		while (!threads.isEmpty() && System.currentTimeMillis() < deadline) {
 			Thread.sleep(10);
+			threads = newProcessorThreads();
 		}
-		assertTrue(newProcessorThreads().isEmpty(), message + ": processor thread is still running");
+		assertTrue(threads.isEmpty(), message + ": processor thread is still running");
 	}
 
 	private Thread awaitProcessorThread() throws InterruptedException {
 		long deadline = System.currentTimeMillis() + 2000;
-		while (newProcessorThreads().isEmpty() && System.currentTimeMillis() < deadline) {
-			Thread.sleep(10);
-		}
 		Set<Thread> threads = newProcessorThreads();
+		while (threads.isEmpty() && System.currentTimeMillis() < deadline) {
+			Thread.sleep(10);
+			threads = newProcessorThreads();
+		}
 		assertTrue(threads.size() == 1, "Expected one processor thread, got " + threads.size());
 		return threads.iterator().next();
 	}
