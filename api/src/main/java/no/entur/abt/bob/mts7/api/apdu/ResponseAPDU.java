@@ -44,13 +44,22 @@ import java.util.List;
  */
 public final class ResponseAPDU implements java.io.Serializable {
 
-	public final static int ADDITIONAL_FRAME = (byte) 0xAF;
-	public final static int OK = (byte) 0x90;
+	// as returned by getSW1() and getSW2(), i.e. unsigned
+	public final static int ADDITIONAL_FRAME = 0xAF;
+	public final static int OK = 0x90;
 
 	public static List<ResponseAPDU> getResponses(byte[] payload, int maxLength, int status) {
+		if (maxLength <= 7) {
+			throw new IllegalArgumentException("Max length must be greater than 7, got " + maxLength);
+		}
 		int chunkLength = maxLength - 7;
 
 		List<ResponseAPDU> results = new LinkedList<>();
+		if (payload.length == 0) {
+			// still one response, with only the status
+			results.add(new ResponseAPDU(payload, 0, 0, status, 0x00));
+			return results;
+		}
 		for (int offset = 0; offset < payload.length; offset += chunkLength) {
 			int limit = Math.min(payload.length, offset + chunkLength);
 			boolean last = limit == payload.length;
