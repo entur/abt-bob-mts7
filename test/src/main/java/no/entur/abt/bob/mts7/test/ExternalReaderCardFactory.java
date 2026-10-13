@@ -18,12 +18,17 @@ public class ExternalReaderCardFactory {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(ExternalReaderCardFactory.class);
 
+	// milliseconds between looking for card terminals
+	private static final long TERMINAL_POLL_INTERVAL = 50;
+
 	@SuppressWarnings("restriction")
 	public CardTerminal createCardReader(long timeout) throws CardException {
 		TerminalFactory factory = TerminalFactory.getDefault();
 
-		CardTerminals cardTerminals = factory.terminals();
+		return createCardReader(factory.terminals(), timeout);
+	}
 
+	public CardTerminal createCardReader(CardTerminals cardTerminals, long timeout) throws CardException {
 		List<CardTerminal> list = cardTerminals.list();
 		if (list.isEmpty()) {
 			long deadline = System.currentTimeMillis() + timeout;
@@ -33,10 +38,18 @@ public class ExternalReaderCardFactory {
 				if (!list.isEmpty()) {
 					break;
 				}
-				if (System.currentTimeMillis() > deadline) {
+				long remaining = deadline - System.currentTimeMillis();
+				if (remaining <= 0) {
 					throw new CardException("No card terminals available after timeout of " + timeout + "ms");
 				}
-				Thread.yield();
+				try {
+					// do not use all the CPU while waiting for a reader to be connected
+					Thread.sleep(Math.min(TERMINAL_POLL_INTERVAL, remaining));
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+
+					throw new CardException("Interrupted while waiting for card terminals", e);
+				}
 			}
 		}
 		for (CardTerminal terminal : list) {
