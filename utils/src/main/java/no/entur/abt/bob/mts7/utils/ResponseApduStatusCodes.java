@@ -30,31 +30,43 @@ public class ResponseApduStatusCodes {
 			this.description = description;
 		}
 
+		/**
+		 * Match the status bytes.
+		 *
+		 * @param a SW1
+		 * @param b SW2
+		 * @return -1 if any of the specified letters does not match, otherwise the number of specified letters (i.e. how specific this filter is)
+		 */
+
 		public int matches(byte a, byte b) {
 			int matches = 0;
 			if (letter0 != -1) {
 				int a0 = (a >> 4) & 0xF;
-				if (a0 == letter0) {
-					matches++;
+				if (a0 != letter0) {
+					return -1;
 				}
+				matches++;
 			}
 			if (letter1 != -1) {
 				int a1 = a & 0xF;
-				if (a1 == letter1) {
-					matches++;
+				if (a1 != letter1) {
+					return -1;
 				}
+				matches++;
 			}
 			if (letter2 != -1) {
 				int b0 = (b >> 4) & 0xF;
-				if (b0 == letter2) {
-					matches++;
+				if (b0 != letter2) {
+					return -1;
 				}
+				matches++;
 			}
 			if (letter3 != -1) {
 				int b1 = b & 0xF;
-				if (b1 == letter3) {
-					matches++;
+				if (b1 != letter3) {
+					return -1;
 				}
+				matches++;
 			}
 			return matches;
 		}
@@ -136,16 +148,27 @@ public class ResponseApduStatusCodes {
 		return 10 + c - 'A';
 	}
 
+	/**
+	 * Get the description of the status bytes of a response.
+	 *
+	 * @param responseApdu response, the status bytes are the last two bytes
+	 * @return the description, or null if the status is not known (or there are no status bytes)
+	 */
+
 	public static String getResponseCode(byte[] responseApdu) {
+		if (responseApdu == null || responseApdu.length < 2) {
+			return null;
+		}
+
 		byte a = responseApdu[responseApdu.length - 2];
 		byte b = responseApdu[responseApdu.length - 1];
 
-		int bestScore = 0;
+		int bestScore = -1;
 		Filter best = null;
 
 		for (Filter filter : FILTERS) {
 			int matches = filter.matches(a, b);
-			if (matches == 0) {
+			if (matches < 0) {
 				continue;
 			}
 			if (matches > bestScore) {
