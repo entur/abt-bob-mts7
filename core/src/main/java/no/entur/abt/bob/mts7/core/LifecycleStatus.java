@@ -5,13 +5,15 @@ public enum LifecycleStatus {
 	NO_INFORMATION_GIVEN(0x00),
 	INITIALIZATION(0x03),
 	OPERATIONAL(0x05),
-	TERMINATION(0x12);
+	TERMINATION(0x0C);
 
 	// set to ‘00’ (No information given) for PICC of Compliance Level 1, which does not support
 	// in-application life-cycle management
 	// • set to ‘03’ (Initialisation state) for not yet personalised PICC (CL2)
 	// • set to ‘05’ (Operational state - active) for personalised PICC (CL2)
 	// • set to ‘12’ (Termination state) for decommissioned PICC (CL2)
+	//
+	// note that the code for the termination state is 0x0C, i.e. 12 in decimal
 	;
 
 	private final int code;
@@ -24,10 +26,18 @@ public enum LifecycleStatus {
 		return code;
 	}
 
+	/**
+	 * Parse a life-cycle status byte.
+	 *
+	 * @param v the code
+	 * @return the status, or null if the code is not known
+	 */
+
 	public static LifecycleStatus parse(int v) {
-		switch (v) {
-		case 0x00:
-			return NO_INFORMATION_GIVEN;
+		for (LifecycleStatus status : values()) {
+			if (status.code == v) {
+				return status;
+			}
 		}
 		return null;
 	}
