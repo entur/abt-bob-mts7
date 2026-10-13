@@ -49,7 +49,8 @@ public class VerifyTrustChainMts7Processor implements Runnable, Mts7Processor {
 
 	protected ThumbprintFactory thumbprintFactory;
 
-	protected volatile Mts7Card result;
+	// never null, so that waitForVerify(..) can report on a processor which did not get any input
+	protected volatile Mts7Card result = new Mts7Card();
 	protected volatile String iccKeyAlgorithm;
 
 	public VerifyTrustChainMts7Processor(ParticipantPublicKeys participantPublicKeys, IccPublicKeyFactory factory, Mts7CardEnricher enricher,
@@ -94,6 +95,8 @@ public class VerifyTrustChainMts7Processor implements Runnable, Mts7Processor {
 
 	public void start() {
 		thread = new Thread(this);
+		// the thread waits for input from the card; never let it keep the JVM alive
+		thread.setDaemon(true);
 		thread.start();
 	}
 
@@ -122,9 +125,10 @@ public class VerifyTrustChainMts7Processor implements Runnable, Mts7Processor {
 	}
 
 	public Mts7Card waitForVerify(long timeout) throws InterruptedException, UnableToVerifyKeyPairException, UnableToVerifyTrustChainException {
+		Thread thread = this.thread;
 		if (thread != null) {
+			// do not clear the field: the thread might still be running after a timeout, and close() must still be able to stop it
 			thread.join(timeout);
-			thread = null;
 		}
 
 		if (!result.isVerifiedPrivateKeyPresent()) {
@@ -156,8 +160,6 @@ public class VerifyTrustChainMts7Processor implements Runnable, Mts7Processor {
 				LOGGER.info("Closing processor");
 				return;
 			}
-
-			this.result = new Mts7Card();
 
 			enricher.enrichSelectApplicationResponsePayload(result, selectApplicationResponsePayload);
 

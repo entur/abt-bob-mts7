@@ -35,12 +35,22 @@ public class InFlightMts7CardFactory {
 		Mts7Processor processor = processorFactory.create();
 		processor.start();
 
-		Mts7ApduExchanges online = mts7CardInvocationsFactory.create(mts7Exchange, processor, selectApplicationResponse);
+		boolean success = false;
+		try {
+			Mts7ApduExchanges online = mts7CardInvocationsFactory.create(mts7Exchange, processor, selectApplicationResponse);
 
-		InFlightMts7Card result = new InFlightMts7Card();
-		result.setMts7ApduExchanges(online);
-		result.setProcessor(processor);
+			InFlightMts7Card result = new InFlightMts7Card();
+			result.setMts7ApduExchanges(online);
+			result.setProcessor(processor);
 
-		return result;
+			success = true;
+
+			return result;
+		} finally {
+			if (!success) {
+				// the caller does not get a card to close, so stop the processor (which is waiting for input from the card) here
+				processor.close();
+			}
+		}
 	}
 }
