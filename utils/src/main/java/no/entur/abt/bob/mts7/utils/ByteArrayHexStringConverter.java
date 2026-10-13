@@ -65,13 +65,38 @@ public class ByteArrayHexStringConverter {
 		return s;
 	}
 
+	/**
+	 * Utility method to convert a hexadecimal string to a byte array.
+	 *
+	 * @param s hexadecimal string, two characters (0-9, a-f or A-F) for each byte
+	 * @return the bytes
+	 * @throws IllegalArgumentException if the length is odd, or there is a character which is not a hexadecimal digit
+	 */
+
 	public static byte[] hexStringToByteArray(String s) {
 		int len = s.length();
+		if (len % 2 != 0) {
+			throw new IllegalArgumentException("Expected an even number of hexadecimal digits, got " + len);
+		}
 		byte[] data = new byte[len / 2];
 		for (int i = 0; i < len; i += 2) {
-			data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4) + Character.digit(s.charAt(i + 1), 16));
+			data[i / 2] = (byte) ((hexDigit(s, i) << 4) + hexDigit(s, i + 1));
 		}
 		return data;
+	}
+
+	private static int hexDigit(String s, int index) {
+		char c = s.charAt(index);
+		if (c >= '0' && c <= '9') {
+			return c - '0';
+		}
+		if (c >= 'A' && c <= 'F') {
+			return c - 'A' + 10;
+		}
+		if (c >= 'a' && c <= 'f') {
+			return c - 'a' + 10;
+		}
+		throw new IllegalArgumentException("Expected hexadecimal digit at index " + index + ", got '" + c + "'");
 	}
 
 }
