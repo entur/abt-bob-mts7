@@ -20,6 +20,29 @@ public class Mts7Card {
 
 	public byte[] thumbprint;
 
+	public Mts7Card() {
+	}
+
+	/**
+	 * Copy constructor, for taking a snapshot of a card which is still being filled in by another thread. Note that the snapshot is only consistent if the
+	 * other thread is not modifying the card while it is copied.
+	 *
+	 * @param other card to copy
+	 */
+
+	public Mts7Card(Mts7Card other) {
+		this.verifiedPrivateKeyPresent = other.verifiedPrivateKeyPresent;
+		this.verifiedTrustChain = other.verifiedTrustChain;
+		this.participantIdentifier = other.participantIdentifier;
+		this.version = other.version;
+		this.serial = other.serial != null ? other.serial.clone() : null;
+		this.signatureCounter = other.signatureCounter;
+		this.lifeCycleStatus = other.lifeCycleStatus;
+		this.maximumCommandApduLength = other.maximumCommandApduLength;
+		this.maximumResponseApduLength = other.maximumResponseApduLength;
+		this.thumbprint = other.thumbprint != null ? other.thumbprint.clone() : null;
+	}
+
 	public boolean isVerifiedPrivateKeyPresent() {
 		return verifiedPrivateKeyPresent;
 	}

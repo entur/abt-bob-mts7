@@ -115,5 +115,7 @@ public class Mts7PrettyPrintCardRecordingAnalyzer extends Mts7CardRecordingAnaly
 		serial = null;
 
 		applicationId = null;
+
+		command = null;
 	}
 }

@@ -8,6 +8,10 @@ import org.slf4j.LoggerFactory;
 
 import com.nimbusds.jose.crypto.impl.ECDSA;
 
+/**
+ * Public key of a single card. The instance is stateful, so it must only be used by one thread, and for one card.
+ */
+
 public class IccPublicKey {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(IccPublicKey.class);
@@ -52,7 +56,9 @@ public class IccPublicKey {
 				throw new IllegalStateException();
 			}
 		} catch (Exception e) {
-			LOGGER.info("Unable to verify signature", e);
+			// a card can be anything, so do not fill the log
+			LOGGER.info("Unable to verify signature: {}", e.toString());
+			LOGGER.debug("Unable to verify signature", e);
 			return false;
 		}
 	}

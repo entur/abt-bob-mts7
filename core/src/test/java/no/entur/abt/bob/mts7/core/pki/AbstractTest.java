@@ -16,6 +16,8 @@ public abstract class AbstractTest {
 
 	protected ObjectMapper mapper = new ObjectMapper();
 
+	protected List<ParticipantMetadata> participantMetadata;
+
 	protected ParticipantPublicKeys participantPublicKeys;
 
 	protected IccPublicKeyFactory factory = new IccPublicKeyFactory();
@@ -24,7 +26,7 @@ public abstract class AbstractTest {
 	public void setup() throws Exception {
 		InputStream is = getClass().getResourceAsStream("/participantMetadata.json");
 
-		List<ParticipantMetadata> participantMetadata = Arrays.asList(mapper.readValue(is, ParticipantMetadata[].class));
+		participantMetadata = Arrays.asList(mapper.readValue(is, ParticipantMetadata[].class));
 		assertFalse(participantMetadata.isEmpty());
 
 		participantPublicKeys = ParticipantPublicKeys.newBuilder().withParticipants(participantMetadata).build();

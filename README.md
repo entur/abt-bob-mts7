@@ -61,7 +61,7 @@ Implementation:
    * Most secure: `VerifyTrustChainMts7ProcessorFactory` (requires root certificates via `ParticipantPublicKeys`) or
    * Less secure: `VerifyKeyPairMts7ProcessorFactory`
  * Create `InFlightMts7CardFactory` 
- * Create `InFlightMts7Card` from `InFlightMts7CardFactory.createCard(..)` which contains the `Mts7ApduExchanges` 
+ * Create `InFlightMts7Card` from `InFlightMts7CardFactory.create(..)` which contains the `Mts7ApduExchanges` 
  * Post the exchanges to the backend. It this fails, then
  * Call on `InFlightMts7Card.getMts7Card(..)` to obtain a `Mts7Card`
  * Process card details (thumbprint, serial etc) locally
@@ -69,6 +69,58 @@ Implementation:
 ### Offline
 
  * Like above, just don't post anything to the server.
+
+## Threads and reuse
+
+Create the factories **once** and share them between all threads and card readers; they are thread safe, and they are where the expensive objects live (the CBOR mapper, the issuer keys, the security provider setup). Only the objects for a single card are per card.
+
+| Shared by all threads (create once) | For one card, one thread at a time (create for each card) |
+| --- | --- |
+| `ParticipantPublicKeys`, `IssuerPublicKey` | `Mts7ApduPayloads`, `Mts7Card` |
+| `VerifyMts7CardFactory`, `VerifyKeyPairMts7CardFactory`, `LenientMts7CardFactory` | `IccPublicKey`, `IccPublicKeyBuilder` |
+| `VerifyTrustChainMts7ProcessorFactory`, `VerifyKeyPairMts7ProcessorFactory` | the `Mts7Processor` created by a processor factory |
+| `InFlightMts7CardFactory`, `ProcessorMts7ApduExchangesFactory`, `Mts7ApduExchangesFactory` | `InFlightMts7Card`, `Mts7ApduExchanges`, your `Mts7Exchange` |
+| `IccPublicKeyFactory`, `IssuerSignatureFactory`, `ThumbprintFactory`, `Mts7CardEnricher` | |
+
+Notes:
+
+ * A processor can be given its input by the thread which reads the card, and be closed or waited for from any thread. `InFlightMts7Card` is closeable: close it when done, or the processor waits (at most one minute) for a card which is not there anymore.
+ * The test support classes (`test` artifact: recordings, playback, pretty printers) are for one card at a time.
+ * Do not modify the command constants (`Mts7ApduExchangesFactory.SELECT_BOB_COMMAND` etc.); they are shared.
+
+### Server
+
+Create `ParticipantPublicKeys` and a `VerifyMts7CardFactory` once (for example at startup), and call `create(..)` from any number of threads. Call `warmUp()` on both when starting, so that the first request is not slower than the rest.
+
+### Mobile device with one to three readers
+
+Create the factories once when the application starts, keep them for as long as the application lives, and read cards on whichever thread reads them (up to the number of readers at the same time). The first card is much slower than the next ones as classes are loaded and code compiled, so warm up in the background first. On a desktop JVM this takes the first card from about 50 ms to about 4 ms:
+
+```java
+ParticipantPublicKeys keys = ParticipantPublicKeys.newBuilder().withParticipants(participants).build();
+VerifyTrustChainMts7ProcessorFactory processorFactory = new VerifyTrustChainMts7ProcessorFactory(keys);
+InFlightMts7CardFactory factory = new InFlightMts7CardFactory(processorFactory);
+
+new Thread(() -> {
+    keys.warmUp();             // creates the issuer keys, and returns those which could not be created
+    processorFactory.warmUp(); // loads classes, initializes the security provider
+}).start();
+```
+
+ * Use the constructors which take a `Provider` if the application uses its own security provider (for example Conscrypt or Bouncy Castle).
+ * The processors run on the threads of an `Executor`. The default is a pool of daemon threads for each processor factory, which reuses the threads for the next card. Pass your own `Executor` to the processor factory to share threads with the rest of the application. A processor waits for the reader to give it input, so the executor must have a thread for each card which is being read at the same time, and must not run the processor on the thread which reads the card.
+
+### Upgrading from 2.x
+
+The next major version has these breaking changes:
+
+ * `IssuerPublicKey` is created from a `PublicKey` (see `IssuerSignatureFactory.createIssuerPublicKey(..)`); the constructor which took a `Signature` is gone, as are `IssuerSignatureFactory.create(..)` and the `Signature` field.
+ * The protected fields `ThumbprintFactory.messageDigest` and `Mts7CardEnricher.pullParser` are gone; the objects are created when needed.
+ * The processors extend `AbstractMts7Processor`. The protected `thread` field is gone, as are the (unused) `algorithmExtractor` and `timeout` fields. A processor which is closed before it is started never starts, and `start()` and `close()` can be called more than once.
+ * `waitForVerify(..)` returns (and the exceptions carry) a snapshot of the card if the processor has not finished, so the card does not change after it was returned.
+ * The constructors of the processors and the processor factories take an `Executor`; the existing constructors use the default executor.
+ * `IccPublicKey` and the processors are documented as for one card only, and `VerifyMts7CardFactory`, `VerifyKeyPairMts7CardFactory` and `LenientMts7CardFactory` are thread safe (do not create one for each thread or card).
+ * Failures while processing a card are logged on one line; the stack trace is logged at debug level.
 
 ### Testing
 A `test` artifact for analyzing and/or testing cards are included with the project.

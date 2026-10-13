@@ -4,6 +4,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import org.apache.commons.csv.CSVFormat;
@@ -78,13 +79,11 @@ public class ResponseApduStatusCodes {
 
 	private static final List<Filter> FILTERS;
 	static {
-		try {
-			InputStream is = ResponseApduStatusCodes.class.getResourceAsStream("/bob/responses.csv");
-			InputStreamReader reader = new InputStreamReader(is, StandardCharsets.UTF_8);
-
+		try (InputStream is = ResponseApduStatusCodes.class.getResourceAsStream("/bob/responses.csv");
+				InputStreamReader reader = new InputStreamReader(is, StandardCharsets.UTF_8);
+				CSVParser parser = CSVParser.parse(reader, CSVFormat.RFC4180)) {
 			List<Filter> filters = new ArrayList<>();
 
-			CSVParser parser = CSVParser.parse(reader, CSVFormat.RFC4180);
 			for (CSVRecord csvRecord : parser) {
 				String a = csvRecord.get(0);
 				String b = csvRecord.get(1);
@@ -131,7 +130,8 @@ public class ResponseApduStatusCodes {
 				filters.add(new Filter(a0, a1, b0, b1, description));
 			}
 
-			FILTERS = filters;
+			// read by all threads, never modified
+			FILTERS = Collections.unmodifiableList(filters);
 		} catch (Exception e) {
 			throw new IllegalStateException(e);
 		}

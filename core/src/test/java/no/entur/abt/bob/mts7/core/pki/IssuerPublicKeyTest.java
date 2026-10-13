@@ -54,13 +54,9 @@ public class IssuerPublicKeyTest {
 	}
 
 	private static IssuerPublicKey issuerKey(String algorithm, PublicKey publicKey) throws Exception {
-		Signature signature = Signature.getInstance(algorithm);
-		signature.initVerify(publicKey);
-
-		return new IssuerPublicKey(10, "10:test", signature);
+		return new IssuerPublicKey(10, "10:test", publicKey, algorithm, null);
 	}
 
-	// a new key for each verification, so that a failed verification cannot affect the next one
 	private static IssuerPublicKey ecKey() throws Exception {
 		return issuerKey("SHA256withECDSA", ecKeyPair.getPublic());
 	}

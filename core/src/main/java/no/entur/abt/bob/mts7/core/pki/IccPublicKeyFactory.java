@@ -15,7 +15,11 @@ import com.nimbusds.jose.jwk.KeyConverter;
 
 import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
 
-// subclasses of this instance are not thread safe
+/**
+ * Create the public key of a card (the ICC public key). Instances are thread safe, so a single instance can be shared by all threads; the keys it creates are
+ * not.
+ */
+
 public class IccPublicKeyFactory {
 
 	protected final Provider provider;

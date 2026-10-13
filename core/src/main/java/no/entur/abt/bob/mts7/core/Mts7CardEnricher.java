@@ -2,6 +2,10 @@ package no.entur.abt.bob.mts7.core;
 
 import no.entur.tlv.parser.LenientTlvPullParser;
 
+/**
+ * Instances are thread safe, so a single instance can be shared by all threads. The cards are not, so a card must only be enriched by one thread at a time.
+ */
+
 public class Mts7CardEnricher {
 
 	public static final int FILE_MANAGEMENT_TEMPLATE = 0x64;
@@ -21,9 +25,9 @@ public class Mts7CardEnricher {
 
 	protected static final int APPLICATION_IDENTIFIER_LENGTH = 6 + 1 + 2 + 7;
 
-	protected final LenientTlvPullParser pullParser = new LenientTlvPullParser();
-
 	public void enrichSelectApplicationResponsePayload(Mts7Card card, byte[] selectApplicationResponsePayload) {
+		// the parser is stateful, and cheap to create
+		LenientTlvPullParser pullParser = new LenientTlvPullParser();
 		pullParser.setBuffer(selectApplicationResponsePayload);
 
 		do {
@@ -39,6 +43,7 @@ public class Mts7CardEnricher {
 	}
 
 	public void enrichSelectApplicationResponseApdu(Mts7Card card, byte[] selectApplicationResponse) {
+		LenientTlvPullParser pullParser = new LenientTlvPullParser();
 		pullParser.setResponseApduPayload(selectApplicationResponse);
 
 		do {

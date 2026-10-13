@@ -1,7 +1,6 @@
 package no.entur.abt.bob.mts7.core.pki;
 
 import java.security.Provider;
-import java.security.Signature;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -13,7 +12,10 @@ import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
 
 /**
  * 
- * Lazy key cache
+ * Lazy key cache.
+ * <p>
+ * Instances are thread safe, so a single instance should be shared by all threads. The keys are created when first used; call {@linkplain #warmUp()} to create
+ * them in advance, for example on a background thread when the application starts.
  * 
  */
 
@@ -47,7 +49,8 @@ public class ParticipantPublicKeys {
 		public ParticipantPublicKeys build() throws Exception {
 			IssuerSignatureFactory factory = new IssuerSignatureFactory(provider);
 
-			Map<Long, Issuer> keys = new HashMap<>(); // thread safe for reading
+			// not modified after it has been built, so it is safe to read from several threads
+			Map<Long, Issuer> keys = new HashMap<>();
 
 			for (ParticipantMetadata p : items) {
 
@@ -70,7 +73,8 @@ public class ParticipantPublicKeys {
 
 	public static class IssuerKey {
 
-		private IssuerPublicKey key;
+		// created on demand, and visible to all threads when set
+		private volatile IssuerPublicKey key;
 
 		private final JwkPublic keyMaterial;
 
@@ -102,7 +106,8 @@ public class ParticipantPublicKeys {
 		private final long pid;
 		private final IssuerSignatureFactory factory;
 
-		private Map<String, IssuerKey> keys;
+		// not modified after it has been built, so it is safe to read from several threads
+		private final Map<String, IssuerKey> keys;
 
 		public Issuer(String name, long pid, Map<String, IssuerKey> map, IssuerSignatureFactory factory) {
 			this.name = name;
@@ -113,20 +118,38 @@ public class ParticipantPublicKeys {
 
 		public IssuerPublicKey getKey(String id) throws UnableToConstructIssuerKeyException {
 			IssuerKey issuerKey = keys.get(id);
-			if (issuerKey != null) {
-				if (!issuerKey.hasKey()) {
-					JwkPublic keyMaterial = issuerKey.getKeyMaterial();
+			if (issuerKey == null) {
+				return null;
+			}
 
-					Signature signature = factory.create(keyMaterial);
-
-					IssuerPublicKey key = new IssuerPublicKey(pid, keyMaterial.getKid(), signature);
-
+			IssuerPublicKey key = issuerKey.getKey();
+			if (key == null) {
+				// creating a key has no side effects, and the result is thread safe, so there is no need to prevent several threads from creating one at the
+				// same time: all of the keys are equivalent
+				key = factory.createIssuerPublicKey(pid, issuerKey.getKeyMaterial());
+				if (key != null) {
 					issuerKey.setKey(key);
 				}
-
-				return issuerKey.getKey();
 			}
-			return null;
+			return key;
+		}
+
+		/**
+		 * Create all keys which have not yet been created.
+		 *
+		 * @return the keys which could not be created, empty if none
+		 */
+
+		public List<UnableToConstructIssuerKeyException> warmUp() {
+			List<UnableToConstructIssuerKeyException> failures = new ArrayList<>();
+			for (String id : keys.keySet()) {
+				try {
+					getKey(id);
+				} catch (UnableToConstructIssuerKeyException e) {
+					failures.add(new UnableToConstructIssuerKeyException("Unable to create key " + id + " for participant " + pid, e));
+				}
+			}
+			return failures;
 		}
 
 		public String getName() {
@@ -146,6 +169,21 @@ public class ParticipantPublicKeys {
 			return key.getKey(kid);
 		}
 		return null;
+	}
+
+	/**
+	 * Create all keys which have not yet been created, so that no card has to wait for it. Keys which could not be created are reported rather than thrown, so
+	 * that a single invalid key does not prevent the other keys from being used.
+	 *
+	 * @return the keys which could not be created, empty if none
+	 */
+
+	public List<UnableToConstructIssuerKeyException> warmUp() {
+		List<UnableToConstructIssuerKeyException> failures = new ArrayList<>();
+		for (Issuer issuer : keys.values()) {
+			failures.addAll(issuer.warmUp());
+		}
+		return failures;
 	}
 
 	public String getName(long pid) {

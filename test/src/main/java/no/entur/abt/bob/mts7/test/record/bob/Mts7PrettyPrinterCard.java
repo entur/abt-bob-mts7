@@ -69,8 +69,9 @@ public class Mts7PrettyPrinterCard implements no.entur.abt.bob.mts7.utils.nfc.Ca
 
 	protected boolean silent;
 
-	protected final JsonFactory jsonFactory = new MappingJsonFactory();
-	protected final CBORMapper mapper = new CBORMapper();
+	// thread safe, and expensive to create for each card
+	protected static final JsonFactory jsonFactory = new MappingJsonFactory();
+	protected static final CBORMapper mapper = new CBORMapper();
 
 	public Mts7PrettyPrinterCard(Card card, Mts7PrettyPrintCardRecordingAnalyzer analyzer, boolean silent) {
 		this.card = card;

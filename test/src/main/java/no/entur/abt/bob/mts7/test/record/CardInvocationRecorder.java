@@ -3,9 +3,14 @@ package no.entur.abt.bob.mts7.test.record;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Records the invocations of a single card. The list can be added to and read from different threads, but the invocations themselves are completed by the
+ * thread which made the invocation.
+ */
+
 public class CardInvocationRecorder implements CardInvocationListener {
 
-	private List<CardInvocation> invocations = new ArrayList<>(64);
+	private final List<CardInvocation> invocations = new ArrayList<>(64);
 
 	@Override
 	public ConnectInvocation onConnect() {
@@ -26,11 +31,19 @@ public class CardInvocationRecorder implements CardInvocationListener {
 		TransceiveInvocation transceive = new TransceiveInvocation();
 		transceive.setCommand(command);
 		transceive.setTimestamp(System.nanoTime());
-		this.invocations.add(transceive);
+		synchronized (invocations) {
+			this.invocations.add(transceive);
+		}
 		return transceive;
 	}
 
+	/**
+	 * @return the invocations so far
+	 */
+
 	public List<CardInvocation> getInvocations() {
-		return invocations;
+		synchronized (invocations) {
+			return new ArrayList<>(invocations);
+		}
 	}
 }

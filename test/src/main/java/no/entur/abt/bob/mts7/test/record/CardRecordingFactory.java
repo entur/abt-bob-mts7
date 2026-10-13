@@ -51,7 +51,20 @@ public class CardRecordingFactory {
 		}
 	}
 
+	// a mapper is thread safe once it has been configured, and expensive to build (it looks for modules on the classpath), so build it only once
+	private volatile ObjectMapper objectMapper;
+
 	protected ObjectMapper getObjectMapper() {
+		ObjectMapper result = objectMapper;
+		if (result == null) {
+			// two threads might build one each, which is harmless
+			result = createObjectMapper();
+			objectMapper = result;
+		}
+		return result;
+	}
+
+	protected ObjectMapper createObjectMapper() {
 		SimpleModule module = new SimpleModule();
 		module.addSerializer(CardInvocation.class, new CardInvocationSerializer());
 		module.addDeserializer(CardInvocation.class, new CardInvocationDeserializer());

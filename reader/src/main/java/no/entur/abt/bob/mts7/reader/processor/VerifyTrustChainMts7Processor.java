@@ -2,6 +2,7 @@ package no.entur.abt.bob.mts7.reader.processor;
 
 import java.security.SignatureException;
 import java.util.Map;
+import java.util.concurrent.Executor;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,39 +25,30 @@ import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
 /**
  * 
  * Processor for MTS7 card integrity check which includes the root certificates.
+ * <p>
+ * A processor is for one card only.
  * 
  */
 
-public class VerifyTrustChainMts7Processor implements Runnable, Mts7Processor {
+public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(VerifyTrustChainMts7Processor.class);
-
-	protected volatile Thread thread;
-	protected volatile boolean close;
-
-	protected final Object inputMonitor = new Object();
-	protected final Object outputMonitor = new Object();
-
-	private byte[] selectApplicationResponsePayload;
-	private byte[] getDataResponsePayload;
-
-	private byte[] internalAuthenticateResponsePayload;
-	private byte[] internalAuthenticateCommandPayload;
 
 	protected final ParticipantPublicKeys participantPublicKeys;
 	protected final IccPublicKeyFactory iccSignatureFactory;
 	protected final CBORMapper cborMapper;
 	protected final Mts7CardEnricher enricher;
 
-	protected ThumbprintFactory thumbprintFactory;
-
-	// never null, so that waitForVerify(..) can report on a processor which did not get any input
-	protected volatile Mts7Card result = new Mts7Card();
-	protected volatile String iccKeyAlgorithm;
+	protected final ThumbprintFactory thumbprintFactory;
 
 	public VerifyTrustChainMts7Processor(ParticipantPublicKeys participantPublicKeys, IccPublicKeyFactory factory, Mts7CardEnricher enricher,
 			CBORMapper cborMapper, ThumbprintFactory thumbprintFactory) {
-		super();
+		this(participantPublicKeys, factory, enricher, cborMapper, thumbprintFactory, NEW_DAEMON_THREAD);
+	}
+
+	public VerifyTrustChainMts7Processor(ParticipantPublicKeys participantPublicKeys, IccPublicKeyFactory factory, Mts7CardEnricher enricher,
+			CBORMapper cborMapper, ThumbprintFactory thumbprintFactory, Executor executor) {
+		super(executor);
 
 		this.participantPublicKeys = participantPublicKeys;
 		this.iccSignatureFactory = factory;
@@ -66,242 +58,140 @@ public class VerifyTrustChainMts7Processor implements Runnable, Mts7Processor {
 		this.thumbprintFactory = thumbprintFactory;
 	}
 
-	@Override
-	public void onGetData(byte[] responsePayload) {
-		synchronized (inputMonitor) {
-			this.getDataResponsePayload = responsePayload;
-
-			inputMonitor.notifyAll();
-		}
-	}
-
-	@Override
-	public void onSelectApplication(byte[] responsePayload) {
-		synchronized (inputMonitor) {
-			this.selectApplicationResponsePayload = responsePayload;
-
-			inputMonitor.notifyAll();
-		}
-	}
-
-	@Override
-	public void onInternalAuthenticate(byte[] commandPayload, byte[] responsePayload) {
-		synchronized (inputMonitor) {
-			this.internalAuthenticateCommandPayload = commandPayload;
-			this.internalAuthenticateResponsePayload = responsePayload;
-
-			inputMonitor.notifyAll();
-		}
-	}
-
-	public void start() {
-		thread = new Thread(this);
-		// the thread waits for input from the card; never let it keep the JVM alive
-		thread.setDaemon(true);
-		thread.start();
-	}
-
-	public void close() {
-		if (thread != null) {
-			synchronized (inputMonitor) {
-				this.close = true;
-
-				inputMonitor.notifyAll();
-			}
-
-			thread.interrupt();
-			thread = null;
-		}
-	}
-
-	public String waitForAlgorithm(long timeout) throws InterruptedException {
-		if (iccKeyAlgorithm == null) {
-			synchronized (outputMonitor) {
-				if (iccKeyAlgorithm == null) {
-					outputMonitor.wait(timeout);
-				}
-			}
-		}
-		return iccKeyAlgorithm;
-	}
-
 	public Mts7Card waitForVerify(long timeout) throws InterruptedException, UnableToVerifyKeyPairException, UnableToVerifyTrustChainException {
-		Thread thread = this.thread;
-		if (thread != null) {
-			// do not clear the field: the thread might still be running after a timeout, and close() must still be able to stop it
-			thread.join(timeout);
+		Mts7Card card = awaitResult(timeout);
+
+		if (!card.isVerifiedPrivateKeyPresent()) {
+			throw new UnableToVerifyKeyPairException(card);
 		}
 
-		if (!result.isVerifiedPrivateKeyPresent()) {
-			throw new UnableToVerifyKeyPairException(result);
+		if (!card.isVerifiedTrustChain()) {
+			throw new UnableToVerifyTrustChainException(card);
 		}
 
-		if (!result.isVerifiedTrustChain()) {
-			throw new UnableToVerifyTrustChainException(result);
-		}
-
-		return result;
+		return card;
 	}
 
 	@SuppressWarnings("unchecked")
 	@Override
-	public void run() {
-		try {
-			IccPublicKeyBuilder iccPublicKeyBuilder = new IccPublicKeyBuilder(iccSignatureFactory);
+	protected void process() throws Exception {
+		IccPublicKeyBuilder iccPublicKeyBuilder = new IccPublicKeyBuilder(iccSignatureFactory);
 
-			while (!close && selectApplicationResponsePayload == null) {
-				synchronized (inputMonitor) {
-					if (!close && selectApplicationResponsePayload == null) {
-						inputMonitor.wait();
-					}
-				}
+		if (!awaitInput(() -> selectApplicationResponsePayload != null)) {
+			return;
+		}
+
+		byte[] selectApplicationResponse = selectApplicationResponsePayload;
+		updateResult(card -> enricher.enrichSelectApplicationResponsePayload(card, selectApplicationResponse));
+
+		LOGGER.info("Processed 'select application' response");
+
+		if (!awaitInput(() -> getDataResponsePayload != null)) {
+			return;
+		}
+
+		Map<String, Object> otherValue = cborMapper.readValue(getDataResponsePayload, Map.class);
+		byte[] p = (byte[]) otherValue.get("p");
+
+		byte[][] cborArray = cborMapper.readValue(p, byte[][].class);
+
+		for (int i = 0; i < cborArray.length - 1; i++) {
+			byte[] value = cborArray[i];
+			iccPublicKeyBuilder.withSignedData(value, 0, value.length);
+		}
+
+		byte[] signature = cborArray[cborArray.length - 1];
+		iccPublicKeyBuilder.withSignature(signature);
+
+		IccPublicKey iccPublicKey = null;
+
+		// determine which issuer key to use
+		for (int i = 0; i < cborArray.length - 1; i++) {
+			byte[] value = cborArray[i];
+
+			Map<String, Object> m = cborMapper.readValue(value, Map.class);
+
+			// To be able to distinguish between the Issuer Signature and the Device Signature (see section 2.5) header, the Issuer Signature Protected
+			// Header MUST NOT contain a did parameter.
+			if (m.containsKey("did")) {
+				continue;
 			}
 
-			if (close) {
-				LOGGER.info("Closing processor");
-				return;
+			Object kidObject = m.get("kid");
+			if (kidObject == null) {
+				continue;
 			}
 
-			enricher.enrichSelectApplicationResponsePayload(result, selectApplicationResponsePayload);
-
-			LOGGER.info("Processed 'select application' response");
-
-			while (!close && getDataResponsePayload == null) {
-				synchronized (inputMonitor) {
-					if (!close && getDataResponsePayload == null) {
-						inputMonitor.wait();
-					}
-				}
+			Object iidObject = m.get("iid");
+			if (iidObject == null) {
+				continue;
 			}
 
-			if (close) {
-				LOGGER.info("Closing processor");
-				return;
+			String kid = (String) kidObject;
+			Long iid = Long.parseLong(iidObject.toString());
+
+			// note here what kind of algorithm we are using
+			// EC and RSA do not encode the input to the internal authenticate funtion
+			// in the same way.
+
+			setIccKeyAlgorithm((String) m.get("alg"));
+
+			IssuerPublicKey issuerPublicKey = participantPublicKeys.getIssuerPublicKey(iid, kid);
+
+			if (issuerPublicKey == null) {
+				LOGGER.info("Unable to find issuer public key");
+			} else {
+				iccPublicKeyBuilder.withIssuerPublicKey(issuerPublicKey);
 			}
 
-			Map<String, Object> otherValue = cborMapper.readValue(getDataResponsePayload, Map.class);
-			byte[] p = (byte[]) otherValue.get("p");
-
-			byte[][] cborArray = cborMapper.readValue(p, byte[][].class);
-
-			for (int i = 0; i < cborArray.length - 1; i++) {
-				byte[] value = cborArray[i];
-				iccPublicKeyBuilder.withSignedData(value, 0, value.length);
-			}
-
-			byte[] signature = cborArray[cborArray.length - 1];
-			iccPublicKeyBuilder.withSignature(signature);
-
-			IccPublicKey iccPublicKey = null;
-
-			// determine which issuer key to use
-			for (int i = 0; i < cborArray.length - 1; i++) {
-				byte[] value = cborArray[i];
-
-				Map<String, Object> m = cborMapper.readValue(value, Map.class);
-
-				// To be able to distinguish between the Issuer Signature and the Device Signature (see section 2.5) header, the Issuer Signature Protected
-				// Header MUST NOT contain a did parameter.
-				if (m.containsKey("did")) {
-					continue;
-				}
-
-				Object kidObject = m.get("kid");
-				if (kidObject == null) {
-					continue;
-				}
-
-				Object iidObject = m.get("iid");
-				if (iidObject == null) {
-					continue;
-				}
-
-				String kid = (String) kidObject;
-				Long iid = Long.parseLong(iidObject.toString());
-
-				// note here what kind of algorithm we are using
-				// EC and RSA do not encode the input to the internal authenticate funtion
-				// in the same way.
-
-				synchronized (outputMonitor) {
-					this.iccKeyAlgorithm = (String) m.get("alg");
-
-					outputMonitor.notifyAll();
-				}
-
-				IssuerPublicKey issuerPublicKey = participantPublicKeys.getIssuerPublicKey(iid, kid);
-
-				if (issuerPublicKey == null) {
-					LOGGER.info("Unable to find issuer public key");
-				} else {
-					iccPublicKeyBuilder.withIssuerPublicKey(issuerPublicKey);
-				}
-
-				iccPublicKeyBuilder.withIssuerSignatureProtectedHeader(m);
-
-				try {
-					result.setThumbprint(thumbprintFactory.create(m));
-				} catch (UnableToConstructThumbprintKeyException e) {
-					LOGGER.info("Unable to construct thumbprint", e);
-				}
-
-				break;
-			}
+			iccPublicKeyBuilder.withIssuerSignatureProtectedHeader(m);
 
 			try {
-				if (iccPublicKeyBuilder.canBuild()) {
-					iccPublicKey = iccPublicKeyBuilder.build();
-
-					LOGGER.info("Verified ICC trust chain");
-
-					result.setVerifiedTrustChain(true);
-				} else {
-					LOGGER.info("Unable to verify ICC trust chain");
-				}
-			} catch (SignatureException e) {
-				LOGGER.info("Issuer signature is not valid", e);
-			} catch (UnableToConstructIccKeyException e) {
-				LOGGER.info("Unable to create ICC public key", e);
+				byte[] thumbprint = thumbprintFactory.create(m);
+				updateResult(card -> card.setThumbprint(thumbprint));
+			} catch (UnableToConstructThumbprintKeyException e) {
+				log("Unable to construct thumbprint", e);
 			}
 
-			LOGGER.info("Processed 'get (next) data' response");
-
-			// most of the waiting is here
-			while (!close && internalAuthenticateResponsePayload == null) {
-				synchronized (inputMonitor) {
-					if (!close && internalAuthenticateResponsePayload == null) {
-						inputMonitor.wait();
-					}
-				}
-			}
-
-			if (close) {
-				LOGGER.info("Closing processor");
-
-				return;
-			}
-
-			// process signature - the only time-critical part of the logic here
-			if (iccPublicKey != null && iccPublicKey.verify(internalAuthenticateCommandPayload, internalAuthenticateResponsePayload)) {
-				LOGGER.info("Verified ICC private key");
-				result.setVerifiedPrivateKeyPresent(true);
-			} else {
-				LOGGER.info("Unable to verify ICC private key");
-				result.setVerifiedPrivateKeyPresent(false);
-			}
-
-			LOGGER.info("Processed 'internal authenticate' response");
-
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-		} catch (Exception e) {
-			LOGGER.info("Problem processing files", e);
-		} finally {
-			// notify result waiters
-			synchronized (outputMonitor) {
-				outputMonitor.notifyAll();
-			}
+			break;
 		}
+
+		try {
+			if (iccPublicKeyBuilder.canBuild()) {
+				iccPublicKey = iccPublicKeyBuilder.build();
+
+				LOGGER.info("Verified ICC trust chain");
+
+				updateResult(card -> card.setVerifiedTrustChain(true));
+			} else {
+				LOGGER.info("Unable to verify ICC trust chain");
+			}
+		} catch (SignatureException e) {
+			log("Issuer signature is not valid", e);
+		} catch (UnableToConstructIccKeyException e) {
+			log("Unable to create ICC public key", e);
+		}
+
+		LOGGER.info("Processed 'get (next) data' response");
+
+		// most of the waiting is here
+		if (!awaitInput(() -> internalAuthenticateResponsePayload != null)) {
+			return;
+		}
+
+		byte[] commandPayload = internalAuthenticateCommandPayload;
+		byte[] responsePayload = internalAuthenticateResponsePayload;
+
+		// process signature - the only time-critical part of the logic here
+		boolean verified = iccPublicKey != null && iccPublicKey.verify(commandPayload, responsePayload);
+		if (verified) {
+			LOGGER.info("Verified ICC private key");
+		} else {
+			LOGGER.info("Unable to verify ICC private key");
+		}
+		updateResult(card -> card.setVerifiedPrivateKeyPresent(verified));
+
+		LOGGER.info("Processed 'internal authenticate' response");
 	}
 
 }

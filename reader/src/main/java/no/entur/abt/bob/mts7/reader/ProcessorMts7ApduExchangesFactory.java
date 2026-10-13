@@ -4,13 +4,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Random;
 
-import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
-
 import no.entur.abt.bob.mts7.api.Mts7Exception;
 import no.entur.abt.bob.mts7.api.UnableToSelectApplicationException;
 import no.entur.abt.bob.mts7.api.UnexpectedCardResponseException;
 import no.entur.abt.bob.mts7.api.apdu.ResponseAPDU;
-import no.entur.abt.bob.mts7.reader.processor.CBORExtractor;
 import no.entur.abt.bob.mts7.reader.processor.Mts7Processor;
 import no.entur.abt.bob.mts7.simple.api.Mts7ApduExchanges;
 import no.entur.abt.bob.mts7.simple.reader.DefaultMts7Exchange;
@@ -20,16 +17,12 @@ import no.entur.abt.bob.mts7.simple.reader.Mts7Exchange;
 /**
  * 
  * Card factory which does minimal work to gather the card data while also feeding an underlying processor.
+ * <p>
+ * Instances are thread safe (given that the random is), so a single instance can be shared by all card readers.
  *
  */
 
 public class ProcessorMts7ApduExchangesFactory extends Mts7ApduExchangesFactory {
-
-	private static final int PARSE_TIMEOUT = 1000;
-
-	protected final long timeout = PARSE_TIMEOUT;
-
-	protected CBORExtractor algorithmExtractor = new CBORExtractor(new CBORMapper());
 
 	public ProcessorMts7ApduExchangesFactory() {
 		super();
