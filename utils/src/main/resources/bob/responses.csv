@@ -8,8 +8,8 @@
 68,83,E,Last command of a chain expected
 69,82,E,Security status not satisfied (Secure Messaging incorrect)
 69,85,E,Condition of use not satisfied
-62,87,E,Expected Secure Messaging DOs missing (keys, etc)
-62,88,E,Secure Messaging DOs incorrect
+69,87,E,"Expected Secure Messaging DOs missing (keys, etc)"
+69,88,E,Secure Messaging DOs incorrect
 6A,80,E,Incorrect parameters in data field
 6A,82,E,File or application not found
 6A,84,E,Not enough memory space in the file
