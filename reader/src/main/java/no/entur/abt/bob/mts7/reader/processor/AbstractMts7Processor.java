@@ -79,11 +79,8 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 
 	private final Executor executor;
 
-	// guarded by the input monitor: the processor is started (or run directly), and so is expected to finish
+	// guarded by the input monitor
 	private boolean started;
-
-	// guarded by the input monitor: the processing has been claimed by somebody, which is done only once
-	private boolean ran;
 
 	// guarded by the output monitor
 	private boolean processed;
@@ -302,23 +299,8 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 
 	protected abstract void process() throws Exception;
 
-	/**
-	 * Process the input from the card. This is what the executor does when the processor is started, but it can also be called directly. The card is
-	 * processed once, so a second call (from wherever) returns at once.
-	 */
-
 	@Override
 	public void run() {
-		synchronized (inputMonitor) {
-			if (ran) {
-				return;
-			}
-			ran = true;
-
-			// also when called directly rather than by start(), so that those who wait for the result wait for this too
-			started = true;
-		}
-
 		deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(getMaxLifetimeMillis());
 		try {
 			process();
