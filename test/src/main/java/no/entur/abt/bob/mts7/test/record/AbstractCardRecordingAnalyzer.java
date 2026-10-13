@@ -17,11 +17,15 @@ public class AbstractCardRecordingAnalyzer {
 		}
 
 		public boolean isCommand(byte[] apdu) {
+			if (apdu.length < bytes.length) {
+				return false;
+			}
 			for (int i = 0; i < bytes.length; i++) {
 				if (bytes[i] == -1) {
 					continue;
 				}
-				if (bytes[i] != apdu[i]) {
+				// the bytes of the command are signed
+				if (bytes[i] != (apdu[i] & 0xFF)) {
 					return false;
 				}
 			}
@@ -37,7 +41,7 @@ public class AbstractCardRecordingAnalyzer {
 	}
 
 	public void addCommandIdentifier(int cla, int ins, String name) {
-		addCommandIdentifier(cla, ins, name);
+		addCommandIdentifier(new int[] { cla, ins }, name);
 	}
 
 	public void addCommandIdentifier(int[] bytes, String name) {

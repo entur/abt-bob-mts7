@@ -145,7 +145,10 @@ public class Mts7PrettyPrinterCard implements no.entur.abt.bob.mts7.utils.nfc.Ca
 				break;
 			}
 			case GET_NEXT_DATA_COMMAND: {
-				if (!isReferenceNotFound(response)) {
+				if (response.length < 2 || isMoreData(response)) {
+					// not complete (the rest is returned for get response), so there is nothing to pretty print yet
+					LOGGER.info("<- " + ByteArrayHexStringConverter.toHexString(response) + " (in " + (duration) + "ms)");
+				} else if (!isReferenceNotFound(response)) {
 					byte[] payload = new byte[response.length - 2];
 					if (payload.length > 0) {
 						CharArrayWriter writer = new CharArrayWriter(512);
@@ -227,10 +230,18 @@ public class Mts7PrettyPrinterCard implements no.entur.abt.bob.mts7.utils.nfc.Ca
 		return response;
 	}
 
-	private boolean isReferenceNotFound(byte[] response) {
+	protected static boolean isReferenceNotFound(byte[] response) {
 		// If a next instance of the DO does not exist, response should be empty and SW1-SW2 set to '6A 88' (Referenced data not found).
 		// '6A 88'
-		return (response[response.length - 2] & 0xFF) == 0x6A || (response[response.length - 1] & 0xFF) == 0x88;
+		return response.length >= 2 && (response[response.length - 2] & 0xFF) == 0x6A && (response[response.length - 1] & 0xFF) == 0x88;
+	}
+
+	/**
+	 * If the status bytes from a GET DATA command is 61xx then there are more bytes to read than what is in the buffer.
+	 */
+
+	private static boolean isMoreData(byte[] response) {
+		return response.length >= 2 && (response[response.length - 2] & 0xFF) == 0x61;
 	}
 
 	public Logger getLogger() {

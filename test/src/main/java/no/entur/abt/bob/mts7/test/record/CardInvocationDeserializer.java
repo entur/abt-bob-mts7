@@ -15,7 +15,7 @@ public class CardInvocationDeserializer extends StdDeserializer<CardInvocation> 
 	private static final long serialVersionUID = 1L;
 
 	public CardInvocationDeserializer() {
-		super(CardInvocationSerializer.class);
+		super(CardInvocation.class);
 	}
 
 	@Override
