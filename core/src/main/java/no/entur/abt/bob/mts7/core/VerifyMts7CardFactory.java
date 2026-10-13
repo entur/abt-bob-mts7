@@ -1,6 +1,7 @@
 package no.entur.abt.bob.mts7.core;
 
 import java.security.NoSuchAlgorithmException;
+import java.security.SignatureException;
 import java.util.Map;
 
 import org.slf4j.Logger;
@@ -93,7 +94,12 @@ public class VerifyMts7CardFactory {
 
 				iccKeyAlgorithm = (String) m.get("alg");
 
-				IssuerPublicKey issuerPublicKey = participantPublicKeys.getIssuerPublicKey(iid, kid);
+				IssuerPublicKey issuerPublicKey = null;
+				try {
+					issuerPublicKey = participantPublicKeys.getIssuerPublicKey(iid, kid);
+				} catch (UnableToConstructIssuerKeyException e) {
+					LOGGER.info("Unable to create issuer public key", e);
+				}
 
 				if (issuerPublicKey == null) {
 					LOGGER.info("Unable to find issuer public key");
@@ -120,6 +126,8 @@ public class VerifyMts7CardFactory {
 				} else {
 					LOGGER.info("Unable to verify ICC trust chain");
 				}
+			} catch (SignatureException e) {
+				LOGGER.info("Issuer signature is not valid", e);
 			} catch (UnableToConstructIccKeyException e) {
 				LOGGER.info("Unable to create ICC public key", e);
 			}

@@ -1,5 +1,6 @@
 package no.entur.abt.bob.mts7.reader.processor;
 
+import java.security.SignatureException;
 import java.util.Map;
 
 import org.slf4j.Logger;
@@ -10,6 +11,7 @@ import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 import no.entur.abt.bob.mts7.core.Mts7Card;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
 import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
+import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
 import no.entur.abt.bob.mts7.core.UnableToConstructThumbprintKeyException;
 import no.entur.abt.bob.mts7.core.UnableToVerifyKeyPairException;
 import no.entur.abt.bob.mts7.core.UnableToVerifyTrustChainException;
@@ -228,7 +230,12 @@ public class VerifyTrustChainMts7Processor implements Runnable, Mts7Processor {
 					outputMonitor.notifyAll();
 				}
 
-				IssuerPublicKey issuerPublicKey = participantPublicKeys.getIssuerPublicKey(iid, kid);
+				IssuerPublicKey issuerPublicKey = null;
+				try {
+					issuerPublicKey = participantPublicKeys.getIssuerPublicKey(iid, kid);
+				} catch (UnableToConstructIssuerKeyException e) {
+					LOGGER.info("Unable to create issuer public key", e);
+				}
 
 				if (issuerPublicKey == null) {
 					LOGGER.info("Unable to find issuer public key");
@@ -257,6 +264,8 @@ public class VerifyTrustChainMts7Processor implements Runnable, Mts7Processor {
 				} else {
 					LOGGER.info("Unable to verify ICC trust chain");
 				}
+			} catch (SignatureException e) {
+				LOGGER.info("Issuer signature is not valid", e);
 			} catch (UnableToConstructIccKeyException e) {
 				LOGGER.info("Unable to create ICC public key", e);
 			}
