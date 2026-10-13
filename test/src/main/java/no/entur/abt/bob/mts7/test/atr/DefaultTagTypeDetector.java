@@ -83,6 +83,10 @@ public class DefaultTagTypeDetector<R> implements TagTypeDetector<R> {
 
 	@Override
 	public TagType parseHistoricalBytes(R reader, byte[] historicalBytes) {
+		if (historicalBytes == null || historicalBytes.length == 0) {
+			return TagType.ISO_DEP;
+		}
+
 		if (historicalBytes[0] == CATEGORY_COMPACT_TLV) {
 			// The coding of the COMPACT-TLV data objects is deduced from the basic encoding rules af ASN.1 (see ISO/IEC 8825 and annex D) for BER-TLV data
 			// objects with tag='4X' and length='0Y'. The coding of such data objects is replaced by 'XY' followed by 'Y' bytes of data. In this clause, 'X' is
@@ -114,6 +118,10 @@ public class DefaultTagTypeDetector<R> implements TagTypeDetector<R> {
 				while (offset < limit) {
 					int tag = historicalBytes[offset] & 0xF0;
 					offset++;
+					if (offset >= limit) {
+						// the length of the object is missing
+						break;
+					}
 					int objLen = historicalBytes[offset] & 0xF;
 
 					// add sanity check
@@ -151,6 +159,11 @@ public class DefaultTagTypeDetector<R> implements TagTypeDetector<R> {
 	private TagType parseInitialData(byte[] historicalBytes, int offset, int length) {
 
 		// https://stackoverflow.com/questions/23404314/determine-card-type-from-atr
+
+		if (offset + 7 >= historicalBytes.length) {
+			// too short to contain the type of tag
+			return null;
+		}
 
 		int tagId = (historicalBytes[offset + 6] & 0xff) << 8 | (historicalBytes[offset + 7] & 0xff);
 
