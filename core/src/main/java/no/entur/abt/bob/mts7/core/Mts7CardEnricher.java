@@ -14,6 +14,13 @@ public class Mts7CardEnricher {
 	public static final int MAXIMUM_APDU_LENGTH = 0x02;
 	public static final int CARDHOLDER_CERTIFICATES = 0x7F21;
 
+	/**
+	 * Length of the application identifier: the 6 bytes of the AID (A0 00 00 07 81 01) which precede the version (1 byte), the participant identifier (2 bytes)
+	 * and the serial (7 bytes).
+	 */
+
+	protected static final int APPLICATION_IDENTIFIER_LENGTH = 6 + 1 + 2 + 7;
+
 	protected final LenientTlvPullParser pullParser = new LenientTlvPullParser();
 
 	public void enrichSelectApplicationResponsePayload(Mts7Card card, byte[] selectApplicationResponsePayload) {
@@ -69,6 +76,11 @@ public class Mts7CardEnricher {
 			case APPLICATION_IDENTIFIER: {
 				byte[] payload = payloadParser.getPayload();
 
+				if (payload.length < APPLICATION_IDENTIFIER_LENGTH) {
+					// too short to contain the version, participant identifier and serial; ignore it
+					break;
+				}
+
 				// Version – This version, one byte; 0x01
 				int version = payload[6] & 0xFF;
 
@@ -94,6 +106,10 @@ public class Mts7CardEnricher {
 				break;
 			}
 			case LIFECYCLE_STATUS_BYTE: {
+				if (payloadParser.getBufferPayloadLength() < 1) {
+					// there is no status byte; the byte at the offset belongs to something else
+					break;
+				}
 				int code = payloadParser.getBuffer()[payloadParser.getBufferPayloadOffset()] & 0xFF;
 
 				card.setLifeCycleStatus(LifecycleStatus.parse(code));
