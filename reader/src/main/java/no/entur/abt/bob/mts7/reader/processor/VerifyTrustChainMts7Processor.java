@@ -1,5 +1,6 @@
 package no.entur.abt.bob.mts7.reader.processor;
 
+import java.security.SignatureException;
 import java.util.Map;
 
 import org.slf4j.Logger;
@@ -257,6 +258,8 @@ public class VerifyTrustChainMts7Processor implements Runnable, Mts7Processor {
 				} else {
 					LOGGER.info("Unable to verify ICC trust chain");
 				}
+			} catch (SignatureException e) {
+				LOGGER.info("Issuer signature is not valid", e);
 			} catch (UnableToConstructIccKeyException e) {
 				LOGGER.info("Unable to create ICC public key", e);
 			}

@@ -12,9 +12,6 @@ import java.util.List;
 import java.util.Map;
 
 import com.nimbusds.jose.JWSAlgorithm;
-import com.nimbusds.jose.KeyTypeException;
-import com.nimbusds.jose.crypto.ECDSAVerifier;
-import com.nimbusds.jose.crypto.RSASSAVerifier;
 import com.nimbusds.jose.crypto.impl.ECDSA;
 import com.nimbusds.jose.crypto.impl.RSASSA;
 import com.nimbusds.jose.jwk.JWK;
@@ -47,11 +44,8 @@ public class IssuerSignatureFactory {
 
 			Key key = keys.get(0);
 
-			if (RSASSAVerifier.SUPPORTED_ALGORITHMS.contains(jwk.getAlgorithm())) {
-
-				if (!(key instanceof RSAPublicKey)) {
-					throw new KeyTypeException(RSAPublicKey.class);
-				}
+			// select on the type of the key; the alg of the JWK is not part of the participant metadata
+			if (key instanceof RSAPublicKey) {
 
 				RSAPublicKey rsaPublicKey = (RSAPublicKey) key;
 
@@ -59,11 +53,7 @@ public class IssuerSignatureFactory {
 				signerAndVerifier.initVerify(rsaPublicKey);
 
 				return signerAndVerifier;
-			} else if (ECDSAVerifier.SUPPORTED_ALGORITHMS.contains(jwk.getAlgorithm())) {
-
-				if (!(key instanceof ECPublicKey)) {
-					throw new KeyTypeException(ECPublicKey.class);
-				}
+			} else if (key instanceof ECPublicKey) {
 
 				ECPublicKey ecPublicKey = (ECPublicKey) key;
 
