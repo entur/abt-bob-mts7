@@ -22,7 +22,9 @@ import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
  * <p>
  * The processors run on the threads of an executor. A processor waits for the card reader to give it input, so the executor must be able to run all of the
  * processors which exist at the same time (a bounded pool with fewer threads than that will make them wait for each other), and must not run them on the
- * thread which reads the card (that thread would wait for itself). By default each factory has its own pool, see {@linkplain AbstractMts7Processor#newThreadPool()}.
+ * thread which reads the card (that thread would wait for itself). By default each processor gets a new daemon thread (see
+ * {@linkplain AbstractMts7Processor#NEW_DAEMON_THREAD}); pass an executor to reuse threads for the next card, for example one from
+ * {@linkplain AbstractMts7Processor#newThreadPool()}. The factory does not create or shut down any executors.
  */
 
 public class VerifyTrustChainMts7ProcessorFactory implements Mts7ProcessorFactory {
@@ -48,7 +50,19 @@ public class VerifyTrustChainMts7ProcessorFactory implements Mts7ProcessorFactor
 	 */
 
 	public VerifyTrustChainMts7ProcessorFactory(ParticipantPublicKeys participantPublicKeys, Provider provider) throws NoSuchAlgorithmException {
-		this(participantPublicKeys, provider, AbstractMts7Processor.newThreadPool());
+		this(participantPublicKeys, provider, AbstractMts7Processor.NEW_DAEMON_THREAD);
+	}
+
+	/**
+	 * Constructor.
+	 *
+	 * @param participantPublicKeys issuer keys, shared with other factories and threads
+	 * @param executor              executor for the processors
+	 * @throws NoSuchAlgorithmException if the digest algorithm is not available
+	 */
+
+	public VerifyTrustChainMts7ProcessorFactory(ParticipantPublicKeys participantPublicKeys, Executor executor) throws NoSuchAlgorithmException {
+		this(participantPublicKeys, null, executor);
 	}
 
 	/**

@@ -109,7 +109,7 @@ new Thread(() -> {
 ```
 
  * Use the constructors which take a `Provider` if the application uses its own security provider (for example Conscrypt or Bouncy Castle).
- * The processors run on the threads of an `Executor`. The default is a pool of daemon threads for each processor factory, which reuses the threads for the next card. Pass your own `Executor` to the processor factory to share threads with the rest of the application. A processor waits for the reader to give it input, so the executor must have a thread for each card which is being read at the same time, and must not run the processor on the thread which reads the card.
+ * The processors run on the threads of an `Executor`. By default each processor gets a new daemon thread; the factories do not create any thread pool. Pass an `Executor` to the processor factory to reuse the threads for the next card, either one of the application, or a ready-made one from `AbstractMts7Processor.newThreadPool()` (daemon threads which stop when idle, so there is no need to shut it down). A processor waits for the reader to give it input, so the executor must have a thread for each card which is being read at the same time, and must not run the processor on the thread which reads the card.
 
 ### Upgrading from 2.x
 
@@ -119,7 +119,7 @@ The next major version has these breaking changes:
  * The protected fields `ThumbprintFactory.messageDigest` and `Mts7CardEnricher.pullParser` are gone; the objects are created when needed.
  * The processors extend `AbstractMts7Processor`. The protected `thread` field is gone, as are the (unused) `algorithmExtractor` and `timeout` fields. A processor which is closed before it is started never starts, and `start()` and `close()` can be called more than once.
  * `waitForVerify(..)` returns (and the exceptions carry) a snapshot of the card if the processor has not finished, so the card does not change after it was returned.
- * The constructors of the processors and the processor factories take an `Executor`; the existing constructors use the default executor.
+ * The constructors of the processors and the processor factories take an `Executor`; the existing constructors use a new daemon thread for each processor, as before.
  * `IccPublicKey` and the processors are documented as for one card only, and `VerifyMts7CardFactory`, `VerifyKeyPairMts7CardFactory` and `LenientMts7CardFactory` are thread safe (do not create one for each thread or card).
 
 ### Testing

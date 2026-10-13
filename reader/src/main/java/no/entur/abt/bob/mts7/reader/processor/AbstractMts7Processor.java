@@ -55,7 +55,7 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 	/**
 	 * Create an executor with a thread for each processor which is running at the same time (so there is always a thread to run a new processor, which waits for
 	 * the card reader), and which reuses the threads for the next card. The threads are daemon threads which are stopped when they have been idle for a while,
-	 * so there is no need to shut the executor down.
+	 * so there is no need to shut the executor down. Share the instance between the processor factories (or use an executor of the application).
 	 *
 	 * @return a new executor
 	 */

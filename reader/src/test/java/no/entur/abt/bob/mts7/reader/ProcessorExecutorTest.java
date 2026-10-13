@@ -22,7 +22,9 @@ import org.junit.jupiter.api.Test;
 
 import no.entur.abt.bob.mts7.core.Mts7Card;
 import no.entur.abt.bob.mts7.core.UnableToVerifyKeyPairException;
+import no.entur.abt.bob.mts7.reader.processor.AbstractMts7Processor;
 import no.entur.abt.bob.mts7.reader.processor.Mts7Processor;
+import no.entur.abt.bob.mts7.reader.processor.Mts7ProcessorFactory;
 import no.entur.abt.bob.mts7.reader.processor.VerifyKeyPairMts7ProcessorFactory;
 import no.entur.abt.bob.mts7.reader.processor.VerifyTrustChainMts7ProcessorFactory;
 import no.entur.abt.bob.mts7.test.ListResponseCard;
@@ -115,6 +117,27 @@ public class ProcessorExecutorTest extends AbstractTest {
 
 		assertEquals(0, failures.size(), "Unexpected failures: " + failures);
 		assertEquals(60, executor.tasks.get());
+	}
+
+	@Test
+	public void testReadyMadeThreadPool() throws Exception {
+		// created by the application, and shared by the factories
+		Executor executor = AbstractMts7Processor.newThreadPool();
+
+		VerifyKeyPairMts7ProcessorFactory keyPair = new VerifyKeyPairMts7ProcessorFactory(executor);
+		VerifyTrustChainMts7ProcessorFactory trustChain = new VerifyTrustChainMts7ProcessorFactory(participantPublicKeys, executor);
+
+		for (Mts7ProcessorFactory processorFactory : Arrays.asList(keyPair, trustChain)) {
+			InFlightMts7CardFactory factory = new InFlightMts7CardFactory(processorFactory, ZERO_RANDOM);
+
+			List<Throwable> failures = ConcurrentRunner.run(3, 20, (thread, iteration) -> {
+				try (InFlightMts7Card inFlightCard = factory.create(new DefaultMts7Card(newCard()), null)) {
+					assertTrue(inFlightCard.getMts7Card(0).isVerifiedPrivateKeyPresent());
+				}
+			});
+
+			assertEquals(0, failures.size(), "Unexpected failures: " + failures);
+		}
 	}
 
 	@Test
