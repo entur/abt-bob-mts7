@@ -4,15 +4,48 @@ Using the library from several threads and card readers, and making the first ca
 
 ## Threads and reuse
 
-Create the factories **once** and share them between all threads and card readers; they are thread safe, and they are where the expensive objects live (the CBOR mapper, the issuer keys, the security provider setup). Only the objects for a single card are per card.
+Create the factories **once** and share them between all threads and card readers; they are thread safe, and they are where the expensive objects live (the CBOR mapper, the issuer keys, the security provider setup).
 
-| Shared by all threads (create once) | For one card, one thread at a time (create for each card) |
-| --- | --- |
-| `ParticipantPublicKeys`, `IssuerPublicKey` | `Mts7ApduPayloads`, `Mts7Card` |
-| `VerifyMts7CardFactory`, `VerifyKeyPairMts7CardFactory`, `LenientMts7CardFactory` | `IccPublicKeyBuilder` |
-| `VerifyTrustChainMts7ProcessorFactory`, `VerifyKeyPairMts7ProcessorFactory` | the `Mts7Processor` created by a processor factory |
-| `InFlightMts7CardFactory`, `ProcessorMts7ApduExchangesFactory`, `Mts7ApduExchangesFactory` | `InFlightMts7Card`, `Mts7ApduExchanges`, your `Mts7Exchange` |
-| `IccPublicKeyFactory`, `IssuerSignatureFactory`, `ThumbprintFactory`, `Mts7CardEnricher` | |
+Only the objects for a single card are created for each card, and used by one thread at a time. In code (`Backend` stands for your own code which posts to the server):
+
+```java
+public class Mts7Reading {
+
+    // Created once, when the application starts, and shared by all threads and card readers
+    private final Mts7ApduExchangesFactory exchangesFactory = new Mts7ApduExchangesFactory();
+    private final Mts7ApduPayloadsFactory payloadsFactory = new Mts7ApduPayloadsFactory();
+    private final VerifyMts7CardFactory cardFactory;
+    private final InFlightMts7CardFactory inFlightCardFactory;
+
+    public Mts7Reading(ParticipantPublicKeys keys, Executor executor) throws Exception {
+        // the keys are shared too, as are the issuer keys which they create
+        this.cardFactory = new VerifyMts7CardFactory(keys);
+        this.inFlightCardFactory = new InFlightMts7CardFactory(new VerifyTrustChainMts7ProcessorFactory(keys, executor));
+    }
+
+    // Called by any thread, for each card. The Mts7Exchange of the card, and what is created in here (the
+    // exchanges, the payloads and the Mts7Card), is for this card only and is used by one thread at a
+    // time, so do not keep it for the next card.
+    public Mts7Card read(Mts7Exchange exchange) throws Exception {
+        Mts7ApduExchanges exchanges = exchangesFactory.createCard(exchange, null);
+        Mts7ApduPayloads payloads = payloadsFactory.createCard(exchanges);
+
+        return cardFactory.create(payloads);
+    }
+
+    // The same, but with a processor working on the card while it is read. The processor is for this card
+    // only, and so is the InFlightMts7Card, which closes it.
+    public void readAndPost(Mts7Exchange exchange, Backend backend) throws Exception {
+        try (InFlightMts7Card inFlight = inFlightCardFactory.create(exchange, null)) {
+            Mts7ApduExchanges exchanges = inFlight.getMts7ApduExchanges();
+
+            backend.post(exchanges.getTagId(), exchanges.getExchanges());
+        }
+    }
+}
+```
+
+The other factories are shared in the same way: `VerifyKeyPairMts7CardFactory`, `LenientMts7CardFactory`, `VerifyKeyPairMts7ProcessorFactory`, `ProcessorMts7ApduExchangesFactory`, and the helpers which they use (`IccPublicKeyFactory`, `IssuerSignatureFactory`, `ThumbprintFactory`, `Mts7CardEnricher`), as are the `IssuerPublicKey`s which `ParticipantPublicKeys` creates. `IccPublicKeyBuilder` is for one card (the card factories create one for each card).
 
 Notes:
 
@@ -25,7 +58,7 @@ Notes:
 
 Create `ParticipantPublicKeys` and a `VerifyMts7CardFactory` once (for example at startup), and call `create(..)` from any number of threads. Warm them up when starting (see [Warming up](#warming-up-with-mts7warmup)), so that the first request is not slower than the rest.
 
-### Mobile device with one to three readers
+### Mobile device with one or more readers
 
 Create the factories once when the application starts, keep them for as long as the application lives, and read cards on whichever thread reads them (up to the number of readers at the same time). The first card is much slower than the next ones as classes are loaded and code compiled, so warm up in the background first. On a desktop JVM this takes the first card from about 50 ms to about 4 ms:
 
