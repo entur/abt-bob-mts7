@@ -32,6 +32,14 @@ public class IccPublicKeyFactory {
 		this.provider = provider;
 	}
 
+	/**
+	 * @return the security provider, or null for the default
+	 */
+
+	public Provider getProvider() {
+		return provider;
+	}
+
 	public IccPublicKey create(Map<String, Object> fields) throws UnableToConstructIccKeyException {
 
 		//

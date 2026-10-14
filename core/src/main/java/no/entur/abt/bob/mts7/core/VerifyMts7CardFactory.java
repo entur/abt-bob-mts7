@@ -181,11 +181,14 @@ public class VerifyMts7CardFactory {
 	}
 
 	/**
-	 * Do the work which otherwise is done for the first card, so call this when the application starts (for example on a background thread). Never throws.
+	 * Do the work which otherwise is done for the first card, so call this when the application starts (for example on a background thread). Never throws. This
+	 * does not create the issuer keys: call {@linkplain ParticipantPublicKeys#warmUp()} for that.
+	 *
+	 * @see Mts7Warmup for more control, such as how many times
 	 */
 
 	public void warmUp() {
-		Mts7Warmup.warmUp(cborMapper, enricher, iccPublicKeyFactory);
+		Mts7Warmup.newBuilder().withVerifyFactory(this).build().warmUp();
 	}
 
 }

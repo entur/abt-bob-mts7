@@ -131,10 +131,12 @@ public class VerifyKeyPairMts7CardFactory {
 
 	/**
 	 * Do the work which otherwise is done for the first card, so call this when the application starts (for example on a background thread). Never throws.
+	 *
+	 * @see Mts7Warmup for more control, such as how many times
 	 */
 
 	public void warmUp() {
-		Mts7Warmup.warmUp(cborMapper, enricher, iccPublicKeyFactory);
+		Mts7Warmup.newBuilder().withKeyPairFactory(this).build().warmUp();
 	}
 
 }
