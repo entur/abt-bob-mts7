@@ -2,10 +2,11 @@ package no.entur.abt.bob.mts7.core.pki;
 
 import java.security.Provider;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import no.entur.abt.bob.api.pm.model.JwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
@@ -15,9 +16,8 @@ import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
  * 
  * Lazy key cache.
  * <p>
- * Instances are thread safe, so a single instance should be shared by all threads. The keys are created when first used; call {@linkplain #warmUp()} (or
- * {@linkplain #warmUp(Collection)} for the participants which are expected) to create them in advance, for example on a background thread when the
- * application starts.
+ * Instances are thread safe, so a single instance should be shared by all threads. The keys are created when first used; see
+ * {@linkplain no.entur.abt.bob.mts7.core.Mts7Warmup} for creating them in advance.
  * 
  */
 
@@ -150,23 +150,11 @@ public class ParticipantPublicKeys {
 		}
 
 		/**
-		 * Create all keys which have not yet been created.
-		 *
-		 * @return the keys which could not be created (including those of a type which is not supported), empty if none
+		 * @return the ids of the keys of the participant (a copy)
 		 */
 
-		public List<UnableToConstructIssuerKeyException> warmUp() {
-			List<UnableToConstructIssuerKeyException> failures = new ArrayList<>();
-			for (String id : keys.keySet()) {
-				try {
-					if (getKey(id) == null) {
-						failures.add(new UnableToConstructIssuerKeyException("Unsupported type of key " + id + " for participant " + pid));
-					}
-				} catch (UnableToConstructIssuerKeyException e) {
-					failures.add(new UnableToConstructIssuerKeyException("Unable to create key " + id + " for participant " + pid, e));
-				}
-			}
-			return failures;
+		public Set<String> getKeyIds() {
+			return new HashSet<>(keys.keySet());
 		}
 
 		public String getName() {
@@ -189,38 +177,20 @@ public class ParticipantPublicKeys {
 	}
 
 	/**
-	 * Create all keys which have not yet been created, so that no card has to wait for it. Keys which could not be created are reported rather than thrown, so
-	 * that a single invalid key does not prevent the other keys from being used.
-	 *
-	 * @return the keys which could not be created, empty if none
+	 * @return the ids of the participants (a copy)
 	 */
 
-	public List<UnableToConstructIssuerKeyException> warmUp() {
-		List<UnableToConstructIssuerKeyException> failures = new ArrayList<>();
-		for (Issuer issuer : keys.values()) {
-			failures.addAll(issuer.warmUp());
-		}
-		return failures;
+	public Set<Long> getParticipantIds() {
+		return new HashSet<>(keys.keySet());
 	}
 
 	/**
-	 * Create the keys of some of the participants which have not yet been created, for example those which are expected for the card readers of this device.
-	 * The keys of the other participants are still created when they are first used.
-	 *
-	 * @param participantIds participant ids; those which are not known are ignored
-	 * @return the keys which could not be created, empty if none
-	 * @see #warmUp()
+	 * @param pid participant id
+	 * @return the participant, or null if unknown
 	 */
 
-	public List<UnableToConstructIssuerKeyException> warmUp(Collection<Long> participantIds) {
-		List<UnableToConstructIssuerKeyException> failures = new ArrayList<>();
-		for (Long participantId : participantIds) {
-			Issuer issuer = keys.get(participantId);
-			if (issuer != null) {
-				failures.addAll(issuer.warmUp());
-			}
-		}
-		return failures;
+	public Issuer getIssuer(long pid) {
+		return keys.get(pid);
 	}
 
 	public String getName(long pid) {

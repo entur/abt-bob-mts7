@@ -8,7 +8,6 @@ import java.util.concurrent.Executor;
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
-import no.entur.abt.bob.mts7.core.Mts7Warmup;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
 import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
@@ -87,14 +86,6 @@ public class VerifyTrustChainMts7ProcessorFactory implements Mts7ProcessorFactor
 
 	public VerifyTrustChainMts7Processor create() {
 		return new VerifyTrustChainMts7Processor(participantPublicKeys, factory, enricher, cborMapper, thumbprintFactory, executor);
-	}
-
-	/**
-	 * Do the work which otherwise is done for the first card, so call this when the application starts (for example on a background thread). Never throws.
-	 */
-
-	public void warmUp() {
-		Mts7Warmup.warmUp(cborMapper, enricher, factory);
 	}
 
 }

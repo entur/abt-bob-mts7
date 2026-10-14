@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -14,6 +15,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 
@@ -75,26 +77,7 @@ public class ParticipantPublicKeysTest {
 	}
 
 	@Test
-	public void testWarmUp() throws Exception {
-		List<ParticipantMetadata> participantMetadata = readParticipantMetadata();
-
-		ParticipantPublicKeys participantPublicKeys = ParticipantPublicKeys.newBuilder().withParticipants(participantMetadata).build();
-
-		assertTrue(participantPublicKeys.warmUp().isEmpty());
-
-		// keys are now created, so no more work for the first card
-		for (ParticipantMetadata p : participantMetadata) {
-			for (JwkPublic key : p.getMtbPublicKeys()) {
-				assertSame(participantPublicKeys.getIssuerPublicKey(p.getPid(), key.getKid()), participantPublicKeys.getIssuerPublicKey(p.getPid(), key.getKid()));
-			}
-		}
-
-		// and warming up again is harmless
-		assertTrue(participantPublicKeys.warmUp().isEmpty());
-	}
-
-	@Test
-	public void testInvalidKeyIsReportedByWarmUpNotThrown() throws Exception {
+	public void testInvalidKeyIsReportedEveryTimeItIsUsed() throws Exception {
 		List<ParticipantMetadata> participantMetadata = new ArrayList<>(readParticipantMetadata());
 
 		// not a point on the curve
@@ -102,40 +85,37 @@ public class ParticipantPublicKeysTest {
 		participantMetadata.add(new ParticipantMetadata().pid(99L).organisationName("Invalid").addMtbPublicKeysItem(invalid));
 
 		ParticipantPublicKeys participantPublicKeys = ParticipantPublicKeys.newBuilder().withParticipants(participantMetadata).build();
-
-		List<UnableToConstructIssuerKeyException> failures = participantPublicKeys.warmUp();
-		assertEquals(1, failures.size());
-		assertTrue(failures.get(0).getMessage().contains("99:invalid"), failures.get(0).getMessage());
 
 		// the other keys are fine
 		assertNotNull(participantPublicKeys.getIssuerPublicKey(10, "10:20230213"));
 
-		// and using the key reports the problem (every time)
 		assertThrows(UnableToConstructIssuerKeyException.class, () -> participantPublicKeys.getIssuerPublicKey(99, "99:invalid"));
 		assertThrows(UnableToConstructIssuerKeyException.class, () -> participantPublicKeys.getIssuerPublicKey(99, "99:invalid"));
 	}
 
 	@Test
-	public void testWarmUpSomeParticipants() throws Exception {
-		List<ParticipantMetadata> participantMetadata = new ArrayList<>(readParticipantMetadata());
-
-		// not a point on the curve
-		JwkPublic invalid = new JwkPublic().kty("EC").kid("99:invalid").crv("P-256").x("AAAA").y("AAAA");
-		participantMetadata.add(new ParticipantMetadata().pid(99L).organisationName("Invalid").addMtbPublicKeysItem(invalid));
+	public void testParticipantsAndKeys() throws Exception {
+		List<ParticipantMetadata> participantMetadata = readParticipantMetadata();
 
 		ParticipantPublicKeys participantPublicKeys = ParticipantPublicKeys.newBuilder().withParticipants(participantMetadata).build();
 
-		// only the participants in the list are warmed up (the key of participant 99 is not valid)
-		assertTrue(participantPublicKeys.warmUp(Arrays.asList(10L, 11L)).isEmpty());
-		assertSame(participantPublicKeys.getIssuerPublicKey(10, "10:20230213"), participantPublicKeys.getIssuerPublicKey(10, "10:20230213"));
+		Set<Long> participantIds = participantPublicKeys.getParticipantIds();
+		assertEquals(participantMetadata.size(), participantIds.size());
+		assertTrue(participantIds.contains(10L));
 
-		List<UnableToConstructIssuerKeyException> failures = participantPublicKeys.warmUp(Arrays.asList(10L, 99L));
-		assertEquals(1, failures.size());
-		assertTrue(failures.get(0).getMessage().contains("99:invalid"), failures.get(0).getMessage());
+		ParticipantPublicKeys.Issuer issuer = participantPublicKeys.getIssuer(10);
+		assertEquals("Sk\u00e5netrafiken", issuer.getName());
+		assertTrue(issuer.getKeyIds().contains("10:20230213"));
+		assertTrue(issuer.getKeyIds().contains("LjoSsfxuTA"));
 
-		// unknown participants are ignored, as is an empty list
-		assertTrue(participantPublicKeys.warmUp(Arrays.asList(-1L, 12345L)).isEmpty());
-		assertTrue(participantPublicKeys.warmUp(new ArrayList<Long>()).isEmpty());
+		assertNull(participantPublicKeys.getIssuer(-1));
+
+		// copies
+		participantIds.clear();
+		issuer.getKeyIds().clear();
+
+		assertFalse(participantPublicKeys.getParticipantIds().isEmpty());
+		assertFalse(participantPublicKeys.getIssuer(10).getKeyIds().isEmpty());
 	}
 
 	/**
@@ -158,7 +138,7 @@ public class ParticipantPublicKeysTest {
 	}
 
 	@Test
-	public void testUnsupportedKeyIsReportedByWarmUp() throws Exception {
+	public void testUnsupportedKeyIsRemembered() throws Exception {
 		UnsupportedKeyFactory factory = new UnsupportedKeyFactory();
 
 		Map<String, ParticipantPublicKeys.IssuerKey> keys = new HashMap<>();
@@ -168,10 +148,6 @@ public class ParticipantPublicKeysTest {
 		issuers.put(99L, new ParticipantPublicKeys.Issuer("Unsupported", 99L, keys, factory));
 
 		ParticipantPublicKeys participantPublicKeys = new ParticipantPublicKeys(issuers);
-
-		List<UnableToConstructIssuerKeyException> failures = participantPublicKeys.warmUp();
-		assertEquals(1, failures.size(), "warm-up must not report success for a key which was not created");
-		assertTrue(failures.get(0).getMessage().contains("99:unsupported"), failures.get(0).getMessage());
 
 		// no key, which is as for unknown keys
 		assertEquals(null, participantPublicKeys.getIssuerPublicKey(99, "99:unsupported"));

@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
@@ -15,20 +16,21 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
 import no.entur.abt.bob.api.pm.model.JwkPublic;
-import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.IssuerSignatureFactory;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
+import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
 import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
 
 /**
  * Do the work which otherwise is done for the first card, i.e. load classes, initialize the security provider and let the JVM compile the hot code. The first
  * card is much slower than the rest (tens of milliseconds on a desktop, more on a phone), which is a long time for a card which might leave the reader.
  * <p>
- * Pass in the factories of the application: a genuine card (its public data only, with its issuer key) is run through them just like a card from a reader, so
- * the objects which are warmed up are the ones which will be used, including the caches which they build on first use. The number of times is up to you, as
- * code which has been run only once is not necessarily compiled: use {@linkplain Builder#withIterations(int)},
- * {@linkplain Builder#withDuration(long, TimeUnit)} or both (whichever comes first). With neither, the card is run through once.
+ * Pass in the factories of the application (or the helpers which they share, for those which are not part of this module): a genuine card (its public data
+ * only, with its issuer key) is run through them just like a card from a reader, so the objects which are warmed up are the ones which will be used, including
+ * the caches which they build on first use. The number of times is up to you, as code which has been run only once is not necessarily compiled: use
+ * {@linkplain Builder#withIterations(int)}, {@linkplain Builder#withDuration(long, TimeUnit)} or both (whichever comes first). With neither, the card is run
+ * through once.
  * <p>
  * Warm-up is best effort: it never throws, and a failure only means that the first card is slower. Look at the {@linkplain Mts7WarmupResult} to find out what
  * did not work.
@@ -69,6 +71,7 @@ public class Mts7Warmup implements Runnable {
 		private LenientMts7CardFactory lenientFactory;
 		private VerifyKeyPairMts7CardFactory keyPairFactory;
 		private VerifyMts7CardFactory verifyFactory;
+		private Helpers helpers;
 		private ParticipantPublicKeys participantPublicKeys;
 		private Collection<Long> participantIds;
 
@@ -106,6 +109,24 @@ public class Mts7Warmup implements Runnable {
 
 		public Builder withVerifyFactory(VerifyMts7CardFactory factory) {
 			this.verifyFactory = factory;
+			return this;
+		}
+
+		/**
+		 * Warm up the helpers which factories share, for the factories which are not part of this module (such as the processor factories). Pass in the helpers
+		 * which you gave to the factory; the trust chain is then verified for the sample card as for {@linkplain #withVerifyFactory(VerifyMts7CardFactory)}.
+		 *
+		 * @param iccPublicKeyFactory factory for the public key of the card
+		 * @param enricher            card enricher
+		 * @param cborMapper          CBOR mapper
+		 * @param thumbprintFactory   thumbprint factory
+		 * @return this
+		 */
+
+		public Builder withHelpers(IccPublicKeyFactory iccPublicKeyFactory, Mts7CardEnricher enricher, CBORMapper cborMapper,
+				ThumbprintFactory thumbprintFactory) {
+			this.helpers = new Helpers(Objects.requireNonNull(iccPublicKeyFactory, "iccPublicKeyFactory"), Objects.requireNonNull(enricher, "enricher"),
+					Objects.requireNonNull(cborMapper, "cborMapper"), Objects.requireNonNull(thumbprintFactory, "thumbprintFactory"));
 			return this;
 		}
 
@@ -174,10 +195,25 @@ public class Mts7Warmup implements Runnable {
 		 */
 
 		public Mts7Warmup build() {
-			if (lenientFactory == null && keyPairFactory == null && verifyFactory == null && participantPublicKeys == null) {
-				throw new IllegalStateException("Nothing to warm up: pass in a factory or the participant public keys");
+			if (lenientFactory == null && keyPairFactory == null && verifyFactory == null && helpers == null && participantPublicKeys == null) {
+				throw new IllegalStateException("Nothing to warm up: pass in a factory, helpers or the participant public keys");
 			}
 			return new Mts7Warmup(this);
+		}
+	}
+
+	private static class Helpers {
+
+		private final IccPublicKeyFactory iccPublicKeyFactory;
+		private final Mts7CardEnricher enricher;
+		private final CBORMapper cborMapper;
+		private final ThumbprintFactory thumbprintFactory;
+
+		private Helpers(IccPublicKeyFactory iccPublicKeyFactory, Mts7CardEnricher enricher, CBORMapper cborMapper, ThumbprintFactory thumbprintFactory) {
+			this.iccPublicKeyFactory = iccPublicKeyFactory;
+			this.enricher = enricher;
+			this.cborMapper = cborMapper;
+			this.thumbprintFactory = thumbprintFactory;
 		}
 	}
 
@@ -199,6 +235,7 @@ public class Mts7Warmup implements Runnable {
 	private final LenientMts7CardFactory lenientFactory;
 	private final VerifyKeyPairMts7CardFactory keyPairFactory;
 	private final VerifyMts7CardFactory verifyFactory;
+	private final Helpers helpers;
 	private final ParticipantPublicKeys participantPublicKeys;
 	private final Collection<Long> participantIds;
 
@@ -211,6 +248,7 @@ public class Mts7Warmup implements Runnable {
 		this.lenientFactory = builder.lenientFactory;
 		this.keyPairFactory = builder.keyPairFactory;
 		this.verifyFactory = builder.verifyFactory;
+		this.helpers = builder.helpers;
 		this.participantPublicKeys = builder.participantPublicKeys;
 		this.participantIds = builder.participantIds;
 
@@ -237,7 +275,7 @@ public class Mts7Warmup implements Runnable {
 		int iterations = 0;
 		try {
 			if (participantPublicKeys != null) {
-				failures.addAll(participantIds != null ? participantPublicKeys.warmUp(participantIds) : participantPublicKeys.warmUp());
+				failures.addAll(createIssuerKeys());
 			}
 
 			List<NamedStep> steps = createSteps();
@@ -295,14 +333,50 @@ public class Mts7Warmup implements Runnable {
 			steps.add(new NamedStep("VerifyKeyPairMts7CardFactory", payloads -> keyPairFactory.create(payloads)));
 		}
 		if (verifyFactory != null) {
-			// the helpers of the factory, but not its keys: they might not contain the issuer of the sample card
-			VerifyMts7CardFactory sampleFactory = new VerifyMts7CardFactory(createSampleIssuerKeys(verifyFactory.iccPublicKeyFactory.getProvider()),
-					verifyFactory.iccPublicKeyFactory, verifyFactory.enricher, verifyFactory.cborMapper, verifyFactory.thumbprintFactory);
-
-			// throws if not verified
-			steps.add(new NamedStep("VerifyMts7CardFactory", payloads -> sampleFactory.create(payloads)));
+			steps.add(createTrustChainStep("VerifyMts7CardFactory",
+					new Helpers(verifyFactory.iccPublicKeyFactory, verifyFactory.enricher, verifyFactory.cborMapper, verifyFactory.thumbprintFactory)));
+		}
+		if (helpers != null) {
+			steps.add(createTrustChainStep("the shared helpers", helpers));
 		}
 		return steps;
+	}
+
+	private static NamedStep createTrustChainStep(String name, Helpers helpers) {
+		// the helpers, but not the keys: they might not contain the issuer of the sample card
+		VerifyMts7CardFactory sampleFactory = new VerifyMts7CardFactory(createSampleIssuerKeys(helpers.iccPublicKeyFactory.getProvider()),
+				helpers.iccPublicKeyFactory, helpers.enricher, helpers.cborMapper, helpers.thumbprintFactory);
+
+		// throws if not verified
+		return new NamedStep(name, payloads -> sampleFactory.create(payloads));
+	}
+
+	/**
+	 * Create the keys which have not yet been created.
+	 *
+	 * @return the keys which could not be created (including those of a type which is not supported), empty if none
+	 */
+
+	private List<Exception> createIssuerKeys() {
+		List<Exception> failures = new ArrayList<>();
+
+		for (Long pid : participantIds != null ? participantIds : participantPublicKeys.getParticipantIds()) {
+			ParticipantPublicKeys.Issuer issuer = participantPublicKeys.getIssuer(pid);
+			if (issuer == null) {
+				// unknown
+				continue;
+			}
+			for (String kid : issuer.getKeyIds()) {
+				try {
+					if (issuer.getKey(kid) == null) {
+						failures.add(new UnableToConstructIssuerKeyException("Unsupported type of key " + kid + " for participant " + pid));
+					}
+				} catch (UnableToConstructIssuerKeyException e) {
+					failures.add(new UnableToConstructIssuerKeyException("Unable to create key " + kid + " for participant " + pid, e));
+				}
+			}
+		}
+		return failures;
 	}
 
 	private static ParticipantPublicKeys createSampleIssuerKeys(Provider provider) {
@@ -324,71 +398,6 @@ public class Mts7Warmup implements Runnable {
 		payloads.setInternalAuthenticateInput(new byte[32]);
 		payloads.setInternalAuthenticateOutput(SAMPLE_INTERNAL_AUTHENTICATE_OUTPUT);
 		return payloads;
-	}
-
-	/**
-	 * Exercise the helpers used for each card, with the data of a genuine card. For those who have the helpers but not the factories (the processor factories);
-	 * prefer {@linkplain #newBuilder()}.
-	 *
-	 * @param cborMapper          mapper
-	 * @param enricher            card enricher
-	 * @param iccPublicKeyFactory factory for the public key of the card
-	 */
-
-	public static void warmUp(CBORMapper cborMapper, Mts7CardEnricher enricher, IccPublicKeyFactory iccPublicKeyFactory) {
-		try {
-			Mts7Card card = new Mts7Card();
-
-			Map<String, Object> header = parseSampleCard(cborMapper, enricher, card);
-
-			IccPublicKey iccPublicKey = iccPublicKeyFactory.create(header);
-			iccPublicKey.verify(new byte[32], SAMPLE_INTERNAL_AUTHENTICATE_OUTPUT);
-		} catch (Exception | LinkageError e) {
-			LOGGER.debug("Unable to warm up", e);
-		}
-	}
-
-	/**
-	 * Parse the data of a genuine card (its public data only) as the card factories do, so that the same classes and code paths are used for the first real
-	 * card.
-	 *
-	 * @param cborMapper mapper
-	 * @param enricher   card enricher
-	 * @return the card
-	 * @throws Exception if the sample could not be parsed
-	 */
-
-	static Mts7Card parseSampleCard(CBORMapper cborMapper, Mts7CardEnricher enricher) throws Exception {
-		Mts7Card card = new Mts7Card();
-		parseSampleCard(cborMapper, enricher, card);
-		return card;
-	}
-
-	/**
-	 * @return the issuer signature protected header of the sample card
-	 */
-
-	@SuppressWarnings("unchecked")
-	private static Map<String, Object> parseSampleCard(CBORMapper cborMapper, Mts7CardEnricher enricher, Mts7Card card) throws Exception {
-		enricher.enrichSelectApplicationResponsePayload(card, SAMPLE_SELECT_APPLICATION_PAYLOAD);
-
-		Map<String, Object> outer = cborMapper.readValue(SAMPLE_GET_DATA_PAYLOAD, Map.class);
-
-		byte[][] elements = cborMapper.readValue((byte[]) outer.get("p"), byte[][].class);
-
-		Map<String, Object> header = null;
-
-		// the last element is the signature
-		for (int i = 0; i < elements.length - 1; i++) {
-			Map<String, Object> element = cborMapper.readValue(elements[i], Map.class);
-			if (header == null && !element.containsKey("did") && element.containsKey("kid") && element.containsKey("iid")) {
-				header = element;
-			}
-		}
-		if (header == null) {
-			throw new IllegalStateException("No issuer signature protected header in the sample card");
-		}
-		return header;
 	}
 
 }

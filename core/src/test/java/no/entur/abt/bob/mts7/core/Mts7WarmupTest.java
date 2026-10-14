@@ -12,8 +12,11 @@ import java.io.InputStream;
 import java.security.Provider;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
 
@@ -23,7 +26,10 @@ import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 import no.entur.abt.bob.api.pm.model.JwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
+import no.entur.abt.bob.mts7.core.pki.IssuerPublicKey;
+import no.entur.abt.bob.mts7.core.pki.IssuerSignatureFactory;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
+import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
 import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
 
 public class Mts7WarmupTest {
@@ -48,20 +54,25 @@ public class Mts7WarmupTest {
 		return payloads;
 	}
 
+	private List<ParticipantMetadata> readParticipantMetadata(ParticipantMetadata... additional) throws Exception {
+		InputStream is = getClass().getResourceAsStream("/participantMetadata.json");
+		List<ParticipantMetadata> participantMetadata = new ArrayList<>(Arrays.asList(new ObjectMapper().readValue(is, ParticipantMetadata[].class)));
+		assertFalse(participantMetadata.isEmpty());
+		participantMetadata.addAll(Arrays.asList(additional));
+		return participantMetadata;
+	}
+
 	@Test
 	public void testWarmUpDoesNotAffectTheResult() throws Exception {
-		InputStream is = getClass().getResourceAsStream("/participantMetadata.json");
-		List<ParticipantMetadata> participantMetadata = Arrays.asList(new ObjectMapper().readValue(is, ParticipantMetadata[].class));
-		assertFalse(participantMetadata.isEmpty());
-
-		ParticipantPublicKeys participantPublicKeys = ParticipantPublicKeys.newBuilder().withParticipants(participantMetadata).build();
-		assertTrue(participantPublicKeys.warmUp().isEmpty());
+		ParticipantPublicKeys participantPublicKeys = ParticipantPublicKeys.newBuilder().withParticipants(readParticipantMetadata()).build();
 
 		VerifyMts7CardFactory factory = new VerifyMts7CardFactory(participantPublicKeys);
 
+		Mts7Warmup warmup = Mts7Warmup.newBuilder().withVerifyFactory(factory).withParticipantPublicKeys(participantPublicKeys).build();
+
 		// harmless to repeat, and to run on several threads
-		factory.warmUp();
-		factory.warmUp();
+		assertTrue(warmup.warmUp().isSuccess());
+		assertTrue(warmup.warmUp().isSuccess());
 
 		Mts7Card card = factory.create(payloads());
 
@@ -73,28 +84,17 @@ public class Mts7WarmupTest {
 	@Test
 	public void testWarmUpOtherFactories() throws Exception {
 		VerifyKeyPairMts7CardFactory keyPair = new VerifyKeyPairMts7CardFactory();
-		keyPair.warmUp();
-		assertTrue(keyPair.create(payloads()).isVerifiedPrivateKeyPresent());
-
 		LenientMts7CardFactory lenient = new LenientMts7CardFactory();
-		lenient.warmUp();
+
+		Mts7WarmupResult result = Mts7Warmup.newBuilder().withKeyPairFactory(keyPair).withLenientFactory(lenient).build().warmUp();
+		assertTrue(result.isSuccess(), result.getFailures().toString());
+
+		assertTrue(keyPair.create(payloads()).isVerifiedPrivateKeyPresent());
 		assertTrue(lenient.create(payloads()).isVerifiedPrivateKeyPresent());
 	}
 
-	@Test
-	public void testSampleCardCanBeParsed() throws Exception {
-		// warming up never fails, so this is the only way to find out that the sample is not valid
-		Mts7Card card = Mts7Warmup.parseSampleCard(new CBORMapper(), new Mts7CardEnricher());
-
-		assertEquals("0000175F96B61D", ByteArrayHexStringConverter.toHexString(card.getSerial()));
-	}
-
 	private ParticipantPublicKeys readKeys(ParticipantMetadata... additional) throws Exception {
-		InputStream is = getClass().getResourceAsStream("/participantMetadata.json");
-		List<ParticipantMetadata> participantMetadata = new ArrayList<>(Arrays.asList(new ObjectMapper().readValue(is, ParticipantMetadata[].class)));
-		participantMetadata.addAll(Arrays.asList(additional));
-
-		return ParticipantPublicKeys.newBuilder().withParticipants(participantMetadata).build();
+		return ParticipantPublicKeys.newBuilder().withParticipants(readParticipantMetadata(additional)).build();
 	}
 
 	private Mts7Warmup.Builder allFactories() throws Exception {
@@ -300,6 +300,200 @@ public class Mts7WarmupTest {
 		Provider provider = java.security.Security.getProviders()[0];
 		assertSame(provider, new IccPublicKeyFactory(provider).getProvider());
 		assertNotNull(provider);
+	}
+
+	/**
+	 * Counts the keys which are created.
+	 */
+
+	private static class CountingKeyFactory extends IssuerSignatureFactory {
+
+		private final AtomicInteger calls = new AtomicInteger();
+
+		CountingKeyFactory() throws Exception {
+			super();
+		}
+
+		@Override
+		public IssuerPublicKey createIssuerPublicKey(long pid, JwkPublic jwkPublic) throws UnableToConstructIssuerKeyException {
+			calls.incrementAndGet();
+			return super.createIssuerPublicKey(pid, jwkPublic);
+		}
+	}
+
+	/**
+	 * Factory which does not support the type of key, i.e. returns null.
+	 */
+
+	private static class UnsupportedKeyFactory extends IssuerSignatureFactory {
+
+		private int calls;
+
+		UnsupportedKeyFactory() throws Exception {
+			super();
+		}
+
+		@Override
+		public IssuerPublicKey createIssuerPublicKey(long pid, JwkPublic jwkPublic) {
+			calls++;
+			return null;
+		}
+	}
+
+	private static class CountingEnricher extends Mts7CardEnricher {
+
+		private final AtomicInteger calls = new AtomicInteger();
+
+		@Override
+		public void enrichSelectApplicationResponsePayload(Mts7Card card, byte[] selectApplicationResponsePayload) {
+			calls.incrementAndGet();
+			super.enrichSelectApplicationResponsePayload(card, selectApplicationResponsePayload);
+		}
+	}
+
+	private static ParticipantPublicKeys keysWith(IssuerSignatureFactory factory, List<ParticipantMetadata> participants) {
+		Map<Long, ParticipantPublicKeys.Issuer> issuers = new HashMap<>();
+		for (ParticipantMetadata p : participants) {
+			Map<String, ParticipantPublicKeys.IssuerKey> keys = new HashMap<>();
+			for (JwkPublic jwk : p.getMtbPublicKeys()) {
+				keys.put(jwk.getKid(), new ParticipantPublicKeys.IssuerKey(jwk));
+			}
+			issuers.put(p.getPid(), new ParticipantPublicKeys.Issuer(p.getOrganisationName(), p.getPid(), keys, factory));
+		}
+		return new ParticipantPublicKeys(issuers);
+	}
+
+	private static int countKeys(List<ParticipantMetadata> participants, Long... participantIds) {
+		List<Long> ids = Arrays.asList(participantIds);
+
+		int count = 0;
+		for (ParticipantMetadata p : participants) {
+			if (ids.isEmpty() || ids.contains(p.getPid())) {
+				count += p.getMtbPublicKeys().size();
+			}
+		}
+		return count;
+	}
+
+	@Test
+	public void testIssuerKeysAreCreatedInAdvance() throws Exception {
+		List<ParticipantMetadata> participants = readParticipantMetadata();
+
+		CountingKeyFactory factory = new CountingKeyFactory();
+		ParticipantPublicKeys keys = keysWith(factory, participants);
+		assertEquals(0, factory.calls.get());
+
+		Mts7Warmup warmup = Mts7Warmup.newBuilder().withParticipantPublicKeys(keys).build();
+
+		Mts7WarmupResult result = warmup.warmUp();
+		assertTrue(result.isSuccess(), result.getFailures().toString());
+
+		int total = countKeys(participants);
+		assertTrue(total > 100, "Keys: " + total);
+		assertEquals(total, factory.calls.get());
+
+		// so no more work for the first card
+		for (ParticipantMetadata p : participants) {
+			for (JwkPublic jwk : p.getMtbPublicKeys()) {
+				assertNotNull(keys.getIssuerPublicKey(p.getPid(), jwk.getKid()));
+			}
+		}
+		assertEquals(total, factory.calls.get());
+
+		// and warming up again is harmless
+		assertTrue(warmup.warmUp().isSuccess());
+		assertEquals(total, factory.calls.get());
+	}
+
+	@Test
+	public void testIssuerKeysOfSomeParticipants() throws Exception {
+		List<ParticipantMetadata> participants = readParticipantMetadata();
+
+		CountingKeyFactory factory = new CountingKeyFactory();
+		ParticipantPublicKeys keys = keysWith(factory, participants);
+
+		// unknown participants are ignored
+		Mts7WarmupResult result = Mts7Warmup.newBuilder().withParticipantPublicKeys(keys, Arrays.asList(10L, 11L, -1L, 12345L)).build().warmUp();
+		assertTrue(result.isSuccess(), result.getFailures().toString());
+
+		int expected = countKeys(participants, 10L, 11L);
+		assertTrue(expected > 0 && expected < countKeys(participants));
+		assertEquals(expected, factory.calls.get());
+
+		// the others are still created when they are used
+		assertNotNull(keys.getIssuerPublicKey(10, "10:20230213"));
+		assertEquals(expected, factory.calls.get());
+
+		// an empty list is nobody
+		CountingKeyFactory nobody = new CountingKeyFactory();
+		assertTrue(Mts7Warmup.newBuilder().withParticipantPublicKeys(keysWith(nobody, participants), new ArrayList<Long>()).build().warmUp().isSuccess());
+		assertEquals(0, nobody.calls.get());
+	}
+
+	@Test
+	public void testUnsupportedKeyIsReported() throws Exception {
+		UnsupportedKeyFactory factory = new UnsupportedKeyFactory();
+
+		Map<String, ParticipantPublicKeys.IssuerKey> keys = new HashMap<>();
+		keys.put("99:unsupported", new ParticipantPublicKeys.IssuerKey(new JwkPublic().kty("EC").kid("99:unsupported")));
+
+		Map<Long, ParticipantPublicKeys.Issuer> issuers = new HashMap<>();
+		issuers.put(99L, new ParticipantPublicKeys.Issuer("Unsupported", 99L, keys, factory));
+
+		ParticipantPublicKeys participantPublicKeys = new ParticipantPublicKeys(issuers);
+
+		Mts7WarmupResult result = Mts7Warmup.newBuilder().withParticipantPublicKeys(participantPublicKeys).build().warmUp();
+
+		assertEquals(1, result.getFailures().size(), "warm-up must not report success for a key which was not created");
+		assertTrue(result.getFailures().get(0).getMessage().contains("99:unsupported"), result.getFailures().get(0).getMessage());
+
+		// the answer is remembered, so that it does not have to be worked out again for every card
+		assertNull(participantPublicKeys.getIssuerPublicKey(99, "99:unsupported"));
+		assertEquals(1, factory.calls);
+	}
+
+	@Test
+	public void testTheFactoriesWhichAreGivenAreTheOnesWhichAreWarmedUp() throws Exception {
+		CountingEnricher enricher = new CountingEnricher();
+
+		VerifyMts7CardFactory factory = new VerifyMts7CardFactory(ParticipantPublicKeys.newBuilder().build(), new IccPublicKeyFactory(), enricher,
+				new CBORMapper(), new ThumbprintFactory(null));
+
+		Mts7WarmupResult result = Mts7Warmup.newBuilder().withVerifyFactory(factory).withIterations(4).build().warmUp();
+
+		assertTrue(result.isSuccess(), result.getFailures().toString());
+		assertEquals(4, result.getIterations());
+		// the helper of the factory, not one of our own
+		assertEquals(4, enricher.calls.get());
+	}
+
+	@Test
+	public void testHelpers() throws Exception {
+		CountingEnricher enricher = new CountingEnricher();
+
+		// as for the factories which are not part of this module
+		Mts7WarmupResult result = Mts7Warmup.newBuilder()
+				.withHelpers(new IccPublicKeyFactory(), enricher, new CBORMapper(), new ThumbprintFactory(null))
+				.withIterations(4)
+				.build()
+				.warmUp();
+
+		assertTrue(result.isSuccess(), result.getFailures().toString());
+		assertEquals(4, result.getIterations());
+		assertEquals(4, enricher.calls.get());
+	}
+
+	@Test
+	public void testHelpersMustBeGiven() throws Exception {
+		IccPublicKeyFactory icc = new IccPublicKeyFactory();
+		Mts7CardEnricher enricher = new Mts7CardEnricher();
+		CBORMapper mapper = new CBORMapper();
+		ThumbprintFactory thumbprints = new ThumbprintFactory(null);
+
+		assertThrows(NullPointerException.class, () -> Mts7Warmup.newBuilder().withHelpers(null, enricher, mapper, thumbprints));
+		assertThrows(NullPointerException.class, () -> Mts7Warmup.newBuilder().withHelpers(icc, null, mapper, thumbprints));
+		assertThrows(NullPointerException.class, () -> Mts7Warmup.newBuilder().withHelpers(icc, enricher, null, thumbprints));
+		assertThrows(NullPointerException.class, () -> Mts7Warmup.newBuilder().withHelpers(icc, enricher, mapper, null));
 	}
 
 }

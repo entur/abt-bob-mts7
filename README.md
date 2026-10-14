@@ -91,7 +91,7 @@ Notes:
 
 ### Server
 
-Create `ParticipantPublicKeys` and a `VerifyMts7CardFactory` once (for example at startup), and call `create(..)` from any number of threads. Call `warmUp()` on both when starting, so that the first request is not slower than the rest.
+Create `ParticipantPublicKeys` and a `VerifyMts7CardFactory` once (for example at startup), and call `create(..)` from any number of threads. Warm them up when starting (see [Warming up](#warming-up-with-mts7warmup)), so that the first request is not slower than the rest.
 
 ### Mobile device with one to three readers
 
@@ -100,14 +100,18 @@ Create the factories once when the application starts, keep them for as long as 
 ```java
 ParticipantPublicKeys keys = ParticipantPublicKeys.newBuilder().withParticipants(participants).build();
 ExecutorService executor = Executors.newCachedThreadPool(); // yours: shut it down when the application stops
-VerifyTrustChainMts7ProcessorFactory processorFactory = new VerifyTrustChainMts7ProcessorFactory(keys, executor);
+
+// the helpers which the factory uses, so that they can be warmed up
+IccPublicKeyFactory iccPublicKeyFactory = new IccPublicKeyFactory();
+Mts7CardEnricher enricher = new Mts7CardEnricher();
+CBORMapper cborMapper = new CBORMapper();
+ThumbprintFactory thumbprintFactory = new ThumbprintFactory(null);
+
+VerifyTrustChainMts7ProcessorFactory processorFactory = new VerifyTrustChainMts7ProcessorFactory(keys, iccPublicKeyFactory, enricher, cborMapper, thumbprintFactory, executor);
 InFlightMts7CardFactory factory = new InFlightMts7CardFactory(processorFactory);
 
-new Thread(() -> {
-    keys.warmUp();             // creates the issuer keys, and returns those which could not be created
-                               // (or keys.warmUp(Arrays.asList(10L, 11L)) for the participants which are expected)
-    processorFactory.warmUp(); // loads classes, initializes the security provider
-}).start();
+// in the background: loads classes, initializes the security provider and creates the issuer keys
+executor.execute(Mts7Warmup.newBuilder().withHelpers(iccPublicKeyFactory, enricher, cborMapper, thumbprintFactory).withParticipantPublicKeys(keys).build());
 ```
 
  * Use the constructors which take a `Provider` if the application uses its own security provider (for example Conscrypt or Bouncy Castle).
@@ -115,11 +119,11 @@ new Thread(() -> {
 
 #### Warming up with `Mts7Warmup`
 
-`Mts7Warmup` takes the factories of the application and runs a genuine card (its public data only, with the public key of its issuer) through them like a card from a reader, so the objects which are warmed up are the ones which will be used. It needs no keys of its own, so it also works if the issuer of the sample card is not among your participants. It never throws; look at the `Mts7WarmupResult` to find out what did not work.
+`Mts7Warmup` is the only place for warming up: the factories have no warm-up of their own. It takes the factories of the application (or the helpers which they share, for the processor factories) and runs a genuine card (its public data only, with the public key of its issuer) through them like a card from a reader, so the objects which are warmed up are the ones which will be used. It needs no keys of its own, so it also works if the issuer of the sample card is not among your participants. It never throws; look at the `Mts7WarmupResult` to find out what did not work.
 
 ```java
 Mts7Warmup warmup = Mts7Warmup.newBuilder()
-    .withVerifyFactory(verifyFactory)   // and/or withKeyPairFactory(..), withLenientFactory(..)
+    .withVerifyFactory(verifyFactory)   // and/or withKeyPairFactory(..), withLenientFactory(..), withHelpers(..)
     .withParticipantPublicKeys(keys)    // optional: also create the issuer keys (or keys, Arrays.asList(10L, 11L))
     .withIterations(3)                  // and/or .withDuration(100, TimeUnit.MILLISECONDS), whichever comes first
     .build();
@@ -127,7 +131,7 @@ Mts7Warmup warmup = Mts7Warmup.newBuilder()
 executor.execute(warmup);               // it is a Runnable (the result is logged); or call warmup.warmUp() for the result
 ```
 
-With neither iterations nor a duration the card is run through once, which is what `warmUp()` of the factories does. Code which has run once is not necessarily compiled, so you can run it more times; more is not always better. First card on a Pixel 9 (Android 16, debug build, each in a new process; a card after the first takes 1.2 to 1.4 ms):
+With neither iterations nor a duration the card is run through once. Code which has run once is not necessarily compiled, so you can run it more times; more is not always better. First card on a Pixel 9 (Android 16, debug build, each in a new process; a card after the first takes 1.2 to 1.4 ms):
 
 | Warm-up | Warm-up time | First card, lenient | First card, trust chain |
 | --- | --- | --- | --- |

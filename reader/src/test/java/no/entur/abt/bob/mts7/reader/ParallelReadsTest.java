@@ -8,7 +8,14 @@ import java.util.Random;
 
 import org.junit.jupiter.api.Test;
 
+import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
+
 import no.entur.abt.bob.mts7.core.Mts7Card;
+import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
+import no.entur.abt.bob.mts7.core.Mts7Warmup;
+import no.entur.abt.bob.mts7.core.Mts7WarmupResult;
+import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
+import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
 import no.entur.abt.bob.mts7.reader.processor.Mts7ProcessorFactory;
 import no.entur.abt.bob.mts7.reader.processor.VerifyKeyPairMts7ProcessorFactory;
 import no.entur.abt.bob.mts7.reader.processor.VerifyTrustChainMts7ProcessorFactory;
@@ -84,10 +91,22 @@ public class ParallelReadsTest extends AbstractTest {
 
 	@Test
 	public void testWarmedUpFactoryIsStillCorrect() throws Exception {
-		VerifyTrustChainMts7ProcessorFactory processorFactory = new VerifyTrustChainMts7ProcessorFactory(participantPublicKeys, executor);
+		// the helpers are shared with the warm-up
+		IccPublicKeyFactory iccPublicKeyFactory = new IccPublicKeyFactory();
+		Mts7CardEnricher enricher = new Mts7CardEnricher();
+		CBORMapper cborMapper = new CBORMapper();
+		ThumbprintFactory thumbprintFactory = new ThumbprintFactory(null);
 
-		assertTrue(participantPublicKeys.warmUp().isEmpty());
-		processorFactory.warmUp();
+		VerifyTrustChainMts7ProcessorFactory processorFactory = new VerifyTrustChainMts7ProcessorFactory(participantPublicKeys, iccPublicKeyFactory, enricher,
+				cborMapper, thumbprintFactory, executor);
+
+		Mts7WarmupResult result = Mts7Warmup.newBuilder()
+				.withHelpers(iccPublicKeyFactory, enricher, cborMapper, thumbprintFactory)
+				.withParticipantPublicKeys(participantPublicKeys)
+				.withIterations(3)
+				.build()
+				.warmUp();
+		assertTrue(result.isSuccess(), result.getFailures().toString());
 
 		assertParallelReads(processorFactory, true, 3, 10);
 	}
