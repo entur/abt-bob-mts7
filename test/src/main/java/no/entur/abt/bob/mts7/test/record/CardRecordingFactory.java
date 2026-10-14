@@ -20,6 +20,12 @@ import com.fasterxml.jackson.databind.module.SimpleModule;
 
 public class CardRecordingFactory {
 
+	private final ObjectMapper objectMapper;
+
+	public CardRecordingFactory() {
+		this.objectMapper = createObjectMapper();
+	}
+	
 	public CardRecording newInstance() {
 		return new CardRecording();
 	}
@@ -42,26 +48,12 @@ public class CardRecordingFactory {
 
 	public CardRecording read(InputStream in) throws IOException {
 		try {
-			ObjectMapper objectMapper = getObjectMapper();
 			ObjectReader reader = objectMapper.readerFor(CardRecording.class);
 
 			return reader.readValue(in);
 		} finally {
 			in.close();
 		}
-	}
-
-	// a mapper is thread safe once it has been configured, and expensive to build (it looks for modules on the classpath), so build it only once
-	private volatile ObjectMapper objectMapper;
-
-	protected ObjectMapper getObjectMapper() {
-		ObjectMapper result = objectMapper;
-		if (result == null) {
-			// two threads might build one each, which is harmless
-			result = createObjectMapper();
-			objectMapper = result;
-		}
-		return result;
 	}
 
 	protected ObjectMapper createObjectMapper() {
@@ -98,8 +90,7 @@ public class CardRecordingFactory {
 
 	public void write(CardRecording value, OutputStream out) throws IOException {
 		try {
-			ObjectMapper mapper = getObjectMapper();
-			ObjectWriter writer = mapper.writerFor(CardRecording.class).withDefaultPrettyPrinter();
+			ObjectWriter writer = objectMapper.writerFor(CardRecording.class).withDefaultPrettyPrinter();
 
 			writer.writeValue(out, value);
 		} finally {
