@@ -18,7 +18,7 @@ This project hosts a set of modules for [MTS7](https://samtrafiken.atlassian.net
 
 ## Implementation guide
 
-> **The guides are for clients only**, i.e. the code which talks to the card (for example a mobile app or a terminal). They do not cover the server which receives the commands and responses. Parsing and verifying those on a server is done with `core`; see [Performance](docs/PERFORMANCE.md#server) for how to share the factories there.
+> **The guides are for clients only**, i.e. the code which talks to the card (for example a mobile app or a terminal). They do not cover the server which receives the commands and responses. Parsing and verifying those on a server is done with `core`.
 
 Select between three approaches:
 
@@ -32,7 +32,7 @@ Select between three approaches:
    * `simple-reader` for online only. It only depends on `api` and `simple-api`, so there is no parsing or crypto in the client.
    * `reader` for online with offline fallback and for offline. It brings `core` and `simple-reader`.
  * Implement your own class of type `Mts7Exchange` for talking to the card (`getTagId()` and `transceive(byte[])`). The library sends the commands and checks the status codes of the responses.
- * Create the factories **once** and share them between card readers and threads, see [Performance](docs/PERFORMANCE.md).
+ * Create the factories **once** and share them between card readers and threads, see [Threads and performance](#threads-and-performance).
 
 <details>
   <summary>Dependencies (Maven and Gradle)</summary>
@@ -215,7 +215,7 @@ Mts7Card card = cardFactory.create(payloads);
 
 ## Threads and performance
 
-The factories are thread safe and are meant to be created **once** and shared by all threads and card readers. The first card is much slower than the next ones, unless the application warms up first. See [Performance](docs/PERFORMANCE.md) for what is shared and what is for one card, recipes for a server and for a mobile device, and how to warm up (with measurements from a phone).
+The factories are thread safe and are meant to be created **once** and shared by all threads and card readers. The first card is much slower than the next ones, unless the application warms up first. See [Performance](docs/PERFORMANCE.md) for how to warm up, with measurements from a phone.
 
 ## Testing
 A `test` artifact for analyzing and/or testing cards are included with the project.
