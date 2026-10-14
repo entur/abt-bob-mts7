@@ -85,6 +85,7 @@ public class IccPublicKeyBuilder {
 
 		signature = null;
 		issuerPublicKey = null;
+		issuerSignatureProtectedHeader = null;
 	}
 
 	/**

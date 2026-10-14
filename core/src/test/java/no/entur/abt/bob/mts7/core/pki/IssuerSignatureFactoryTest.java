@@ -57,15 +57,16 @@ public class IssuerSignatureFactoryTest {
 				.x(base64Url(publicKey.getW().getAffineX(), 32))
 				.y(base64Url(publicKey.getW().getAffineY(), 32));
 
-		Signature verifier = factory.create(jwk);
-		assertNotNull(verifier);
-		assertEquals("SHA256withECDSA", verifier.getAlgorithm());
+		IssuerPublicKey issuerPublicKey = factory.createIssuerPublicKey(10, jwk);
+		assertNotNull(issuerPublicKey);
+		assertEquals(10, issuerPublicKey.getPid());
+		assertEquals("10:ec", issuerPublicKey.getKid());
 
 		Signature signature = Signature.getInstance("SHA256withECDSA");
 		signature.initSign(keyPair.getPrivate());
 		signature.update(DATA);
 
-		assertTrue(new IssuerPublicKey(10, "10:ec", verifier).verify(DATA, ECDSA.transcodeSignatureToConcat(signature.sign(), 64)));
+		assertTrue(issuerPublicKey.verify(DATA, ECDSA.transcodeSignatureToConcat(signature.sign(), 64)));
 	}
 
 	@Test
@@ -80,15 +81,16 @@ public class IssuerSignatureFactoryTest {
 				.n(base64Url(publicKey.getModulus(), (publicKey.getModulus().bitLength() + 7) / 8))
 				.e(base64Url(publicKey.getPublicExponent(), (publicKey.getPublicExponent().bitLength() + 7) / 8));
 
-		Signature verifier = factory.create(jwk);
-		assertNotNull(verifier);
-		assertEquals("SHA256withRSA", verifier.getAlgorithm());
+		IssuerPublicKey issuerPublicKey = factory.createIssuerPublicKey(11, jwk);
+		assertNotNull(issuerPublicKey);
+		assertEquals(11, issuerPublicKey.getPid());
+		assertEquals("11:rsa", issuerPublicKey.getKid());
 
 		Signature signature = Signature.getInstance("SHA256withRSA");
 		signature.initSign(keyPair.getPrivate());
 		signature.update(DATA);
 
-		assertTrue(new IssuerPublicKey(11, "11:rsa", verifier).verify(DATA, signature.sign()));
+		assertTrue(issuerPublicKey.verify(DATA, signature.sign()));
 	}
 
 	@Test
@@ -101,16 +103,15 @@ public class IssuerSignatureFactoryTest {
 		int rsa = 0;
 		for (ParticipantMetadata p : participantMetadata) {
 			for (JwkPublic jwk : p.getMtbPublicKeys()) {
-				Signature verifier = factory.create(jwk);
+				IssuerPublicKey issuerPublicKey = factory.createIssuerPublicKey(p.getPid(), jwk);
 
 				// the participant metadata does not contain an alg
-				assertNotNull(verifier, p.getPid() + " " + jwk.getKid());
+				assertNotNull(issuerPublicKey, p.getPid() + " " + jwk.getKid());
+				assertEquals(jwk.getKid(), issuerPublicKey.getKid());
 
 				if (jwk.getKty().equals("EC")) {
-					assertEquals("SHA256withECDSA", verifier.getAlgorithm());
 					ec++;
 				} else {
-					assertEquals("SHA256withRSA", verifier.getAlgorithm());
 					rsa++;
 				}
 			}

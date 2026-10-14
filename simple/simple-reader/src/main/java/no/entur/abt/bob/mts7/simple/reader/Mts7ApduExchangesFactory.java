@@ -13,6 +13,9 @@ import no.entur.abt.bob.mts7.simple.api.Mts7ApduExchanges;
 /**
  * 
  * Factory which issues commands to an MTS7 card and collects the responses without analyzing anything more than the response codes.
+ * <p>
+ * Instances are thread safe (as long as the {@linkplain Random} is, which {@linkplain SecureRandom} is), so a single instance can be shared by all card
+ * readers. The command constants are shared, so they must not be modified.
  * 
  */
 

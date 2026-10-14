@@ -9,15 +9,16 @@ import org.junit.jupiter.api.Test;
 
 import no.entur.abt.bob.mts7.api.apdu.CommandAPDU;
 import no.entur.abt.bob.mts7.core.Mts7Card;
+import no.entur.abt.bob.mts7.reader.AbstractExecutorTest;
 import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
 
-public class VerifyKeyPairMts7ProcessorTest {
+public class VerifyKeyPairMts7ProcessorTest extends AbstractExecutorTest {
 
 	private VerifyKeyPairMts7ProcessorFactory processorFactory;
 
 	@BeforeEach
 	public void setup() throws Exception {
-		this.processorFactory = new VerifyKeyPairMts7ProcessorFactory();
+		this.processorFactory = new VerifyKeyPairMts7ProcessorFactory(executor);
 	}
 
 	@Test

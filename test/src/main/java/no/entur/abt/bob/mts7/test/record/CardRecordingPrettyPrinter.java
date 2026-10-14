@@ -52,7 +52,8 @@ public class CardRecordingPrettyPrinter {
 		prettyPrint(recording.toPlayback());
 	}
 
-	private void prettyPrint(CardPlayback playback) throws IOException {
+	// the analyzer keeps what it has seen of the recording, so print one recording at a time
+	private synchronized void prettyPrint(CardPlayback playback) throws IOException {
 		try (Mts7PrettyPrinterCard card = new Mts7PrettyPrinterCard(playback, analyzer, false)) {
 			for (CardInvocation cardInvocation : playback.getInvocations()) {
 				if (cardInvocation instanceof TransceiveInvocation) {

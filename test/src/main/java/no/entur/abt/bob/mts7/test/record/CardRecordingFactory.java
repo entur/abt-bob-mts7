@@ -20,6 +20,12 @@ import com.fasterxml.jackson.databind.module.SimpleModule;
 
 public class CardRecordingFactory {
 
+	private final ObjectMapper objectMapper;
+
+	public CardRecordingFactory() {
+		this.objectMapper = createObjectMapper();
+	}
+	
 	public CardRecording newInstance() {
 		return new CardRecording();
 	}
@@ -42,7 +48,6 @@ public class CardRecordingFactory {
 
 	public CardRecording read(InputStream in) throws IOException {
 		try {
-			ObjectMapper objectMapper = getObjectMapper();
 			ObjectReader reader = objectMapper.readerFor(CardRecording.class);
 
 			return reader.readValue(in);
@@ -51,7 +56,7 @@ public class CardRecordingFactory {
 		}
 	}
 
-	protected ObjectMapper getObjectMapper() {
+	protected ObjectMapper createObjectMapper() {
 		SimpleModule module = new SimpleModule();
 		module.addSerializer(CardInvocation.class, new CardInvocationSerializer());
 		module.addDeserializer(CardInvocation.class, new CardInvocationDeserializer());
@@ -85,8 +90,7 @@ public class CardRecordingFactory {
 
 	public void write(CardRecording value, OutputStream out) throws IOException {
 		try {
-			ObjectMapper mapper = getObjectMapper();
-			ObjectWriter writer = mapper.writerFor(CardRecording.class).withDefaultPrettyPrinter();
+			ObjectWriter writer = objectMapper.writerFor(CardRecording.class).withDefaultPrettyPrinter();
 
 			writer.writeValue(out, value);
 		} finally {

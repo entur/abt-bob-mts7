@@ -1,6 +1,7 @@
 package no.entur.abt.bob.mts7.core;
 
 import java.security.NoSuchAlgorithmException;
+import java.security.Provider;
 import java.util.Map;
 
 import org.slf4j.Logger;
@@ -15,22 +16,51 @@ import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
 /**
  * 
  * Verify key (not trust chain).
+ * <p>
+ * Instances are thread safe, so a single instance should be shared by all threads.
  * 
  */
 
-// not thread safe
 public class VerifyKeyPairMts7CardFactory {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(VerifyKeyPairMts7CardFactory.class);
 
-	protected final IccPublicKeyFactory iccPublicKeyFactory = new IccPublicKeyFactory();
+	protected final IccPublicKeyFactory iccPublicKeyFactory;
 
-	protected final Mts7CardEnricher enricher = new Mts7CardEnricher();
-	protected final CBORMapper cborMapper = new CBORMapper();
+	protected final Mts7CardEnricher enricher;
+	protected final CBORMapper cborMapper;
 	protected final ThumbprintFactory thumbprintFactory;
 
 	public VerifyKeyPairMts7CardFactory() throws NoSuchAlgorithmException {
-		this.thumbprintFactory = new ThumbprintFactory(null);
+		this((Provider) null);
+	}
+
+	/**
+	 * Constructor.
+	 *
+	 * @param provider security provider (for signatures and digests), or null for the default
+	 * @throws NoSuchAlgorithmException if the digest algorithm is not available
+	 */
+
+	public VerifyKeyPairMts7CardFactory(Provider provider) throws NoSuchAlgorithmException {
+		this(new IccPublicKeyFactory(provider), new Mts7CardEnricher(), new CBORMapper(), new ThumbprintFactory(provider));
+	}
+
+	/**
+	 * Constructor for sharing the helpers with other factories. All of the helpers must be thread safe.
+	 *
+	 * @param iccPublicKeyFactory factory for the public key of the card
+	 * @param enricher            card enricher
+	 * @param cborMapper          CBOR mapper
+	 * @param thumbprintFactory   thumbprint factory
+	 */
+
+	public VerifyKeyPairMts7CardFactory(IccPublicKeyFactory iccPublicKeyFactory, Mts7CardEnricher enricher, CBORMapper cborMapper,
+			ThumbprintFactory thumbprintFactory) {
+		this.iccPublicKeyFactory = iccPublicKeyFactory;
+		this.enricher = enricher;
+		this.cborMapper = cborMapper;
+		this.thumbprintFactory = thumbprintFactory;
 	}
 
 	public Mts7Card create(Mts7ApduPayloads card) throws UnableToVerifyKeyPairException {

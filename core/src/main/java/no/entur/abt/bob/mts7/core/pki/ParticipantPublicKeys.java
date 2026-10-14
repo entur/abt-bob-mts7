@@ -1,11 +1,12 @@
 package no.entur.abt.bob.mts7.core.pki;
 
 import java.security.Provider;
-import java.security.Signature;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import no.entur.abt.bob.api.pm.model.JwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
@@ -13,7 +14,10 @@ import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
 
 /**
  * 
- * Lazy key cache
+ * Lazy key cache.
+ * <p>
+ * Instances are thread safe, so a single instance should be shared by all threads. The keys are created when first used; see
+ * {@linkplain no.entur.abt.bob.mts7.core.warmup.Mts7Warmup} for creating them in advance.
  * 
  */
 
@@ -47,7 +51,8 @@ public class ParticipantPublicKeys {
 		public ParticipantPublicKeys build() throws Exception {
 			IssuerSignatureFactory factory = new IssuerSignatureFactory(provider);
 
-			Map<Long, Issuer> keys = new HashMap<>(); // thread safe for reading
+			// not modified after it has been built, so it is safe to read from several threads
+			Map<Long, Issuer> keys = new HashMap<>();
 
 			for (ParticipantMetadata p : items) {
 
@@ -70,7 +75,11 @@ public class ParticipantPublicKeys {
 
 	public static class IssuerKey {
 
-		private IssuerPublicKey key;
+		// created on demand, and visible to all threads when set
+		private volatile IssuerPublicKey key;
+
+		// the type of key is not supported, which will not change, so there is no point in trying again
+		private volatile boolean unsupported;
 
 		private final JwkPublic keyMaterial;
 
@@ -94,6 +103,14 @@ public class ParticipantPublicKeys {
 		public boolean hasKey() {
 			return key != null;
 		}
+
+		public boolean isUnsupported() {
+			return unsupported;
+		}
+
+		public void setUnsupported(boolean unsupported) {
+			this.unsupported = unsupported;
+		}
 	}
 
 	public static class Issuer {
@@ -102,7 +119,8 @@ public class ParticipantPublicKeys {
 		private final long pid;
 		private final IssuerSignatureFactory factory;
 
-		private Map<String, IssuerKey> keys;
+		// not modified after it has been built, so it is safe to read from several threads
+		private final Map<String, IssuerKey> keys;
 
 		public Issuer(String name, long pid, Map<String, IssuerKey> map, IssuerSignatureFactory factory) {
 			this.name = name;
@@ -113,20 +131,30 @@ public class ParticipantPublicKeys {
 
 		public IssuerPublicKey getKey(String id) throws UnableToConstructIssuerKeyException {
 			IssuerKey issuerKey = keys.get(id);
-			if (issuerKey != null) {
-				if (!issuerKey.hasKey()) {
-					JwkPublic keyMaterial = issuerKey.getKeyMaterial();
-
-					Signature signature = factory.create(keyMaterial);
-
-					IssuerPublicKey key = new IssuerPublicKey(pid, keyMaterial.getKid(), signature);
-
-					issuerKey.setKey(key);
-				}
-
-				return issuerKey.getKey();
+			if (issuerKey == null) {
+				return null;
 			}
-			return null;
+
+			IssuerPublicKey key = issuerKey.getKey();
+			if (key == null && !issuerKey.isUnsupported()) {
+				// creating a key has no side effects, and the result is thread safe, so there is no need to prevent several threads from creating one at the
+				// same time: all of the keys are equivalent
+				key = factory.createIssuerPublicKey(pid, issuerKey.getKeyMaterial());
+				if (key != null) {
+					issuerKey.setKey(key);
+				} else {
+					issuerKey.setUnsupported(true);
+				}
+			}
+			return key;
+		}
+
+		/**
+		 * @return the ids of the keys of the participant (a copy)
+		 */
+
+		public Set<String> getKeyIds() {
+			return new HashSet<>(keys.keySet());
 		}
 
 		public String getName() {
@@ -146,6 +174,23 @@ public class ParticipantPublicKeys {
 			return key.getKey(kid);
 		}
 		return null;
+	}
+
+	/**
+	 * @return the ids of the participants (a copy)
+	 */
+
+	public Set<Long> getParticipantIds() {
+		return new HashSet<>(keys.keySet());
+	}
+
+	/**
+	 * @param pid participant id
+	 * @return the participant, or null if unknown
+	 */
+
+	public Issuer getIssuer(long pid) {
+		return keys.get(pid);
 	}
 
 	public String getName(long pid) {

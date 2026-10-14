@@ -2,6 +2,7 @@ package no.entur.abt.bob.mts7.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.InputStream;
@@ -11,12 +12,31 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
+import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
+import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
 import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
 
 public class VerifyMts7CardFactoryTest {
+
+	@Test
+	public void testHelpersCanBeSharedWithOtherFactories() throws Exception {
+		IccPublicKeyFactory iccPublicKeyFactory = new IccPublicKeyFactory();
+		Mts7CardEnricher enricher = new Mts7CardEnricher();
+		CBORMapper cborMapper = new CBORMapper();
+		ThumbprintFactory thumbprintFactory = new ThumbprintFactory(null);
+
+		VerifyMts7CardFactory factory = new VerifyMts7CardFactory(ParticipantPublicKeys.newBuilder().build(), iccPublicKeyFactory, enricher, cborMapper,
+				thumbprintFactory);
+
+		assertSame(iccPublicKeyFactory, factory.getIccPublicKeyFactory());
+		assertSame(enricher, factory.getEnricher());
+		assertSame(cborMapper, factory.getCborMapper());
+		assertSame(thumbprintFactory, factory.getThumbprintFactory());
+	}
 
 	@Test
 	public void test() throws Exception {

@@ -20,14 +20,12 @@ public class Mts7TlvPrettyPrinter {
 	private static final TlvPrettyPrinter INSTANCE;
 
 	static {
-		try {
-			InputStream is = Mts7TlvPrettyPrinter.class.getResourceAsStream("/bob/tags.csv");
-			InputStreamReader reader = new InputStreamReader(is, StandardCharsets.UTF_8);
-
+		try (InputStream is = Mts7TlvPrettyPrinter.class.getResourceAsStream("/bob/tags.csv");
+				InputStreamReader reader = new InputStreamReader(is, StandardCharsets.UTF_8);
+				CSVParser parser = CSVParser.parse(reader, CSVFormat.RFC4180)) {
 			Set<ByteArrayKey> strings = new HashSet<>();
 
 			Map<ByteArrayKey, String> tags = new HashMap<>();
-			CSVParser parser = CSVParser.parse(reader, CSVFormat.RFC4180);
 			for (CSVRecord csvRecord : parser) {
 				String tag = csvRecord.get(0);
 				String description = csvRecord.get(1);

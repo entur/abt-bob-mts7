@@ -87,10 +87,7 @@ public class IccPublicKeyBuilderTest {
 	}
 
 	private IssuerPublicKey issuerKey() throws Exception {
-		Signature signature = Signature.getInstance("SHA256withECDSA");
-		signature.initVerify(issuerKeyPair.getPublic());
-
-		return new IssuerPublicKey(10, "10:test", signature);
+		return new IssuerPublicKey(10, "10:test", issuerKeyPair.getPublic(), "SHA256withECDSA", null);
 	}
 
 	/**
@@ -244,6 +241,18 @@ public class IccPublicKeyBuilderTest {
 		assertTrue(builder.canBuild());
 
 		builder.reset();
+
+		assertFalse(builder.canBuild());
+	}
+
+	@Test
+	public void testResetForgetsTheHeaderOfTheEarlierCard() throws Exception {
+		IccPublicKeyBuilder builder = signedBuilder();
+		builder.reset();
+
+		// everything for a new card except the header, so the header of the earlier card must not be used
+		byte[] element = new byte[] { 1 };
+		builder.withSignedData(element, 0, element.length).withSignature(new byte[64]).withIssuerPublicKey(issuerKey());
 
 		assertFalse(builder.canBuild());
 	}

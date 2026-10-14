@@ -2,7 +2,7 @@ package no.entur.abt.bob.mts7.core.pki;
 
 import java.security.Key;
 import java.security.Provider;
-import java.security.Signature;
+import java.security.PublicKey;
 import java.security.interfaces.ECPublicKey;
 import java.security.interfaces.RSAPublicKey;
 import java.util.Arrays;
@@ -15,7 +15,11 @@ import com.nimbusds.jose.jwk.KeyConverter;
 
 import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
 
-// subclasses of this instance are not thread safe
+/**
+ * Create the public key of a card (the ICC public key). Instances are thread safe, so a single instance can be shared by all threads, and so are the keys it
+ * creates.
+ */
+
 public class IccPublicKeyFactory {
 
 	protected final Provider provider;
@@ -26,6 +30,14 @@ public class IccPublicKeyFactory {
 
 	public IccPublicKeyFactory(Provider provider) {
 		this.provider = provider;
+	}
+
+	/**
+	 * @return the security provider, or null for the default
+	 */
+
+	public Provider getProvider() {
+		return provider;
 	}
 
 	public IccPublicKey create(Map<String, Object> fields) throws UnableToConstructIccKeyException {
@@ -66,40 +78,29 @@ public class IccPublicKeyFactory {
 					throw new KeyTypeException(RSAPublicKey.class);
 				}
 
-				RSAPublicKey rsaPublicKey = (RSAPublicKey) key;
-
-				Signature signature;
-				if (provider != null) {
-					signature = Signature.getInstance("NONEwithRSA", provider);
-				} else {
-					signature = Signature.getInstance("NONEwithRSA");
-				}
-				signature.initVerify(rsaPublicKey);
-
-				return new IccPublicKey(signature, "RSA");
+				return create((RSAPublicKey) key, "NONEwithRSA");
 			} else if (algorithm.equals("ES256")) {
 
 				if (!(key instanceof ECPublicKey)) {
 					throw new KeyTypeException(ECPublicKey.class);
 				}
 
-				ECPublicKey ecPublicKey = (ECPublicKey) key;
-
-				Signature signature;
-				if (provider != null) {
-					signature = Signature.getInstance("NoneWithECDSA", provider);
-				} else {
-					signature = Signature.getInstance("NoneWithECDSA");
-				}
-				signature.initVerify(ecPublicKey);
-
-				return new IccPublicKey(signature, "EC");
+				return create((ECPublicKey) key, "NoneWithECDSA");
 			} else {
 				throw new UnableToConstructIccKeyException("Unknown algorithm " + algorithm);
 			}
 		} catch (Exception e) {
 			throw new UnableToConstructIccKeyException(e);
 		}
+	}
+
+	private IccPublicKey create(PublicKey key, String algorithm) throws Exception {
+		IccPublicKey result = new IccPublicKey(key, algorithm, provider);
+
+		// fail now rather than when verifying: make sure that the algorithm is available, and that the key is accepted
+		result.newSignature();
+
+		return result;
 	}
 
 }

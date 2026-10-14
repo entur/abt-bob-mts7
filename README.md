@@ -17,19 +17,93 @@ This project hosts a set of modules for [MTS7](https://samtrafiken.atlassian.net
 [European Union Public Licence v1.2](https://eupl.eu/).
 
 ## Implementation guide
+
+> **The guides are for clients only**, i.e. the code which talks to the card (for example a mobile app or a terminal). They do not cover the server which receives the commands and responses. Parsing and verifying those on a server is done with `core`.
+
 Select between three approaches:
 
- * online only
- * online with offline fallback
- * offline
+ * [online only](#online-only)
+ * [online with offline fallback](#online-with-offline-fallback)
+ * [offline](#offline)
+
+### Before you start
+
+ * Add the artifact which you need (group id `no.entur.abt.bob.mts7`, use the latest release):
+   * `simple-reader` for online only. It only depends on `api` and `simple-api`, so there is no parsing or crypto in the client.
+   * `reader` for online with offline fallback and for offline. It brings `core` and `simple-reader`.
+ * Implement your own class of type `Mts7Exchange` for talking to the card (`getTagId()` and `transceive(byte[])`). The library sends the commands and checks the status codes of the responses.
+ * Create the factories **once** and share them between card readers and threads, see [Threads and performance](#threads-and-performance).
+
+<details>
+  <summary>Dependencies (Maven and Gradle)</summary>
+
+```xml
+<dependency>
+    <groupId>no.entur.abt.bob.mts7</groupId>
+    <artifactId>reader</artifactId>
+    <version>VERSION</version>
+</dependency>
+```
+
+```groovy
+implementation "no.entur.abt.bob.mts7:reader:VERSION"
+```
+</details>
+
+<details>
+  <summary>Mts7Exchange for Android (IsoDep)</summary>
+
+```java
+import java.io.IOException;
+
+import android.nfc.tech.IsoDep;
+
+import no.entur.abt.bob.mts7.simple.reader.Mts7Exchange;
+
+public class IsoDepMts7Exchange implements Mts7Exchange {
+
+    private final IsoDep isoDep;
+
+    public IsoDepMts7Exchange(IsoDep isoDep) {
+        this.isoDep = isoDep;
+    }
+
+    @Override
+    public byte[] getTagId() {
+        return isoDep.getTag().getId();
+    }
+
+    @Override
+    public byte[] transceive(byte[] command) throws IOException {
+        return isoDep.transceive(command);
+    }
+}
+```
+
+Use it while the card is connected:
+
+```java
+IsoDep isoDep = IsoDep.get(tag);
+isoDep.connect();
+try {
+    Mts7Exchange exchange = new IsoDepMts7Exchange(isoDep);
+
+    // ... read the card using the exchange, see below
+} finally {
+    isoDep.close();
+}
+```
+
+For a PC reader using `javax.smartcardio`, see the [example](examples/mts7-reader-example).
+</details>
 
 ### Online only
 Overview:
  
  * issue three (logical) commands and store command/responses as raw APDUs
-   * some commands are split due to max transcieve length (so checking the response status code is necessary)
+   * some commands are split due to max transceive length (so checking the response status code is necessary: `61xx` means that there is more data, which is fetched with GET RESPONSE)
  * post to backend as a command/response train
-   * split commands can be submitted together or in (original) parts 
+   * split commands can be submitted together or in (original) parts; the library keeps the original parts
 
 In other words, no parsing or crypto operations are necessary in client.
 
@@ -38,39 +112,112 @@ Implementation using 'thin' client:
  * add `simple-reader` artifact
  * Implement your own class of type `Mts7Exchange` for talking to the card
  * Create an instance of `Mts7ApduExchangesFactory`
- * Create `Mts7ApduExchanges` from `Mts7ApduExchangesFactory.createCard(..)`,
- * Post the exchanges to the backend.
+ * Create `Mts7ApduExchanges` from `Mts7ApduExchangesFactory.createCard(..)`. Pass the response to *select application* if your platform has already selected the application, or null to have the library do it.
+ * Post the exchanges (`getTagId()` and `getExchanges()`) to the backend.
+
+`createCard(..)` throws `IOException` if the card cannot be reached (for example if it is moved away from the reader) and a `Mts7Exception` if the card answers something unexpected (`UnableToSelectApplicationException` if the application cannot be selected, `UnexpectedCardResponseException` for other status codes).
+
+<details>
+  <summary>Code example (backend stands for your own code)</summary>
+
+```java
+// once: shared by all card readers and threads
+Mts7ApduExchangesFactory factory = new Mts7ApduExchangesFactory();
+
+// for each card, where 'exchange' is the Mts7Exchange for the card
+// (null: the library selects the application; pass the response if your platform has already done so)
+Mts7ApduExchanges exchanges = factory.createCard(exchange, null);
+
+// the command and response of each exchange, in order: select application, get next data
+// (followed by get response for as long as the card has more data), internal authenticate
+backend.post(exchanges.getTagId(), exchanges.getExchanges());
+```
+</details>
 
 ### Online with offline fallback
 
 Overview:
  
- * (optional) retrieve public keys and blacklists
+ * (optional) retrieve the participant metadata, which has the public keys of the issuers, from the backend. It is needed to verify the trust chain locally.
  * issue three (logical) commands and store command/responses as raw APDUs
-   * some commands are split due to max transcieve length
+   * some commands are split due to max transceive length
+   * the card is also processed in the background while it is read, so the result is (almost) ready when the card has been read
  * post to backend as a command/response train
    * split commands can be submitted together or in (original) parts
- * if server call fails, decode and verify card locally
+ * if server call fails, use the card details which were worked out locally (decoded, and the card verified)
    * without talking to the card again 
 
 Implementation:
 
  * add `reader` artifact
  * Implement your own class of type `Mts7Exchange` for talking to the card
- * Create a `Mts7ProcessorFactory`: 
-   * Most secure: `VerifyTrustChainMts7ProcessorFactory` (requires root certificates via `ParticipantPublicKeys`) or
-   * Less secure: `VerifyKeyPairMts7ProcessorFactory`
+ * Create a `Mts7ProcessorFactory`, which needs an `Executor` for its processors (yours: the library creates no threads, and you shut it down when the application stops):
+   * Most secure: `VerifyTrustChainMts7ProcessorFactory` (requires the public keys of the issuers via `ParticipantPublicKeys`, which you build from the participant metadata) or
+   * Less secure: `VerifyKeyPairMts7ProcessorFactory` (only checks that the card has the private key, not who issued it)
  * Create `InFlightMts7CardFactory` 
- * Create `InFlightMts7Card` from `InFlightMts7CardFactory.createCard(..)` which contains the `Mts7ApduExchanges` 
- * Post the exchanges to the backend. It this fails, then
- * Call on `InFlightMts7Card.getMts7Card(..)` to obtain a `Mts7Card`
+ * Create `InFlightMts7Card` from `InFlightMts7CardFactory.create(..)` which contains the `Mts7ApduExchanges`. It is `Closeable`: close it when done (try-with-resources), or the processor keeps waiting for the card (for at most a minute).
+ * Post the exchanges to the backend. If this fails, then
+ * Call on `InFlightMts7Card.getMts7Card(timeout)` (in milliseconds; zero waits until the processing has finished) to obtain a `Mts7Card`
  * Process card details (thumbprint, serial etc) locally
+
+`getMts7Card(..)` throws `UnableToVerifyKeyPairException` if the card cannot be trusted: it did not prove that it has the private key, or (for the trust chain) its issuer is not among the public keys. The exception has the card as far as it was read, in `getResult()`, where `isVerifiedTrustChain()` tells the reasons apart. `UnableToVerifyTrustChainException` is declared too, but in practice a card from an unknown issuer is reported by the former.
+
+<details>
+  <summary>Code example (backend, participantMetadataJson and useLocally are your own code)</summary>
+
+```java
+// once, when the application starts: the public keys of the issuers, from the backend
+List<ParticipantMetadata> participants = Arrays.asList(new ObjectMapper().readValue(participantMetadataJson, ParticipantMetadata[].class));
+ParticipantPublicKeys keys = ParticipantPublicKeys.newBuilder().withParticipants(participants).build();
+
+ExecutorService executor = Executors.newCachedThreadPool(); // yours: shut it down when the application stops
+Mts7ProcessorFactory processorFactory = new VerifyTrustChainMts7ProcessorFactory(keys, executor);
+InFlightMts7CardFactory factory = new InFlightMts7CardFactory(processorFactory);
+
+// for each card, where 'exchange' is the Mts7Exchange for the card:
+// reading the card also feeds the processor, which works on the card details in the background
+try (InFlightMts7Card inFlight = factory.create(exchange, null)) {
+    Mts7ApduExchanges exchanges = inFlight.getMts7ApduExchanges();
+    try {
+        backend.post(exchanges.getTagId(), exchanges.getExchanges());
+    } catch (IOException e) {
+        // the server could not be reached: use what was worked out while the card was read
+        Mts7Card card = inFlight.getMts7Card(1000); // wait for at most a second
+
+        useLocally(card);
+    }
+}
+```
+</details>
 
 ### Offline
 
  * Like above, just don't post anything to the server.
+ * Or read the card first and process it afterwards: `Mts7ApduPayloadsFactory` sorts out the responses of the exchanges, and `VerifyMts7CardFactory` verifies the card (`VerifyKeyPairMts7CardFactory` if there are no public keys). For the details of a card which cannot be verified, `LenientMts7ApduPayloadsFactory` and `LenientMts7CardFactory` extract as much as they can, also from a partial read, instead of rejecting it; nothing which they return can be trusted.
 
-### Testing
+<details>
+  <summary>Code example</summary>
+
+```java
+// once: shared by all card readers and threads ('keys' are the ParticipantPublicKeys, see above)
+Mts7ApduExchangesFactory exchangesFactory = new Mts7ApduExchangesFactory();
+Mts7ApduPayloadsFactory payloadsFactory = new Mts7ApduPayloadsFactory();
+VerifyMts7CardFactory cardFactory = new VerifyMts7CardFactory(keys);
+
+// for each card, where 'exchange' is the Mts7Exchange for the card
+Mts7ApduExchanges exchanges = exchangesFactory.createCard(exchange, null);
+Mts7ApduPayloads payloads = payloadsFactory.createCard(exchanges);
+
+// throws if the card does not have the private key, or was not issued by one of the issuers of the keys
+Mts7Card card = cardFactory.create(payloads);
+```
+</details>
+
+## Threads and performance
+
+The factories are thread safe and are meant to be created **once** and shared by all threads and card readers. The first card is much slower than the next ones, unless the application warms up first. See [Performance](docs/PERFORMANCE.md) for how to warm up, with measurements from a phone.
+
+## Testing
 A `test` artifact for analyzing and/or testing cards are included with the project.
 
 <details>
