@@ -184,7 +184,10 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 	 */
 
 	@Override
-	public String waitForAlgorithm(long timeout) throws InterruptedException {
+public String waitForAlgorithm(long timeout) throws InterruptedException {
+		if (timeout < 0) {
+			throw new IllegalArgumentException("timeout must not be negative");
+		}
 		synchronized (outputMonitor) {
 			long until = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeout);
 
