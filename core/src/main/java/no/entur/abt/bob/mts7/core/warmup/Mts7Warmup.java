@@ -1,4 +1,4 @@
-package no.entur.abt.bob.mts7.core;
+package no.entur.abt.bob.mts7.core.warmup;
 
 import java.security.Provider;
 import java.util.ArrayList;
@@ -16,6 +16,12 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
 import no.entur.abt.bob.api.pm.model.JwkPublic;
+import no.entur.abt.bob.mts7.core.LenientMts7CardFactory;
+import no.entur.abt.bob.mts7.core.Mts7ApduPayloads;
+import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
+import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
+import no.entur.abt.bob.mts7.core.VerifyKeyPairMts7CardFactory;
+import no.entur.abt.bob.mts7.core.VerifyMts7CardFactory;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.IssuerSignatureFactory;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
@@ -333,8 +339,8 @@ public class Mts7Warmup implements Runnable {
 			steps.add(new NamedStep("VerifyKeyPairMts7CardFactory", payloads -> keyPairFactory.create(payloads)));
 		}
 		if (verifyFactory != null) {
-			steps.add(createTrustChainStep("VerifyMts7CardFactory",
-					new Helpers(verifyFactory.iccPublicKeyFactory, verifyFactory.enricher, verifyFactory.cborMapper, verifyFactory.thumbprintFactory)));
+			steps.add(createTrustChainStep("VerifyMts7CardFactory", new Helpers(verifyFactory.getIccPublicKeyFactory(), verifyFactory.getEnricher(),
+					verifyFactory.getCborMapper(), verifyFactory.getThumbprintFactory())));
 		}
 		if (helpers != null) {
 			steps.add(createTrustChainStep("the shared helpers", helpers));

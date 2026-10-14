@@ -12,10 +12,10 @@ import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
 import no.entur.abt.bob.mts7.core.Mts7Card;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
-import no.entur.abt.bob.mts7.core.Mts7Warmup;
-import no.entur.abt.bob.mts7.core.Mts7WarmupResult;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
+import no.entur.abt.bob.mts7.core.warmup.Mts7Warmup;
+import no.entur.abt.bob.mts7.core.warmup.Mts7WarmupResult;
 import no.entur.abt.bob.mts7.reader.processor.Mts7ProcessorFactory;
 import no.entur.abt.bob.mts7.reader.processor.VerifyKeyPairMts7ProcessorFactory;
 import no.entur.abt.bob.mts7.reader.processor.VerifyTrustChainMts7ProcessorFactory;

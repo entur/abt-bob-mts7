@@ -1,4 +1,4 @@
-package no.entur.abt.bob.mts7.core;
+package no.entur.abt.bob.mts7.core.warmup;
 
 import java.util.ArrayList;
 import java.util.Collections;

@@ -17,7 +17,7 @@ import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
  * Lazy key cache.
  * <p>
  * Instances are thread safe, so a single instance should be shared by all threads. The keys are created when first used; see
- * {@linkplain no.entur.abt.bob.mts7.core.Mts7Warmup} for creating them in advance.
+ * {@linkplain no.entur.abt.bob.mts7.core.warmup.Mts7Warmup} for creating them in advance.
  * 
  */
 

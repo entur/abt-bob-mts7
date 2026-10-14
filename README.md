@@ -119,7 +119,7 @@ executor.execute(Mts7Warmup.newBuilder().withHelpers(iccPublicKeyFactory, enrich
 
 #### Warming up with `Mts7Warmup`
 
-`Mts7Warmup` is the only place for warming up: the factories have no warm-up of their own. It takes the factories of the application (or the helpers which they share, for the processor factories) and runs a genuine card (its public data only, with the public key of its issuer) through them like a card from a reader, so the objects which are warmed up are the ones which will be used. It needs no keys of its own, so it also works if the issuer of the sample card is not among your participants. It never throws; look at the `Mts7WarmupResult` to find out what did not work.
+`Mts7Warmup` (in the package `no.entur.abt.bob.mts7.core.warmup`) is the only place for warming up: the factories have no warm-up of their own. It takes the factories of the application (or the helpers which they share, for the processor factories) and runs a genuine card (its public data only, with the public key of its issuer) through them like a card from a reader, so the objects which are warmed up are the ones which will be used. It needs no keys of its own, so it also works if the issuer of the sample card is not among your participants. It never throws; look at the `Mts7WarmupResult` to find out what did not work.
 
 ```java
 Mts7Warmup warmup = Mts7Warmup.newBuilder()

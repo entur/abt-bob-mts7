@@ -71,6 +71,38 @@ public class VerifyMts7CardFactory {
 		this.thumbprintFactory = thumbprintFactory;
 	}
 
+	/**
+	 * @return the factory for the public key of the card, which can be shared with other factories
+	 */
+
+	public IccPublicKeyFactory getIccPublicKeyFactory() {
+		return iccPublicKeyFactory;
+	}
+
+	/**
+	 * @return the card enricher, which can be shared with other factories
+	 */
+
+	public Mts7CardEnricher getEnricher() {
+		return enricher;
+	}
+
+	/**
+	 * @return the CBOR mapper, which can be shared with other factories
+	 */
+
+	public CBORMapper getCborMapper() {
+		return cborMapper;
+	}
+
+	/**
+	 * @return the thumbprint factory, which can be shared with other factories
+	 */
+
+	public ThumbprintFactory getThumbprintFactory() {
+		return thumbprintFactory;
+	}
+
 	public Mts7Card create(Mts7ApduPayloads card) throws UnableToVerifyKeyPairException, UnableToVerifyTrustChainException {
 		Mts7Card result = new Mts7Card();
 		try {
