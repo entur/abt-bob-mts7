@@ -22,9 +22,12 @@ import no.entur.abt.bob.mts7.simple.api.Mts7ApduExchanges;
 public class Mts7ApduExchangesFactory {
 
 	public static final byte[] SELECT_BOB_COMMAND = new byte[] { 0x00, (byte) 0xA4, 0x04, 0x00, 0x06, (byte) 0xA0, 0x00, 0x00, 0x07, (byte) 0x81, 0x01 };
-	public static final byte[] GET_DATA_COMMAND = new byte[] { 0x00, (byte) 0xCA, 0x7F, 0x21, 0x00, 0x00, 0x00 };
-	public static final byte[] GET_NEXT_DATA_COMMAND = new byte[] { 0x00, (byte) 0xCC, 0x7F, 0x21, 0x00, 0x00, 0x00 };
-	public static final byte[] GET_RESPONSE_COMMAND = new byte[] { 0x00, (byte) 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00 };
+	// Use short APDUs (Le = 0x00, i.e. up to 256 bytes), even though the examples in MTS7 section 4.1 use an extended Le: extended length support is
+	// optional for the PICC (MTS7 section 3.1.4), and a PICC which does not support it rejects an extended Le with 6700 (wrong length). All PICCs MUST
+	// support response chaining (MTS7 section 2.1), so longer responses are returned in parts using GET RESPONSE (61xx).
+	public static final byte[] GET_DATA_COMMAND = new byte[] { 0x00, (byte) 0xCA, 0x7F, 0x21, 0x00 };
+	public static final byte[] GET_NEXT_DATA_COMMAND = new byte[] { 0x00, (byte) 0xCC, 0x7F, 0x21, 0x00 };
+	public static final byte[] GET_RESPONSE_COMMAND = new byte[] { 0x00, (byte) 0xC0, 0x00, 0x00, 0x00 };
 	public static final byte[] INTERNAL_AUTHENTICATE_COMMAND_PREFIX = new byte[] { 0x00, (byte) 0x88, 0x00, 0x00, 0x20 };
 	public static final byte[] INTERNAL_AUTHENTICATE_COMMAND_POSTFIX = new byte[] { 0x00 };
 
