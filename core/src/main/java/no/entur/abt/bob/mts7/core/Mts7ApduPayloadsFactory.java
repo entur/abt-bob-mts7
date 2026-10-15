@@ -74,6 +74,13 @@ public class Mts7ApduPayloadsFactory {
 				throw new UnexpectedCardCommandException(mts7ApduExchange.getCommand(), mts7ApduExchange.getResponse());
 			}
 
+			// a card which does not support extended length rejects it with wrong length; if so then the command is repeated with short length, so ignore it
+			if (isWrongLength(mts7ApduExchange.getResponse())) {
+				apduIndex++;
+
+				continue;
+			}
+
 			ByteArrayOutputStream bout = new ByteArrayOutputStream(2048);
 
 			// a get (next) data response is followed by get response commands for as long as the card says there is more (61xx)
@@ -174,6 +181,10 @@ public class Mts7ApduPayloadsFactory {
 
 	protected static boolean isContinue(byte[] response) {
 		return response.length > 2 && (response[response.length - 2] & 0xFF) == 0x61;
+	}
+
+	protected static boolean isWrongLength(byte[] response) {
+		return response.length == 2 && (response[0] & 0xFF) == 0x67 && response[1] == 0x00;
 	}
 
 	public static boolean isSuccess(byte[] response) {

@@ -25,6 +25,11 @@ public class Mts7ApduExchangesFactory {
 	public static final byte[] GET_DATA_COMMAND = new byte[] { 0x00, (byte) 0xCA, 0x7F, 0x21, 0x00, 0x00, 0x00 };
 	public static final byte[] GET_NEXT_DATA_COMMAND = new byte[] { 0x00, (byte) 0xCC, 0x7F, 0x21, 0x00, 0x00, 0x00 };
 	public static final byte[] GET_RESPONSE_COMMAND = new byte[] { 0x00, (byte) 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00 };
+
+	// Extended length support is optional for the PICC (MTS7 section 3.1.4), and a PICC which does not support it rejects a command with an extended Le
+	// with 6700 (wrong length). Then the command is repeated with a short Le (0x00, i.e. up to 256 bytes), relying on response chaining (MTS7 section 2.1).
+	public static final byte[] GET_NEXT_DATA_SHORT_LENGTH_COMMAND = new byte[] { 0x00, (byte) 0xCC, 0x7F, 0x21, 0x00 };
+	public static final byte[] GET_RESPONSE_SHORT_LENGTH_COMMAND = new byte[] { 0x00, (byte) 0xC0, 0x00, 0x00, 0x00 };
 	public static final byte[] INTERNAL_AUTHENTICATE_COMMAND_PREFIX = new byte[] { 0x00, (byte) 0x88, 0x00, 0x00, 0x20 };
 	public static final byte[] INTERNAL_AUTHENTICATE_COMMAND_POSTFIX = new byte[] { 0x00 };
 
@@ -79,7 +84,20 @@ public class Mts7ApduExchangesFactory {
 	}
 
 	protected void handleGetNextData(DefaultMts7Exchange card) throws IOException, UnexpectedCardResponseException {
-		byte[] getNextDataResponse = card.transceive(GET_NEXT_DATA_COMMAND); // File Control Information (FCI) Template
+		// optimize for cards which support extended length
+		byte[] getNextDataCommand = GET_NEXT_DATA_COMMAND;
+		byte[] getResponseCommand = GET_RESPONSE_COMMAND;
+
+		byte[] getNextDataResponse = card.transceive(getNextDataCommand); // File Control Information (FCI) Template
+
+		if (isWrongLength(getNextDataResponse)) {
+			// The card does not support extended length. Wrong length is a checking error, so the command was not executed (ISO 7816-4 section 5.6) and the
+			// current MTB is still the first; try again with short length.
+			getNextDataCommand = GET_NEXT_DATA_SHORT_LENGTH_COMMAND;
+			getResponseCommand = GET_RESPONSE_SHORT_LENGTH_COMMAND;
+
+			getNextDataResponse = card.transceive(getNextDataCommand);
+		}
 
 		/**
 		 * 4.1.3. GET RESPONSE If the status bytes from a GET DATA command is 61xx then there are more bytes to read than what is in the buffer. The remainder
@@ -90,7 +108,7 @@ public class Mts7ApduExchangesFactory {
 			byte[] previousResponse = getNextDataResponse;
 
 			for (int i = 0; i < MAX_GET_RESPONSE_COMMANDS; i++) {
-				byte[] getResponseResponse = card.transceive(GET_RESPONSE_COMMAND);
+				byte[] getResponseResponse = card.transceive(getResponseCommand);
 
 				if (isContinue(getResponseResponse)) {
 					previousResponse = getResponseResponse;
@@ -99,17 +117,17 @@ public class Mts7ApduExchangesFactory {
 				}
 
 				if (!isSuccess(getResponseResponse)) {
-					throw new UnexpectedCardResponseException(GET_RESPONSE_COMMAND, getResponseResponse);
+					throw new UnexpectedCardResponseException(getResponseCommand, getResponseResponse);
 				}
 				return;
 			}
 
 			// still more data
-			throw new UnexpectedCardResponseException(GET_RESPONSE_COMMAND, previousResponse);
+			throw new UnexpectedCardResponseException(getResponseCommand, previousResponse);
 		}
 
 		if (!isSuccess(getNextDataResponse)) {
-			throw new UnexpectedCardResponseException(GET_NEXT_DATA_COMMAND, getNextDataResponse);
+			throw new UnexpectedCardResponseException(getNextDataCommand, getNextDataResponse);
 		}
 
 	}
@@ -140,6 +158,10 @@ public class Mts7ApduExchangesFactory {
 
 	protected static boolean isContinue(byte[] response) {
 		return response.length > 2 && (response[response.length - 2] & 0xFF) == 0x61;
+	}
+
+	protected static boolean isWrongLength(byte[] response) {
+		return response.length == 2 && (response[0] & 0xFF) == 0x67 && response[1] == 0x00;
 	}
 
 	protected static boolean isSuccess(byte[] response) {

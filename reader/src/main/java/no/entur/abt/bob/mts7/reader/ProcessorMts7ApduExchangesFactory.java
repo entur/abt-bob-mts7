@@ -100,7 +100,20 @@ public class ProcessorMts7ApduExchangesFactory extends Mts7ApduExchangesFactory 
 	}
 
 	protected void handleGetNextData(Mts7Exchange mts7Exchange, Mts7Processor processor) throws IOException, UnexpectedCardResponseException {
-		byte[] getNextDataResponse = mts7Exchange.transceive(GET_NEXT_DATA_COMMAND); // File Control Information (FCI) Template
+		// optimize for cards which support extended length
+		byte[] getNextDataCommand = GET_NEXT_DATA_COMMAND;
+		byte[] getResponseCommand = GET_RESPONSE_COMMAND;
+
+		byte[] getNextDataResponse = mts7Exchange.transceive(getNextDataCommand); // File Control Information (FCI) Template
+
+		if (isWrongLength(getNextDataResponse)) {
+			// The card does not support extended length. Wrong length is a checking error, so the command was not executed (ISO 7816-4 section 5.6) and the
+			// current MTB is still the first; try again with short length.
+			getNextDataCommand = GET_NEXT_DATA_SHORT_LENGTH_COMMAND;
+			getResponseCommand = GET_RESPONSE_SHORT_LENGTH_COMMAND;
+
+			getNextDataResponse = mts7Exchange.transceive(getNextDataCommand);
+		}
 
 		/*
 		 * 4.1.3. GET RESPONSE If the status bytes from a GET DATA command is 61xx then there are more bytes to read than what is in the buffer. The remainder
@@ -117,10 +130,10 @@ public class ProcessorMts7ApduExchangesFactory extends Mts7ApduExchangesFactory 
 			do {
 				if (count++ >= MAX_GET_RESPONSE_COMMANDS) {
 					// still more data
-					throw new UnexpectedCardResponseException(GET_RESPONSE_COMMAND, getResponeRespone);
+					throw new UnexpectedCardResponseException(getResponseCommand, getResponeRespone);
 				}
 
-				getResponeRespone = mts7Exchange.transceive(GET_RESPONSE_COMMAND);
+				getResponeRespone = mts7Exchange.transceive(getResponseCommand);
 				if (!isContinue(getResponeRespone)) {
 					bout.write(getResponeRespone); // i.e. including status code
 					break;
@@ -134,7 +147,7 @@ public class ProcessorMts7ApduExchangesFactory extends Mts7ApduExchangesFactory 
 		}
 
 		if (!ResponseAPDU.isSuccess(getNextDataResponse)) {
-			throw new UnexpectedCardResponseException(GET_NEXT_DATA_COMMAND, getNextDataResponse);
+			throw new UnexpectedCardResponseException(getNextDataCommand, getNextDataResponse);
 		}
 
 		byte[] mtb = new byte[getNextDataResponse.length - 2];
