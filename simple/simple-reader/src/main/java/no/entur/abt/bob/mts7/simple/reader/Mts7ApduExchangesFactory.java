@@ -9,6 +9,7 @@ import no.entur.abt.bob.mts7.api.Mts7Exception;
 import no.entur.abt.bob.mts7.api.UnableToSelectApplicationException;
 import no.entur.abt.bob.mts7.api.UnexpectedCardResponseException;
 import no.entur.abt.bob.mts7.simple.api.Mts7ApduExchanges;
+import no.entur.tlv.parser.LenientTlvPullParser;
 
 /**
  * 
@@ -22,12 +23,15 @@ import no.entur.abt.bob.mts7.simple.api.Mts7ApduExchanges;
 public class Mts7ApduExchangesFactory {
 
 	public static final byte[] SELECT_BOB_COMMAND = new byte[] { 0x00, (byte) 0xA4, 0x04, 0x00, 0x06, (byte) 0xA0, 0x00, 0x00, 0x07, (byte) 0x81, 0x01 };
-	// Use short APDUs (Le = 0x00, i.e. up to 256 bytes), even though the examples in MTS7 section 4.1 use an extended Le: extended length support is
-	// optional for the PICC (MTS7 section 3.1.4), and a PICC which does not support it rejects an extended Le with 6700 (wrong length). All PICCs MUST
-	// support response chaining (MTS7 section 2.1), so longer responses are returned in parts using GET RESPONSE (61xx).
+	// Extended length support is optional for the PICC (MTS7 section 3.1.4), and a PICC which does not support it rejects an extended Le with 6700 (wrong
+	// length). So use short APDUs (Le = 0x00, i.e. up to 256 bytes) unless the PICC indicates that it can return more in a single response APDU, and
+	// otherwise rely on response chaining (MTS7 section 2.1), where longer responses are returned in parts using GET RESPONSE (61xx).
 	public static final byte[] GET_DATA_COMMAND = new byte[] { 0x00, (byte) 0xCA, 0x7F, 0x21, 0x00 };
 	public static final byte[] GET_NEXT_DATA_COMMAND = new byte[] { 0x00, (byte) 0xCC, 0x7F, 0x21, 0x00 };
 	public static final byte[] GET_RESPONSE_COMMAND = new byte[] { 0x00, (byte) 0xC0, 0x00, 0x00, 0x00 };
+	// extended Le = 0x0000, i.e. as much as the PICC can return in a single response APDU
+	public static final byte[] GET_NEXT_DATA_EXTENDED_LENGTH_COMMAND = new byte[] { 0x00, (byte) 0xCC, 0x7F, 0x21, 0x00, 0x00, 0x00 };
+	public static final byte[] GET_RESPONSE_EXTENDED_LENGTH_COMMAND = new byte[] { 0x00, (byte) 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00 };
 	public static final byte[] INTERNAL_AUTHENTICATE_COMMAND_PREFIX = new byte[] { 0x00, (byte) 0x88, 0x00, 0x00, 0x20 };
 	public static final byte[] INTERNAL_AUTHENTICATE_COMMAND_POSTFIX = new byte[] { 0x00 };
 
@@ -37,6 +41,17 @@ public class Mts7ApduExchangesFactory {
 	 */
 
 	protected static final int MAX_GET_RESPONSE_COMMANDS = 256;
+
+	protected static final int TAG_FILE_MANAGEMENT_DATA = 0x64;
+	protected static final int TAG_APPLICATION_RELATED_DATA = 0x6E;
+	protected static final int TAG_EXTENDED_LENGTH_INFORMATION = 0x7F66;
+	protected static final int TAG_MAXIMUM_APDU_LENGTH = 0x02;
+
+	/**
+	 * The maximum length of a short response APDU: 256 bytes of data followed by the status bytes.
+	 */
+
+	protected static final int MAXIMUM_SHORT_RESPONSE_APDU_LENGTH = 256 + 2;
 
 	protected final Random random;
 
@@ -51,9 +66,9 @@ public class Mts7ApduExchangesFactory {
 	public Mts7ApduExchanges createCard(Mts7Exchange mts7Exchange, byte[] selectApplicationResponse) throws IOException, Mts7Exception {
 		DefaultMts7Exchange card = new DefaultMts7Exchange(mts7Exchange);
 
-		handleSelectApplication(selectApplicationResponse, card);
+		selectApplicationResponse = handleSelectApplication(selectApplicationResponse, card);
 
-		handleGetNextData(card);
+		handleGetNextData(card, isExtendedLengthSupported(selectApplicationResponse));
 
 		handleInternalAuthenticate(card);
 
@@ -81,8 +96,11 @@ public class Mts7ApduExchangesFactory {
 		}
 	}
 
-	protected void handleGetNextData(DefaultMts7Exchange card) throws IOException, UnexpectedCardResponseException {
-		byte[] getNextDataResponse = card.transceive(GET_NEXT_DATA_COMMAND); // File Control Information (FCI) Template
+	protected void handleGetNextData(DefaultMts7Exchange card, boolean extendedLength) throws IOException, UnexpectedCardResponseException {
+		byte[] getNextDataCommand = getNextDataCommand(extendedLength);
+		byte[] getResponseCommand = getResponseCommand(extendedLength);
+
+		byte[] getNextDataResponse = card.transceive(getNextDataCommand); // File Control Information (FCI) Template
 
 		/**
 		 * 4.1.3. GET RESPONSE If the status bytes from a GET DATA command is 61xx then there are more bytes to read than what is in the buffer. The remainder
@@ -93,7 +111,7 @@ public class Mts7ApduExchangesFactory {
 			byte[] previousResponse = getNextDataResponse;
 
 			for (int i = 0; i < MAX_GET_RESPONSE_COMMANDS; i++) {
-				byte[] getResponseResponse = card.transceive(GET_RESPONSE_COMMAND);
+				byte[] getResponseResponse = card.transceive(getResponseCommand);
 
 				if (isContinue(getResponseResponse)) {
 					previousResponse = getResponseResponse;
@@ -102,22 +120,29 @@ public class Mts7ApduExchangesFactory {
 				}
 
 				if (!isSuccess(getResponseResponse)) {
-					throw new UnexpectedCardResponseException(GET_RESPONSE_COMMAND, getResponseResponse);
+					throw new UnexpectedCardResponseException(getResponseCommand, getResponseResponse);
 				}
 				return;
 			}
 
 			// still more data
-			throw new UnexpectedCardResponseException(GET_RESPONSE_COMMAND, previousResponse);
+			throw new UnexpectedCardResponseException(getResponseCommand, previousResponse);
 		}
 
 		if (!isSuccess(getNextDataResponse)) {
-			throw new UnexpectedCardResponseException(GET_NEXT_DATA_COMMAND, getNextDataResponse);
+			throw new UnexpectedCardResponseException(getNextDataCommand, getNextDataResponse);
 		}
 
 	}
 
-	protected void handleSelectApplication(byte[] selectApplicationResponse, DefaultMts7Exchange card) throws IOException, UnableToSelectApplicationException {
+	/**
+	 * Select the application, unless the response to SELECT is given.
+	 *
+	 * @return the response to SELECT
+	 */
+
+	protected byte[] handleSelectApplication(byte[] selectApplicationResponse, DefaultMts7Exchange card)
+			throws IOException, UnableToSelectApplicationException {
 		if (selectApplicationResponse == null) {
 			selectApplicationResponse = card.transceive(SELECT_BOB_COMMAND); // File Control Information (FCI) Template
 		} else {
@@ -126,6 +151,98 @@ public class Mts7ApduExchangesFactory {
 		if (!isSuccess(selectApplicationResponse)) {
 			throw new UnableToSelectApplicationException(SELECT_BOB_COMMAND, selectApplicationResponse);
 		}
+		return selectApplicationResponse;
+	}
+
+	protected static byte[] getNextDataCommand(boolean extendedLength) {
+		return extendedLength ? GET_NEXT_DATA_EXTENDED_LENGTH_COMMAND : GET_NEXT_DATA_COMMAND;
+	}
+
+	protected static byte[] getResponseCommand(boolean extendedLength) {
+		return extendedLength ? GET_RESPONSE_EXTENDED_LENGTH_COMMAND : GET_RESPONSE_COMMAND;
+	}
+
+	/**
+	 * Determine whether the PICC can return more data in a single response APDU than a short APDU allows, so that extended length APDUs save GET RESPONSE round
+	 * trips.
+	 *
+	 * @param selectApplicationResponse the response APDU (including the status bytes) to SELECT
+	 * @return true if the PICC indicates support for extended length responses
+	 */
+
+	public static boolean isExtendedLengthSupported(byte[] selectApplicationResponse) {
+		return getMaximumResponseApduLength(selectApplicationResponse) > MAXIMUM_SHORT_RESPONSE_APDU_LENGTH;
+	}
+
+	/**
+	 * Get the maximum response APDU length from the Extended Length Information (tag '7F66'), which SHALL indicate the maximum command and response APDU
+	 * lengths even if extended length is not supported (MTS7 section 3.1.4). The PICC SHOULD (but is not required to) return it in the response to SELECT,
+	 * nested within the File Management Data ('64') and the Application-related Data ('6E').
+	 *
+	 * @param selectApplicationResponse the response APDU (including the status bytes) to SELECT
+	 * @return the maximum response APDU length, or -1 if not indicated
+	 */
+
+	public static int getMaximumResponseApduLength(byte[] selectApplicationResponse) {
+		if (selectApplicationResponse == null || selectApplicationResponse.length <= 2) {
+			return -1;
+		}
+		try {
+			LenientTlvPullParser parser = new LenientTlvPullParser();
+			parser.setResponseApduPayload(selectApplicationResponse);
+
+			LenientTlvPullParser fileManagementData = parseNested(parser, TAG_FILE_MANAGEMENT_DATA);
+			if (fileManagementData == null) {
+				return -1;
+			}
+			LenientTlvPullParser applicationRelatedData = parseNested(fileManagementData, TAG_APPLICATION_RELATED_DATA);
+			if (applicationRelatedData == null) {
+				return -1;
+			}
+			LenientTlvPullParser extendedLengthInformation = parseNested(applicationRelatedData, TAG_EXTENDED_LENGTH_INFORMATION);
+			if (extendedLengthInformation == null) {
+				return -1;
+			}
+
+			// the maximum command APDU length, followed by the maximum response APDU length
+			int count = 0;
+			do {
+				int tag = extendedLengthInformation.nextTag();
+				if (tag == -1) {
+					return -1;
+				}
+				if (tag == TAG_MAXIMUM_APDU_LENGTH && ++count == 2) {
+					return readNumber(extendedLengthInformation);
+				}
+			} while (true);
+		} catch (RuntimeException e) {
+			// malformed response; fall back to short APDUs
+			return -1;
+		}
+	}
+
+	private static LenientTlvPullParser parseNested(LenientTlvPullParser parser, int tag) {
+		do {
+			int next = parser.nextTag();
+			if (next == -1) {
+				return null;
+			}
+			if (next == tag) {
+				return parser.parseTagLengthValuePayload();
+			}
+		} while (true);
+	}
+
+	private static int readNumber(LenientTlvPullParser parser) {
+		byte[] buffer = parser.getBuffer();
+		int offset = parser.getBufferPayloadOffset();
+		int length = parser.getBufferPayloadLength();
+
+		int value = 0;
+		for (int i = 0; i < length; i++) {
+			value = (value << 8) | (buffer[offset + i] & 0xFF);
+		}
+		return value;
 	}
 
 	protected byte[] createInternalAuthenticateCommand() {
