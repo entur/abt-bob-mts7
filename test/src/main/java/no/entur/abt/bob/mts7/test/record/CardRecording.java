@@ -7,6 +7,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 public class CardRecording {
 
 	private Instant timestamp;
@@ -23,6 +25,21 @@ public class CardRecording {
 		this.invocations = invocations;
 	}
 
+	/**
+	 * @return the transceive invocations, i.e. the commands and responses, in order
+	 */
+
+	@JsonIgnore
+	public List<TransceiveInvocation> getTransceiveInvocations() {
+		List<TransceiveInvocation> result = new ArrayList<>();
+		for (CardInvocation invocation : invocations) {
+			if (invocation instanceof TransceiveInvocation) {
+				result.add((TransceiveInvocation) invocation);
+			}
+		}
+		return result;
+	}
+
 	public void setRandomValue(byte[] randomValue) {
 		this.randomValue = randomValue;
 	}
@@ -37,6 +54,18 @@ public class CardRecording {
 
 	public CardPlayback toPlayback(boolean ignoreDuration) {
 		return new CardPlayback(invocations, ignoreDuration);
+	}
+
+	/**
+	 * Playback which checks that each command is exactly as recorded. This requires the same random values as when recording, like the challenge of internal
+	 * authenticate (see {@linkplain #getRandomValue()}).
+	 *
+	 * @param ignoreDuration whether to return the responses immediately
+	 * @return the playback
+	 */
+
+	public CardPlayback toExactPlayback(boolean ignoreDuration) {
+		return new CardPlayback(invocations, ignoreDuration, true);
 	}
 
 	public LocalDateTime getDateTime() {
