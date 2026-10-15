@@ -1,5 +1,12 @@
-package no.entur.abt.bob.mts7.core.pki;
+package no.entur.abt.bob.mts7.core.mtb;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
+/**
+ * Token Public Key (tpk) of the Issuer Signature Protected Header, a JWK (RFC 7517) with the public key of the card.
+ */
+
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class TokenPublicKey {
 
 	private String kty;

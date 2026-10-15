@@ -14,9 +14,7 @@ import java.security.interfaces.ECPublicKey;
 import java.security.interfaces.RSAPublicKey;
 import java.security.spec.ECGenParameterSpec;
 import java.util.Base64;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -24,6 +22,8 @@ import org.junit.jupiter.api.Test;
 import com.nimbusds.jose.crypto.impl.ECDSA;
 
 import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
+import no.entur.abt.bob.mts7.core.mtb.IssuerSignatureProtectedHeader;
+import no.entur.abt.bob.mts7.core.mtb.TokenPublicKey;
 import no.entur.abt.bob.mts7.test.util.ConcurrentRunner;
 
 public class IccPublicKeyTest {
@@ -186,16 +186,16 @@ public class IccPublicKeyTest {
 		return Base64.getUrlEncoder().withoutPadding().encodeToString(result);
 	}
 
-	private static Map<String, Object> ecHeader(ECPublicKey publicKey) {
-		Map<String, Object> tpk = new LinkedHashMap<>();
-		tpk.put("kty", "EC");
-		tpk.put("crv", "P-256");
-		tpk.put("x", base64Url(publicKey.getW().getAffineX(), 32));
-		tpk.put("y", base64Url(publicKey.getW().getAffineY(), 32));
+	private static IssuerSignatureProtectedHeader ecHeader(ECPublicKey publicKey) {
+		TokenPublicKey tpk = new TokenPublicKey();
+		tpk.setKty("EC");
+		tpk.setCrv("P-256");
+		tpk.setX(base64Url(publicKey.getW().getAffineX(), 32));
+		tpk.setY(base64Url(publicKey.getW().getAffineY(), 32));
 
-		Map<String, Object> header = new LinkedHashMap<>();
-		header.put("alg", "ES256");
-		header.put("tpk", tpk);
+		IssuerSignatureProtectedHeader header = new IssuerSignatureProtectedHeader();
+		header.setAlg("ES256");
+		header.setTpk(tpk);
 		return header;
 	}
 
@@ -212,14 +212,14 @@ public class IccPublicKeyTest {
 	public void testFactoryCreatesRsaKey() throws Exception {
 		RSAPublicKey publicKey = (RSAPublicKey) rsaKeyPair.getPublic();
 
-		Map<String, Object> tpk = new LinkedHashMap<>();
-		tpk.put("kty", "RSA");
-		tpk.put("n", base64Url(publicKey.getModulus(), (publicKey.getModulus().bitLength() + 7) / 8));
-		tpk.put("e", base64Url(publicKey.getPublicExponent(), (publicKey.getPublicExponent().bitLength() + 7) / 8));
+		TokenPublicKey tpk = new TokenPublicKey();
+		tpk.setKty("RSA");
+		tpk.setN(base64Url(publicKey.getModulus(), (publicKey.getModulus().bitLength() + 7) / 8));
+		tpk.setE(base64Url(publicKey.getPublicExponent(), (publicKey.getPublicExponent().bitLength() + 7) / 8));
 
-		Map<String, Object> header = new LinkedHashMap<>();
-		header.put("alg", "RS256");
-		header.put("tpk", tpk);
+		IssuerSignatureProtectedHeader header = new IssuerSignatureProtectedHeader();
+		header.setAlg("RS256");
+		header.setTpk(tpk);
 
 		IccPublicKey key = new IccPublicKeyFactory().create(header);
 
@@ -229,23 +229,23 @@ public class IccPublicKeyTest {
 
 	@Test
 	public void testFactoryReportsInvalidKeyWhenCreated() {
-		Map<String, Object> header = ecHeader((ECPublicKey) ecKeyPair.getPublic());
+		IssuerSignatureProtectedHeader header = ecHeader((ECPublicKey) ecKeyPair.getPublic());
 
 		// not a point on the curve
-		Map<String, Object> tpk = new LinkedHashMap<>();
-		tpk.put("kty", "EC");
-		tpk.put("crv", "P-256");
-		tpk.put("x", "AAAA");
-		tpk.put("y", "AAAA");
-		header.put("tpk", tpk);
+		TokenPublicKey tpk = new TokenPublicKey();
+		tpk.setKty("EC");
+		tpk.setCrv("P-256");
+		tpk.setX("AAAA");
+		tpk.setY("AAAA");
+		header.setTpk(tpk);
 
 		assertThrows(UnableToConstructIccKeyException.class, () -> new IccPublicKeyFactory().create(header));
 	}
 
 	@Test
 	public void testFactoryReportsAlgorithmWhichDoesNotMatchTheKey() {
-		Map<String, Object> header = ecHeader((ECPublicKey) ecKeyPair.getPublic());
-		header.put("alg", "RS256");
+		IssuerSignatureProtectedHeader header = ecHeader((ECPublicKey) ecKeyPair.getPublic());
+		header.setAlg("RS256");
 
 		assertThrows(UnableToConstructIccKeyException.class, () -> new IccPublicKeyFactory().create(header));
 	}

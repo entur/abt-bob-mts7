@@ -3,13 +3,15 @@ package no.entur.abt.bob.mts7.core;
 import java.security.NoSuchAlgorithmException;
 import java.security.Provider;
 import java.security.SignatureException;
-import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
+import no.entur.abt.bob.mts7.core.mtb.IssuerSignatureProtectedHeader;
+import no.entur.abt.bob.mts7.core.mtb.MobileTicketBundle;
+import no.entur.abt.bob.mts7.core.mtb.MobileTicketBundleParser;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyBuilder;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
@@ -33,6 +35,7 @@ public class VerifyMts7CardFactory {
 
 	protected final Mts7CardEnricher enricher;
 	protected final CBORMapper cborMapper;
+	protected final MobileTicketBundleParser mobileTicketBundleParser;
 	protected final ThumbprintFactory thumbprintFactory;
 	protected final ParticipantPublicKeys participantPublicKeys;
 
@@ -68,6 +71,7 @@ public class VerifyMts7CardFactory {
 		this.iccPublicKeyFactory = iccPublicKeyFactory;
 		this.enricher = enricher;
 		this.cborMapper = cborMapper;
+		this.mobileTicketBundleParser = new MobileTicketBundleParser(cborMapper);
 		this.thumbprintFactory = thumbprintFactory;
 	}
 
@@ -110,55 +114,19 @@ public class VerifyMts7CardFactory {
 
 			enricher.enrichSelectApplicationResponsePayload(result, card.getSelectApplicationOutput());
 
-			Map<String, Object> otherValue = cborMapper.readValue(card.getGetDataOutput(), Map.class);
-			byte[] p = (byte[]) otherValue.get("p");
+			MobileTicketBundle mobileTicketBundle = mobileTicketBundleParser.parse(card.getGetDataOutput());
 
-			byte[][] cborArray = cborMapper.readValue(p, byte[][].class);
-
-			for (int i = 0; i < cborArray.length - 1; i++) {
-				byte[] value = cborArray[i];
+			for (byte[] value : mobileTicketBundle.getSignedElements()) {
 				iccPublicKeyBuilder.withSignedData(value, 0, value.length);
 			}
 
-			byte[] signature = cborArray[cborArray.length - 1];
-			iccPublicKeyBuilder.withSignature(signature);
+			iccPublicKeyBuilder.withSignature(mobileTicketBundle.getSignature());
 
 			IccPublicKey iccPublicKey = null;
 
-			String iccKeyAlgorithm = null;
-
-			// determine which issuer key to use
-			for (int i = 0; i < cborArray.length - 1; i++) {
-				byte[] value = cborArray[i];
-
-				Map<String, Object> m = cborMapper.readValue(value, Map.class);
-
-				// To be able to distinguish between the Issuer Signature and the Device Signature (see section 2.5) header, the Issuer Signature Protected
-				// Header MUST NOT contain a did parameter.
-				if (m.containsKey("did")) {
-					continue;
-				}
-
-				Object kidObject = m.get("kid");
-				if (kidObject == null) {
-					continue;
-				}
-
-				Object iidObject = m.get("iid");
-				if (iidObject == null) {
-					continue;
-				}
-
-				String kid = (String) kidObject;
-				Long iid = Long.parseLong(iidObject.toString());
-
-				// note here what kind of algorithm we are using
-				// EC and RSA do not encode the input to the internal authenticate function
-				// in the same way.
-
-				iccKeyAlgorithm = (String) m.get("alg");
-
-				IssuerPublicKey issuerPublicKey = participantPublicKeys.getIssuerPublicKey(iid, kid);
+			IssuerSignatureProtectedHeader header = mobileTicketBundle.getIssuerSignatureProtectedHeader();
+			if (header != null) {
+				IssuerPublicKey issuerPublicKey = participantPublicKeys.getIssuerPublicKey(Long.parseLong(header.getIid()), header.getKid());
 
 				if (issuerPublicKey == null) {
 					LOGGER.info("Unable to find issuer public key");
@@ -166,15 +134,13 @@ public class VerifyMts7CardFactory {
 					iccPublicKeyBuilder.withIssuerPublicKey(issuerPublicKey);
 				}
 
-				iccPublicKeyBuilder.withIssuerSignatureProtectedHeader(m);
+				iccPublicKeyBuilder.withIssuerSignatureProtectedHeader(header);
 
 				try {
-					result.setThumbprint(thumbprintFactory.create(m));
+					result.setThumbprint(thumbprintFactory.create(header));
 				} catch (UnableToConstructThumbprintKeyException e) {
 					LOGGER.info("Unable to construct thumbprint", e);
 				}
-
-				break;
 			}
 
 			try {

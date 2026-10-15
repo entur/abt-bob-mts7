@@ -4,12 +4,13 @@ import java.io.ByteArrayOutputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.Provider;
-import java.util.Map;
 
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonGenerator;
 
 import no.entur.abt.bob.mts7.core.UnableToConstructThumbprintKeyException;
+import no.entur.abt.bob.mts7.core.mtb.IssuerSignatureProtectedHeader;
+import no.entur.abt.bob.mts7.core.mtb.TokenPublicKey;
 
 /**
  * Create thumbprint according to https://www.rfc-editor.org/rfc/rfc7638.html and BoB
@@ -48,30 +49,14 @@ public class ThumbprintFactory {
 		return MessageDigest.getInstance(digestAlgorithm, provider);
 	}
 
-	public byte[] create(Map<String, Object> fields) throws UnableToConstructThumbprintKeyException {
+	public byte[] create(IssuerSignatureProtectedHeader header) throws UnableToConstructThumbprintKeyException {
+		TokenPublicKey tpk = header.getTpk();
 
-		//
-		// The Issuer Signature Protected Header SHALL include the following parameters:
-		// • alg – Signature Algorithm (string)
-		// • iid – Issuer Identifier (string)
-		// • kid – Key identifier (string)
-		// • miv – Mobile Ticket Specification minor version number (number)
-		// o This document defines minor version 6
-		//
-		// To be able to distinguish between the Issuer Signature and the Device Signature (see section 2.5)
-		// header, the Issuer Signature Protected Header MUST NOT contain a did parameter.
-		//
-		// The Issuer Signature Protected Header MAY include the following parameters:
-		// • exp – Signature Expiry (timestamp in ISO 8601:2004 profile basic format, see 2.2 in (MTS8), string)
-		// • nbf – Signature Inception (timestamp in ISO 8601:2004 profile basic format, see 2.2 in (MTS8), string)
-		// • dsp – Device Signature Provider (string)
-		// • dsi – Device Signature Identifier (string)
-		// • tpk – Token Public Key (object)
-		//
+		String algorithm = header.getAlg();
 
-		Map<String, Object> tpk = (Map<String, Object>) fields.get("tpk");
-
-		String algorithm = (String) fields.get("alg");
+		if (tpk == null || algorithm == null) {
+			throw new UnableToConstructThumbprintKeyException("Missing token public key or algorithm");
+		}
 
 		byte[] message = null;
 
@@ -95,7 +80,7 @@ public class ThumbprintFactory {
 		return firstHalfOfDigest;
 	}
 
-	private byte[] createECMessage(Map<String, Object> tpk) throws UnableToConstructThumbprintKeyException {
+	private byte[] createECMessage(TokenPublicKey tpk) throws UnableToConstructThumbprintKeyException {
 		ByteArrayOutputStream bout = new ByteArrayOutputStream();
 
 		// RFC-7638:
@@ -111,10 +96,10 @@ public class ThumbprintFactory {
 			try {
 				generator.writeStartObject();
 
-				generator.writeStringField("crv", (String) tpk.get("crv"));
-				generator.writeStringField("kty", (String) tpk.get("kty"));
-				generator.writeStringField("x", (String) tpk.get("x"));
-				generator.writeStringField("y", (String) tpk.get("y"));
+				generator.writeStringField("crv", tpk.getCrv());
+				generator.writeStringField("kty", tpk.getKty());
+				generator.writeStringField("x", tpk.getX());
+				generator.writeStringField("y", tpk.getY());
 
 				generator.writeEndObject();
 			} finally {
@@ -126,7 +111,7 @@ public class ThumbprintFactory {
 		return bout.toByteArray();
 	}
 
-	private byte[] createRSAMessage(Map<String, Object> tpk) throws UnableToConstructThumbprintKeyException {
+	private byte[] createRSAMessage(TokenPublicKey tpk) throws UnableToConstructThumbprintKeyException {
 		ByteArrayOutputStream bout = new ByteArrayOutputStream();
 
 		// RFC-7638:
@@ -141,9 +126,9 @@ public class ThumbprintFactory {
 			try {
 				generator.writeStartObject();
 
-				generator.writeStringField("e", (String) tpk.get("e"));
-				generator.writeStringField("kty", (String) tpk.get("kty"));
-				generator.writeStringField("n", (String) tpk.get("n"));
+				generator.writeStringField("e", tpk.getE());
+				generator.writeStringField("kty", tpk.getKty());
+				generator.writeStringField("n", tpk.getN());
 
 				generator.writeEndObject();
 			} finally {

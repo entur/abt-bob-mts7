@@ -7,13 +7,19 @@ import java.security.interfaces.ECPublicKey;
 import java.security.interfaces.RSAPublicKey;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 
 import com.nimbusds.jose.KeyTypeException;
+import com.nimbusds.jose.jwk.Curve;
+import com.nimbusds.jose.jwk.ECKey;
 import com.nimbusds.jose.jwk.JWK;
 import com.nimbusds.jose.jwk.KeyConverter;
+import com.nimbusds.jose.jwk.KeyType;
+import com.nimbusds.jose.jwk.RSAKey;
+import com.nimbusds.jose.util.Base64URL;
 
 import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
+import no.entur.abt.bob.mts7.core.mtb.IssuerSignatureProtectedHeader;
+import no.entur.abt.bob.mts7.core.mtb.TokenPublicKey;
 
 /**
  * Create the public key of a card (the ICC public key). Instances are thread safe, so a single instance can be shared by all threads, and so are the keys it
@@ -40,33 +46,20 @@ public class IccPublicKeyFactory {
 		return provider;
 	}
 
-	public IccPublicKey create(Map<String, Object> fields) throws UnableToConstructIccKeyException {
+	public IccPublicKey create(IssuerSignatureProtectedHeader header) throws UnableToConstructIccKeyException {
+		TokenPublicKey tpk = header.getTpk();
 
-		//
-		// The Issuer Signature Protected Header SHALL include the following parameters:
-		// • alg – Signature Algorithm (string)
-		// • iid – Issuer Identifier (string)
-		// • kid – Key identifier (string)
-		// • miv – Mobile Ticket Specification minor version number (number)
-		// o This document defines minor version 6
-		//
-		// To be able to distinguish between the Issuer Signature and the Device Signature (see section 2.5)
-		// header, the Issuer Signature Protected Header MUST NOT contain a did parameter.
-		//
-		// The Issuer Signature Protected Header MAY include the following parameters:
-		// • exp – Signature Expiry (timestamp in ISO 8601:2004 profile basic format, see 2.2 in (MTS8), string)
-		// • nbf – Signature Inception (timestamp in ISO 8601:2004 profile basic format, see 2.2 in (MTS8), string)
-		// • dsp – Device Signature Provider (string)
-		// • dsi – Device Signature Identifier (string)
-		// • tpk – Token Public Key (object)
-		//
-
-		Map<String, Object> tpk = (Map<String, Object>) fields.get("tpk");
-
-		String algorithm = (String) fields.get("alg");
+		String algorithm = header.getAlg();
 
 		try {
-			JWK jwk = JWK.parse(tpk);
+			if (tpk == null) {
+				throw new UnableToConstructIccKeyException("Missing token public key");
+			}
+			if (algorithm == null) {
+				throw new UnableToConstructIccKeyException("Missing algorithm");
+			}
+
+			JWK jwk = toJwk(tpk);
 
 			List<Key> keys = KeyConverter.toJavaKeys(Arrays.asList(jwk));
 
@@ -89,9 +82,22 @@ public class IccPublicKeyFactory {
 			} else {
 				throw new UnableToConstructIccKeyException("Unknown algorithm " + algorithm);
 			}
+		} catch (UnableToConstructIccKeyException e) {
+			throw e;
 		} catch (Exception e) {
 			throw new UnableToConstructIccKeyException(e);
 		}
+	}
+
+	private static JWK toJwk(TokenPublicKey tpk) throws UnableToConstructIccKeyException {
+		KeyType keyType = KeyType.parse(tpk.getKty());
+
+		if (KeyType.EC.equals(keyType)) {
+			return new ECKey.Builder(Curve.parse(tpk.getCrv()), new Base64URL(tpk.getX()), new Base64URL(tpk.getY())).build();
+		} else if (KeyType.RSA.equals(keyType)) {
+			return new RSAKey.Builder(new Base64URL(tpk.getN()), new Base64URL(tpk.getE())).build();
+		}
+		throw new UnableToConstructIccKeyException("Unknown key type " + tpk.getKty());
 	}
 
 	private IccPublicKey create(PublicKey key, String algorithm) throws Exception {

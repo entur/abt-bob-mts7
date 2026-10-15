@@ -2,9 +2,9 @@ package no.entur.abt.bob.mts7.core.pki;
 
 import java.io.ByteArrayOutputStream;
 import java.security.SignatureException;
-import java.util.Map;
 
 import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
+import no.entur.abt.bob.mts7.core.mtb.IssuerSignatureProtectedHeader;
 
 public class IccPublicKeyBuilder {
 
@@ -21,7 +21,7 @@ public class IccPublicKeyBuilder {
 
 	protected byte[] signature;
 
-	protected Map<String, Object> issuerSignatureProtectedHeader;
+	protected IssuerSignatureProtectedHeader issuerSignatureProtectedHeader;
 
 	public IccPublicKeyBuilder(IccPublicKeyFactory factory) {
 		this.iccSignatureFactory = factory;
@@ -69,7 +69,7 @@ public class IccPublicKeyBuilder {
 		return this;
 	}
 
-	public IccPublicKeyBuilder withIssuerSignatureProtectedHeader(Map<String, Object> issuerSignatureProtectedHeader) {
+	public IccPublicKeyBuilder withIssuerSignatureProtectedHeader(IssuerSignatureProtectedHeader issuerSignatureProtectedHeader) {
 		this.issuerSignatureProtectedHeader = issuerSignatureProtectedHeader;
 		return this;
 	}
