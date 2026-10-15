@@ -60,8 +60,8 @@ public class ApduLengthTest extends AbstractExecutorTest {
 	public static void readRecordings() throws Exception {
 		CardRecordingFactory factory = new CardRecordingFactory();
 
-		participant10 = factory.read("/recordings/participant-10.json");
-		participant36 = factory.read("/recordings/participant-36.json");
+		participant10 = factory.read("/recordings/participant-10-0000175F96B61D.json");
+		participant36 = factory.read("/recordings/participant-36-000114C5C31EBB.json");
 	}
 
 	private static List<TransceiveInvocation> getTransceiveInvocations(CardRecording recording) {

@@ -2,6 +2,7 @@ package no.entur.abt.bob.mts7.reader;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.File;
 import java.io.IOException;
@@ -22,16 +23,18 @@ import no.entur.abt.bob.mts7.test.ExternalReaderCardFactory;
 import no.entur.abt.bob.mts7.test.record.CardInvocationRecorderCard;
 import no.entur.abt.bob.mts7.test.record.CardRecordingFactory;
 import no.entur.abt.bob.mts7.test.util.MockRandomFactory;
+import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
 
 /**
- * Record a card using a connected card reader, for playback in the tests. The name of the recording is given by the system property <code>recording</code>, for
- * example:
+ * Record a card using a connected card reader, for playback in the tests:
  *
  * <pre>
- * mvn test -pl reader -Dtest=CardRecordingIntegrationTest -Drecording=participant-10
+ * mvn test -pl reader -Dtest=CardRecordingIntegrationTest
  * </pre>
  *
- * The recording is written to <code>src/test/resources/recordings/[name].json</code>.
+ * The recording is written to <code>src/test/resources/recordings/[name].json</code>, where the name is
+ * <code>participant-[participant identifier]-[serial number]</code>, i.e. unique for each card, unless given by the system property <code>recording</code>. An
+ * existing recording is only replaced if the system property <code>overwrite</code> is <code>true</code>.
  */
 
 public class CardRecordingIntegrationTest {
@@ -40,8 +43,7 @@ public class CardRecordingIntegrationTest {
 
 	@Test
 	public void testRecordCard() throws Exception {
-		String name = System.getProperty("recording");
-		assertNotNull(name, "Name of the recording (system property 'recording') is missing");
+		boolean overwrite = Boolean.getBoolean("overwrite");
 
 		// the challenge of internal authenticate, saved with the recording so that the playback sends the same commands
 		byte[] randomValue = new byte[32];
@@ -69,8 +71,19 @@ public class CardRecordingIntegrationTest {
 			Mts7Card mts7Card = new VerifyKeyPairMts7CardFactory().create(payloads);
 			assertTrue(mts7Card.isVerifiedPrivateKeyPresent());
 
+			String name = System.getProperty("recording");
+			if (name == null) {
+				assertNotNull(mts7Card.getParticipantIdentifier(), "No participant identifier");
+				assertNotNull(mts7Card.getSerial(), "No serial number");
+
+				name = "participant-" + mts7Card.getParticipantIdentifier() + "-" + ByteArrayHexStringConverter.toHexString(mts7Card.getSerial());
+			}
+
 			RECORDINGS.mkdirs();
 			File file = new File(RECORDINGS, name + ".json");
+			if (file.exists() && !overwrite) {
+				fail("Recording " + file + " already exists; use -Doverwrite=true to replace it");
+			}
 			new CardRecordingFactory().write(randomValue, LocalDateTime.now(), card, file);
 
 			System.out
