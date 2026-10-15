@@ -1,13 +1,15 @@
 package no.entur.abt.bob.mts7.test.record;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
 
 import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
 import no.entur.abt.bob.mts7.utils.nfc.Card;
 
 /**
- * Card transceive playback with timing and a few safeguards.
+ * Card transceive playback with timing and a few safeguards. By default only the start of each command (CLA and INS) is checked, as some commands depend on
+ * random values, but the commands can also be required to be exactly as recorded.
  * 
  */
 
@@ -16,14 +18,28 @@ public class CardPlayback implements Card {
 	private final List<CardInvocation> invocations;
 	private int offset = 0;
 	private boolean ignoreDuration;
+	private final boolean exactCommands;
 
 	public CardPlayback(List<CardInvocation> invocations) {
 		this(invocations, false);
 	}
 
 	public CardPlayback(List<CardInvocation> invocations, boolean ignoreDuration) {
+		this(invocations, ignoreDuration, false);
+	}
+
+	/**
+	 * Constructor.
+	 *
+	 * @param invocations    the recorded invocations
+	 * @param ignoreDuration whether to return the responses immediately
+	 * @param exactCommands  whether each command must be exactly as recorded, rather than only start with the recorded CLA and INS
+	 */
+
+	public CardPlayback(List<CardInvocation> invocations, boolean ignoreDuration, boolean exactCommands) {
 		this.invocations = invocations;
 		this.ignoreDuration = ignoreDuration;
+		this.exactCommands = exactCommands;
 	}
 
 	@Override
@@ -54,6 +70,11 @@ public class CardPlayback implements Card {
 							+ ByteArrayHexStringConverter.toHexString(data, 0, 2));
 				}
 
+				if (exactCommands && !Arrays.equals(command, data)) {
+					throw new IllegalStateException(
+							"Expected command " + ByteArrayHexStringConverter.toHexString(command) + ", got " + ByteArrayHexStringConverter.toHexString(data));
+				}
+
 				if (transceiveInvocation.response != null) {
 					return transceiveInvocation.response;
 				}
@@ -67,6 +88,19 @@ public class CardPlayback implements Card {
 
 	public List<CardInvocation> getInvocations() {
 		return invocations;
+	}
+
+	/**
+	 * @return true if all the recorded commands have been played back
+	 */
+
+	public boolean isComplete() {
+		for (int i = offset; i < invocations.size(); i++) {
+			if (invocations.get(i) instanceof TransceiveInvocation) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 }

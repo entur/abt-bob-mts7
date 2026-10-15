@@ -24,21 +24,20 @@ import no.entur.abt.bob.mts7.reader.processor.VerifyKeyPairMts7ProcessorFactory;
 import no.entur.abt.bob.mts7.simple.api.Mts7ApduExchanges;
 import no.entur.abt.bob.mts7.simple.reader.Mts7ApduExchangesFactory;
 import no.entur.abt.bob.mts7.simple.reader.Mts7Exchange;
-import no.entur.abt.bob.mts7.test.record.CardInvocation;
+import no.entur.abt.bob.mts7.test.SimulatedCard;
 import no.entur.abt.bob.mts7.test.record.CardPlayback;
 import no.entur.abt.bob.mts7.test.record.CardRecording;
 import no.entur.abt.bob.mts7.test.record.CardRecordingFactory;
 import no.entur.abt.bob.mts7.test.record.TransceiveInvocation;
 import no.entur.abt.bob.mts7.test.util.MockRandomFactory;
-import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
 
 /**
  * The reader sends GET NEXT DATA with an extended Le, which saves GET RESPONSE round trips for cards which support extended length. Extended length support is
  * optional for the PICC (MTS7 section 3.1.4), and a PICC which does not support it rejects the command with 6700 (wrong length). Then the reader repeats the
  * command with a short Le, and reads the rest of a longer response using response chaining (MTS7 section 2.1).
  * <p>
- * The cards seen so far are replayed from recordings (see {@linkplain CardRecordingIntegrationTest}). The cases which these cards do not cover are simulated,
- * using data from the recordings.
+ * The cards seen so far are replayed from recordings (see {@linkplain CardRecordingIntegrationTest}), checking that the commands are exactly as recorded. The
+ * cases which these cards do not cover are simulated, using data from the recordings.
  */
 
 public class ApduLengthTest extends AbstractExecutorTest {
@@ -47,7 +46,6 @@ public class ApduLengthTest extends AbstractExecutorTest {
 	private static final byte[] GET_NEXT_DATA_SHORT_LENGTH = Mts7ApduExchangesFactory.GET_NEXT_DATA_SHORT_LENGTH_COMMAND;
 	private static final byte[] GET_RESPONSE_SHORT_LENGTH = Mts7ApduExchangesFactory.GET_RESPONSE_SHORT_LENGTH_COMMAND;
 
-	private static final byte[] WRONG_LENGTH = { 0x67, 0x00 };
 	private static final byte[] REFERENCED_DATA_NOT_FOUND = { 0x6A, (byte) 0x88 };
 
 	// accepts an extended Le, and returns the whole MTB (258 bytes) in a single response
@@ -64,161 +62,8 @@ public class ApduLengthTest extends AbstractExecutorTest {
 		participant36 = factory.read("/recordings/participant-36-000114C5C31EBB.json");
 	}
 
-	private static List<TransceiveInvocation> getTransceiveInvocations(CardRecording recording) {
-		List<TransceiveInvocation> result = new ArrayList<>();
-		for (CardInvocation invocation : recording.getInvocations()) {
-			if (invocation instanceof TransceiveInvocation) {
-				result.add((TransceiveInvocation) invocation);
-			}
-		}
-		return result;
-	}
-
 	private static byte[] getResponse(CardRecording recording, int index) {
-		return getTransceiveInvocations(recording).get(index).getResponse();
-	}
-
-	/**
-	 * Replay a recording. The playback only checks the start of each command, so check that the reader sends exactly the recorded commands; with the recorded
-	 * random value the challenge of internal authenticate is the same too.
-	 */
-
-	private static class RecordedCard implements Mts7Exchange {
-
-		private final CardPlayback playback;
-		private final List<TransceiveInvocation> recorded;
-
-		private int index = 0;
-
-		public RecordedCard(CardRecording recording) {
-			this.playback = recording.toPlayback(true);
-			this.recorded = getTransceiveInvocations(recording);
-		}
-
-		@Override
-		public byte[] getTagId() {
-			return null;
-		}
-
-		@Override
-		public byte[] transceive(byte[] command) throws IOException {
-			if (index >= recorded.size()) {
-				throw new IOException("Unexpected command " + ByteArrayHexStringConverter.toHexString(command) + " after the recorded commands");
-			}
-			byte[] expected = recorded.get(index).getCommand();
-			if (!Arrays.equals(expected, command)) {
-				throw new IOException(
-						"Expected command " + ByteArrayHexStringConverter.toHexString(expected) + ", got " + ByteArrayHexStringConverter.toHexString(command));
-			}
-			index++;
-
-			return playback.transceive(command);
-		}
-
-		public void assertAllCommandsSent() {
-			assertEquals(recorded.size(), index, "commands sent");
-		}
-	}
-
-	/**
-	 * A card which returns the MTB in responses of at most <code>maximumResponseLength</code> bytes (or Ne, if less), and the rest using response chaining
-	 * (61xx and GET RESPONSE). A card which does not support extended length rejects a command with an extended Le with 6700.
-	 */
-
-	private static class SimulatedCard implements Mts7Exchange {
-
-		private final byte[] selectApplicationResponse;
-		private final boolean extendedLength;
-		private final int maximumResponseLength;
-		private final byte[] mtb;
-		private final byte[] internalAuthenticateResponse;
-
-		private final List<byte[]> commands = new ArrayList<>();
-
-		private int mtbOffset = 0;
-
-		public SimulatedCard(CardRecording recording, boolean extendedLength, int maximumResponseLength, byte[] mtb) {
-			List<TransceiveInvocation> invocations = getTransceiveInvocations(recording);
-
-			this.selectApplicationResponse = invocations.get(0).getResponse();
-			this.internalAuthenticateResponse = invocations.get(invocations.size() - 1).getResponse();
-			this.extendedLength = extendedLength;
-			this.maximumResponseLength = maximumResponseLength;
-			this.mtb = mtb;
-		}
-
-		@Override
-		public byte[] getTagId() {
-			return null;
-		}
-
-		@Override
-		public byte[] transceive(byte[] command) throws IOException {
-			commands.add(command);
-
-			if (isExtendedLength(command) && !extendedLength) {
-				return WRONG_LENGTH;
-			}
-
-			int ins = command[1] & 0xFF;
-			switch (ins) {
-			case 0xA4: // select application
-				return selectApplicationResponse;
-			case 0xCC: // get next data
-				mtbOffset = 0;
-				return nextMtbPart(command);
-			case 0xC0: // get response
-				return nextMtbPart(command);
-			case 0x88: // internal authenticate
-				return internalAuthenticateResponse;
-			default:
-				throw new IOException("Unexpected command " + ByteArrayHexStringConverter.toHexString(command));
-			}
-		}
-
-		private byte[] nextMtbPart(byte[] command) {
-			int length = Math.min(Math.min(maximumResponseLength, getNe(command)), mtb.length - mtbOffset);
-			int remaining = mtb.length - mtbOffset - length;
-
-			byte[] response = new byte[length + 2];
-			System.arraycopy(mtb, mtbOffset, response, 0, length);
-			mtbOffset += length;
-
-			if (remaining > 0) {
-				response[length] = 0x61;
-				response[length + 1] = (byte) Math.min(remaining, 0xFF);
-			} else {
-				response[length] = (byte) 0x90;
-				response[length + 1] = 0x00;
-			}
-			return response;
-		}
-
-		public List<byte[]> getCommands() {
-			return commands;
-		}
-	}
-
-	/**
-	 * An extended length APDU has a zero byte where a short APDU has its Lc or Le (ISO 7816-4 section 5.1), except for a short Le of 0x00 at the end of the
-	 * command.
-	 */
-
-	private static boolean isExtendedLength(byte[] command) {
-		return command.length > 5 && command[4] == 0x00;
-	}
-
-	/**
-	 * The maximum number of bytes expected in the response (Ne) of a command without command data.
-	 */
-
-	private static int getNe(byte[] command) {
-		if (isExtendedLength(command)) {
-			int le = ((command[5] & 0xFF) << 8) | (command[6] & 0xFF);
-			return le == 0 ? 65536 : le;
-		}
-		int le = command[4] & 0xFF;
-		return le == 0 ? 256 : le;
+		return recording.getTransceiveInvocations().get(index).getResponse();
 	}
 
 	private Mts7ApduExchanges read(Mts7Exchange card, Random random) throws Exception {
@@ -260,7 +105,7 @@ public class ApduLengthTest extends AbstractExecutorTest {
 	 */
 
 	private void assertRecordingRead(CardRecording recording, byte[]... expectedCommands) throws Exception {
-		List<TransceiveInvocation> invocations = getTransceiveInvocations(recording);
+		List<TransceiveInvocation> invocations = recording.getTransceiveInvocations();
 
 		// the response to the last get next data, without the status bytes
 		byte[] getNextDataResponse = invocations.get(invocations.size() - 2).getResponse();
@@ -271,15 +116,16 @@ public class ApduLengthTest extends AbstractExecutorTest {
 			recordedCommands.add(invocation.getCommand());
 		}
 
-		RecordedCard card = new RecordedCard(recording);
-		Mts7ApduExchanges exchanges = read(card, MockRandomFactory.newInstance(recording.getRandomValue()));
-		card.assertAllCommandsSent();
+		// with the recorded random value, the challenge of internal authenticate is the same too, so all the commands must be exactly as recorded
+		CardPlayback card = recording.toExactPlayback(true);
+		Mts7ApduExchanges exchanges = read(new DefaultMts7Card(card), MockRandomFactory.newInstance(recording.getRandomValue()));
+		assertTrue(card.isComplete(), "all the recorded commands were sent");
 		assertRead(recordedCommands, exchanges, mtb, expectedCommands);
 		assertVerifiedPrivateKey(exchanges);
 
-		RecordedCard processorCard = new RecordedCard(recording);
-		Mts7ApduExchanges processorExchanges = readWithProcessor(processorCard, MockRandomFactory.newInstance(recording.getRandomValue()));
-		processorCard.assertAllCommandsSent();
+		CardPlayback processorCard = recording.toExactPlayback(true);
+		Mts7ApduExchanges processorExchanges = readWithProcessor(new DefaultMts7Card(processorCard), MockRandomFactory.newInstance(recording.getRandomValue()));
+		assertTrue(processorCard.isComplete(), "all the recorded commands were sent");
 		assertRead(recordedCommands, processorExchanges, mtb, expectedCommands);
 		assertVerifiedPrivateKey(processorExchanges);
 	}
@@ -310,11 +156,12 @@ public class ApduLengthTest extends AbstractExecutorTest {
 		assertEquals(258, mtb.length);
 
 		SimulatedCard card = new SimulatedCard(participant36, false, 256, mtb);
-		assertRead(card.getCommands(), read(card, random()), mtb, GET_NEXT_DATA_EXTENDED_LENGTH, GET_NEXT_DATA_SHORT_LENGTH, GET_RESPONSE_SHORT_LENGTH);
+		assertRead(card.getCommands(), read(new DefaultMts7Card(card), random()), mtb, GET_NEXT_DATA_EXTENDED_LENGTH, GET_NEXT_DATA_SHORT_LENGTH,
+				GET_RESPONSE_SHORT_LENGTH);
 
 		SimulatedCard processorCard = new SimulatedCard(participant36, false, 256, mtb);
-		assertRead(processorCard.getCommands(), readWithProcessor(processorCard, random()), mtb, GET_NEXT_DATA_EXTENDED_LENGTH, GET_NEXT_DATA_SHORT_LENGTH,
-				GET_RESPONSE_SHORT_LENGTH);
+		assertRead(processorCard.getCommands(), readWithProcessor(new DefaultMts7Card(processorCard), random()), mtb, GET_NEXT_DATA_EXTENDED_LENGTH,
+				GET_NEXT_DATA_SHORT_LENGTH, GET_RESPONSE_SHORT_LENGTH);
 	}
 
 	/**
@@ -331,7 +178,7 @@ public class ApduLengthTest extends AbstractExecutorTest {
 		public byte[] transceive(byte[] command) throws IOException {
 			if ((command[1] & 0xFF) == 0xCC) {
 				getCommands().add(command);
-				return WRONG_LENGTH;
+				return SimulatedCard.WRONG_LENGTH;
 			}
 			return super.transceive(command);
 		}
@@ -340,12 +187,12 @@ public class ApduLengthTest extends AbstractExecutorTest {
 	@Test
 	public void testCardWhichRejectsShortLength() throws Exception {
 		WrongLengthCard card = new WrongLengthCard();
-		UnexpectedCardResponseException e = assertThrows(UnexpectedCardResponseException.class, () -> read(card, random()));
+		UnexpectedCardResponseException e = assertThrows(UnexpectedCardResponseException.class, () -> read(new DefaultMts7Card(card), random()));
 		assertArrayEquals(GET_NEXT_DATA_SHORT_LENGTH, e.getCommand());
 		assertEquals(3, card.getCommands().size());
 
 		WrongLengthCard processorCard = new WrongLengthCard();
-		e = assertThrows(UnexpectedCardResponseException.class, () -> readWithProcessor(processorCard, random()));
+		e = assertThrows(UnexpectedCardResponseException.class, () -> readWithProcessor(new DefaultMts7Card(processorCard), random()));
 		assertArrayEquals(GET_NEXT_DATA_SHORT_LENGTH, e.getCommand());
 		assertEquals(3, processorCard.getCommands().size());
 	}
@@ -373,12 +220,12 @@ public class ApduLengthTest extends AbstractExecutorTest {
 	@Test
 	public void testCardWithoutMtb() throws Exception {
 		NoMtbCard card = new NoMtbCard();
-		UnexpectedCardResponseException e = assertThrows(UnexpectedCardResponseException.class, () -> read(card, random()));
+		UnexpectedCardResponseException e = assertThrows(UnexpectedCardResponseException.class, () -> read(new DefaultMts7Card(card), random()));
 		assertArrayEquals(GET_NEXT_DATA_EXTENDED_LENGTH, e.getCommand());
 		assertEquals(2, card.getCommands().size());
 
 		NoMtbCard processorCard = new NoMtbCard();
-		e = assertThrows(UnexpectedCardResponseException.class, () -> readWithProcessor(processorCard, random()));
+		e = assertThrows(UnexpectedCardResponseException.class, () -> readWithProcessor(new DefaultMts7Card(processorCard), random()));
 		assertArrayEquals(GET_NEXT_DATA_EXTENDED_LENGTH, e.getCommand());
 		assertEquals(2, processorCard.getCommands().size());
 	}
