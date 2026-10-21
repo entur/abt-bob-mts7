@@ -12,12 +12,12 @@ import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
 import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
 import no.entur.abt.bob.mts7.core.UnableToConstructThumbprintKeyException;
 import no.entur.abt.bob.mts7.core.UnableToVerifyKeyPairException;
-import no.entur.abt.bob.mts7.core.mtb.IssuerSignatureProtectedHeader;
-import no.entur.abt.bob.mts7.core.mtb.MobileTicketBundle;
-import no.entur.abt.bob.mts7.core.mtb.MobileTicketBundleParser;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
+import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
+import no.entur.abt.bob.mts7.mtb.MobileTicketBundle;
+import no.entur.abt.bob.mts7.mtb.MobileTicketBundleParser;
 import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
 
 /**

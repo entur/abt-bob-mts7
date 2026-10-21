@@ -1,4 +1,4 @@
-package no.entur.abt.bob.mts7.core.mtb;
+package no.entur.abt.bob.mts7.mtb;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -23,6 +23,11 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
  * • dsi – Device Signature Identifier (string)
  * • tpk – Token Public Key (object)
  * </pre>
+ * <p>
+ * All parameter values except tpk, including the minor version number (miv), are encoded as CBOR text strings, as required by section 2.3 and the schema in
+ * section 5 of MTS1. When parsing, other scalar types are converted to text, so that a miv encoded as a CBOR integer is also accepted.
+ * <p>
+ * Use {@linkplain MobileTicketBundleWriter} to encode the header, so that the encoding is stable byte for byte.
  */
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -31,7 +36,7 @@ public class IssuerSignatureProtectedHeader {
 	private String alg;
 	private String iid;
 	private String kid;
-	private int miv;
+	private String miv;
 
 	private String exp;
 	private String nbf;
@@ -67,11 +72,11 @@ public class IssuerSignatureProtectedHeader {
 		this.kid = kid;
 	}
 
-	public int getMiv() {
+	public String getMiv() {
 		return miv;
 	}
 
-	public void setMiv(int miv) {
+	public void setMiv(String miv) {
 		this.miv = miv;
 	}
 
@@ -130,6 +135,12 @@ public class IssuerSignatureProtectedHeader {
 	@JsonIgnore
 	public boolean isDeviceSignatureProtectedHeader() {
 		return did != null;
+	}
+
+	@Override
+	public String toString() {
+		return "IssuerSignatureProtectedHeader [alg=" + alg + ", iid=" + iid + ", kid=" + kid + ", miv=" + miv + ", exp=" + exp + ", nbf=" + nbf + ", dsp="
+				+ dsp + ", dsi=" + dsi + ", tpk=" + tpk + ", did=" + did + "]";
 	}
 
 }

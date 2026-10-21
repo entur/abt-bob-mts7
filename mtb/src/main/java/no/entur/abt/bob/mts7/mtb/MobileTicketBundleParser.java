@@ -1,4 +1,4 @@
-package no.entur.abt.bob.mts7.core.mtb;
+package no.entur.abt.bob.mts7.mtb;
 
 import java.io.IOException;
 

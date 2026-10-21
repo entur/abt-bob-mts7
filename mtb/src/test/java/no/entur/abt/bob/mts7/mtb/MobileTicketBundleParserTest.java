@@ -1,4 +1,4 @@
-package no.entur.abt.bob.mts7.core.mtb;
+package no.entur.abt.bob.mts7.mtb;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -15,8 +15,6 @@ import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
-import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
-
 public class MobileTicketBundleParserTest {
 
 	private static final CBORMapper CBOR = new CBORMapper();
@@ -28,7 +26,7 @@ public class MobileTicketBundleParserTest {
 
 	@Test
 	public void testParseCard() throws Exception {
-		MobileTicketBundle bundle = parser.parse(ByteArrayHexStringConverter.hexStringToByteArray(GET_NEXT_DATA));
+		MobileTicketBundle bundle = parser.parse(Hex.decode(GET_NEXT_DATA));
 
 		assertEquals("1", bundle.getMajorVersion());
 
@@ -41,7 +39,7 @@ public class MobileTicketBundleParserTest {
 		assertEquals("ES256", header.getAlg());
 		assertEquals("10", header.getIid());
 		assertEquals("10:20230213", header.getKid());
-		assertEquals(6, header.getMiv());
+		assertEquals("6", header.getMiv());
 		assertEquals("20230616T110236Z", header.getNbf());
 		assertNull(header.getDid());
 
@@ -90,6 +88,14 @@ public class MobileTicketBundleParserTest {
 		MobileTicketBundle bundle = parser.parse(encode(CBOR.writeValueAsBytes(header), new byte[] { 1 }));
 
 		assertEquals("EC", bundle.getIssuerSignatureProtectedHeader().getTpk().getKty());
+	}
+
+	@Test
+	public void testConvertsIntegerMinorVersionToText() throws Exception {
+		// header() encodes miv as a CBOR integer
+		MobileTicketBundle bundle = parser.parse(encode(CBOR.writeValueAsBytes(header()), new byte[] { 1 }));
+
+		assertEquals("6", bundle.getIssuerSignatureProtectedHeader().getMiv());
 	}
 
 	@Test

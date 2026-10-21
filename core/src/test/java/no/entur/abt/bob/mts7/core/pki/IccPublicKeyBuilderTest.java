@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test;
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 import com.nimbusds.jose.crypto.impl.ECDSA;
 
-import no.entur.abt.bob.mts7.core.mtb.IssuerSignatureProtectedHeader;
+import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
 
 public class IccPublicKeyBuilderTest {
 

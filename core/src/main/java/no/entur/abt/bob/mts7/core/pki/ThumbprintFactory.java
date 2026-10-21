@@ -9,8 +9,8 @@ import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonGenerator;
 
 import no.entur.abt.bob.mts7.core.UnableToConstructThumbprintKeyException;
-import no.entur.abt.bob.mts7.core.mtb.IssuerSignatureProtectedHeader;
-import no.entur.abt.bob.mts7.core.mtb.TokenPublicKey;
+import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
+import no.entur.abt.bob.mts7.mtb.TokenPublicKey;
 
 /**
  * Create thumbprint according to https://www.rfc-editor.org/rfc/rfc7638.html and BoB

@@ -22,8 +22,8 @@ import org.junit.jupiter.api.Test;
 import com.nimbusds.jose.crypto.impl.ECDSA;
 
 import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
-import no.entur.abt.bob.mts7.core.mtb.IssuerSignatureProtectedHeader;
-import no.entur.abt.bob.mts7.core.mtb.TokenPublicKey;
+import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
+import no.entur.abt.bob.mts7.mtb.TokenPublicKey;
 import no.entur.abt.bob.mts7.test.util.ConcurrentRunner;
 
 public class IccPublicKeyTest {

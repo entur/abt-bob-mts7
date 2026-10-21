@@ -18,8 +18,8 @@ import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.util.Base64URL;
 
 import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
-import no.entur.abt.bob.mts7.core.mtb.IssuerSignatureProtectedHeader;
-import no.entur.abt.bob.mts7.core.mtb.TokenPublicKey;
+import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
+import no.entur.abt.bob.mts7.mtb.TokenPublicKey;
 
 /**
  * Create the public key of a card (the ICC public key). Instances are thread safe, so a single instance can be shared by all threads, and so are the keys it

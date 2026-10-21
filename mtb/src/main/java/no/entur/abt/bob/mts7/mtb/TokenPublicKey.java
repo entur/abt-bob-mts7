@@ -1,4 +1,4 @@
-package no.entur.abt.bob.mts7.core.mtb;
+package no.entur.abt.bob.mts7.mtb;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
@@ -66,6 +66,11 @@ public class TokenPublicKey {
 
 	public void setY(String y) {
 		this.y = y;
+	}
+
+	@Override
+	public String toString() {
+		return "TokenPublicKey [kty=" + kty + ", n=" + n + ", e=" + e + ", crv=" + crv + ", x=" + x + ", y=" + y + "]";
 	}
 
 }

@@ -1,21 +1,23 @@
 package no.entur.abt.bob.mts7.core.pki;
 
-import java.io.ByteArrayOutputStream;
 import java.security.SignatureException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
-import no.entur.abt.bob.mts7.core.mtb.IssuerSignatureProtectedHeader;
+import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
+import no.entur.abt.bob.mts7.mtb.MobileTicketBundleWriter;
 
 public class IccPublicKeyBuilder {
 
-	protected static final int CBOR_MAJOR_TYPE_BYTE_STRING = 2;
-	protected static final int CBOR_MAJOR_TYPE_ARRAY = 4;
+	// thread safe, so shared by all builders
+	protected static final MobileTicketBundleWriter WRITER = new MobileTicketBundleWriter();
 
 	protected final IccPublicKeyFactory iccSignatureFactory;
 
-	// the elements of the signed data, each encoded as a CBOR byte string
-	protected ByteArrayOutputStream payload = new ByteArrayOutputStream();
-	protected int signedElementCount;
+	// the (CBOR encoded) elements of the signed data
+	protected final List<byte[]> signedElements = new ArrayList<>();
 
 	protected IssuerPublicKey issuerPublicKey;
 
@@ -28,7 +30,7 @@ public class IccPublicKeyBuilder {
 	}
 
 	public boolean canBuild() {
-		if (payload.size() == 0) {
+		if (signedElements.isEmpty()) {
 			return false;
 		}
 		if (issuerPublicKey == null) {
@@ -57,10 +59,7 @@ public class IccPublicKeyBuilder {
 	 */
 
 	public IccPublicKeyBuilder withSignedData(byte[] buffer, int offset, int length) {
-		writeHead(payload, CBOR_MAJOR_TYPE_BYTE_STRING, length);
-		payload.write(buffer, offset, length);
-
-		signedElementCount++;
+		signedElements.add(Arrays.copyOfRange(buffer, offset, offset + length));
 		return this;
 	}
 
@@ -80,8 +79,7 @@ public class IccPublicKeyBuilder {
 	}
 
 	public void reset() {
-		payload.reset();
-		signedElementCount = 0;
+		signedElements.clear();
 
 		signature = null;
 		issuerPublicKey = null;
@@ -113,39 +111,7 @@ public class IccPublicKeyBuilder {
 	 */
 
 	protected byte[] getSignedData() {
-		ByteArrayOutputStream out = new ByteArrayOutputStream();
-
-		writeHead(out, CBOR_MAJOR_TYPE_ARRAY, signedElementCount);
-
-		byte[] elements = payload.toByteArray();
-		out.write(elements, 0, elements.length);
-
-		return out.toByteArray();
-	}
-
-	/**
-	 * Write the initial byte(s) of a CBOR data item, using the shortest encoding of the argument (which is the length).
-	 */
-
-	protected static void writeHead(ByteArrayOutputStream out, int majorType, int length) {
-		int type = majorType << 5;
-
-		if (length < 24) {
-			out.write(type | length);
-		} else if (length <= 0xFF) {
-			out.write(type | 24);
-			out.write(length);
-		} else if (length <= 0xFFFF) {
-			out.write(type | 25);
-			out.write(length >> 8);
-			out.write(length);
-		} else {
-			out.write(type | 26);
-			out.write(length >> 24);
-			out.write(length >> 16);
-			out.write(length >> 8);
-			out.write(length);
-		}
+		return WRITER.writeSignedData(signedElements.toArray(new byte[0][]));
 	}
 
 }

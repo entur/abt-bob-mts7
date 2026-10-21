@@ -1,7 +1,7 @@
-package no.entur.abt.bob.mts7.core.mtb;
+package no.entur.abt.bob.mts7.mtb;
 
 /**
- * Mobile Ticket Bundle (MTB), as read from the card using the 'get (next) data' command.
+ * Mobile Ticket Bundle (MTB), as read from the card using the 'get (next) data' command, or as created by an issuer.
  * <p>
  * A header object that provides the required metadata for the signature SHALL be attached to the Ticket Bundle by CBOR encoding each of the objects separately,
  * joining them in a CBOR array. This CBOR array is then used as input to the signing function, adding the output of the signing function as the last element to
@@ -11,6 +11,12 @@ package no.entur.abt.bob.mts7.core.mtb;
  */
 
 public class MobileTicketBundle {
+
+	/**
+	 * The major version (v) defined by MTS1
+	 */
+
+	public static final String MAJOR_VERSION = "1";
 
 	private final String majorVersion;
 
@@ -25,6 +31,18 @@ public class MobileTicketBundle {
 		this.signedElements = signedElements;
 		this.signature = signature;
 		this.issuerSignatureProtectedHeader = issuerSignatureProtectedHeader;
+	}
+
+	/**
+	 * Create a Mobile Ticket Bundle with the current major version.
+	 *
+	 * @param signedElements                 the CBOR encoded elements which are signed by the issuer, starting with the Issuer Signature Protected Header
+	 * @param signature                      the issuer signature over the signed elements
+	 * @param issuerSignatureProtectedHeader the decoded Issuer Signature Protected Header
+	 */
+
+	public MobileTicketBundle(byte[][] signedElements, byte[] signature, IssuerSignatureProtectedHeader issuerSignatureProtectedHeader) {
+		this(MAJOR_VERSION, signedElements, signature, issuerSignatureProtectedHeader);
 	}
 
 	/**
@@ -61,6 +79,27 @@ public class MobileTicketBundle {
 
 	public boolean hasIssuerSignatureProtectedHeader() {
 		return issuerSignatureProtectedHeader != null;
+	}
+
+	@Override
+	public String toString() {
+		StringBuilder elements = new StringBuilder();
+		for (byte[] signedElement : signedElements) {
+			if (elements.length() > 0) {
+				elements.append(", ");
+			}
+			elements.append(toHexString(signedElement));
+		}
+		return "MobileTicketBundle [majorVersion=" + majorVersion + ", signedElements=[" + elements + "], signature=" + toHexString(signature)
+				+ ", issuerSignatureProtectedHeader=" + issuerSignatureProtectedHeader + "]";
+	}
+
+	private static String toHexString(byte[] data) {
+		StringBuilder sb = new StringBuilder(data.length * 2);
+		for (byte b : data) {
+			sb.append(String.format("%02X", b));
+		}
+		return sb.toString();
 	}
 
 }
