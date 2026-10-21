@@ -42,6 +42,8 @@ public class ExternalReaderCardFactory {
 		for (CardTerminal terminal : list) {
 			configureTerminal(terminal);
 		}
+		List<CardTerminal> terminals = list;
+
 		list = cardTerminals.list(CardTerminals.State.CARD_PRESENT);
 
 		if (list.isEmpty()) {
@@ -50,7 +52,14 @@ public class ExternalReaderCardFactory {
 		}
 
 		if (list.isEmpty()) {
-			throw new CardException("No card terminals available");
+			StringBuilder names = new StringBuilder();
+			for (CardTerminal terminal : terminals) {
+				if (names.length() > 0) {
+					names.append(", ");
+				}
+				names.append(terminal.getName());
+			}
+			throw new CardException("No card present in any card terminal after timeout of " + timeout + "ms (terminals: " + names + ")");
 		}
 		return list.get(0);
 	}

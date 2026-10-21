@@ -1,7 +1,6 @@
 package no.entur.abt.bob.mts7.reader.processor;
 
 import java.security.SignatureException;
-import java.util.Map;
 import java.util.concurrent.Executor;
 
 import org.slf4j.Logger;
@@ -21,6 +20,9 @@ import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.IssuerPublicKey;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
 import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
+import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
+import no.entur.abt.bob.mts7.mtb.MobileTicketBundle;
+import no.entur.abt.bob.mts7.mtb.MobileTicketBundleParser;
 
 /**
  * 
@@ -37,6 +39,7 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 	protected final ParticipantPublicKeys participantPublicKeys;
 	protected final IccPublicKeyFactory iccSignatureFactory;
 	protected final CBORMapper cborMapper;
+	protected final MobileTicketBundleParser mobileTicketBundleParser;
 	protected final Mts7CardEnricher enricher;
 
 	protected final ThumbprintFactory thumbprintFactory;
@@ -49,6 +52,7 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 		this.iccSignatureFactory = factory;
 
 		this.cborMapper = cborMapper;
+		this.mobileTicketBundleParser = new MobileTicketBundleParser(cborMapper);
 		this.enricher = enricher;
 		this.thumbprintFactory = thumbprintFactory;
 	}
@@ -67,7 +71,6 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 		return card;
 	}
 
-	@SuppressWarnings("unchecked")
 	@Override
 	protected void process() throws Exception {
 		IccPublicKeyBuilder iccPublicKeyBuilder = new IccPublicKeyBuilder(iccSignatureFactory);
@@ -85,53 +88,25 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 			return;
 		}
 
-		Map<String, Object> otherValue = cborMapper.readValue(getDataResponsePayload, Map.class);
-		byte[] p = (byte[]) otherValue.get("p");
+		MobileTicketBundle mobileTicketBundle = mobileTicketBundleParser.parse(getDataResponsePayload);
 
-		byte[][] cborArray = cborMapper.readValue(p, byte[][].class);
-
-		for (int i = 0; i < cborArray.length - 1; i++) {
-			byte[] value = cborArray[i];
+		for (byte[] value : mobileTicketBundle.getSignedElements()) {
 			iccPublicKeyBuilder.withSignedData(value, 0, value.length);
 		}
 
-		byte[] signature = cborArray[cborArray.length - 1];
-		iccPublicKeyBuilder.withSignature(signature);
+		iccPublicKeyBuilder.withSignature(mobileTicketBundle.getSignature());
 
 		IccPublicKey iccPublicKey = null;
 
-		// determine which issuer key to use
-		for (int i = 0; i < cborArray.length - 1; i++) {
-			byte[] value = cborArray[i];
-
-			Map<String, Object> m = cborMapper.readValue(value, Map.class);
-
-			// To be able to distinguish between the Issuer Signature and the Device Signature (see section 2.5) header, the Issuer Signature Protected
-			// Header MUST NOT contain a did parameter.
-			if (m.containsKey("did")) {
-				continue;
-			}
-
-			Object kidObject = m.get("kid");
-			if (kidObject == null) {
-				continue;
-			}
-
-			Object iidObject = m.get("iid");
-			if (iidObject == null) {
-				continue;
-			}
-
-			String kid = (String) kidObject;
-			Long iid = Long.parseLong(iidObject.toString());
-
+		IssuerSignatureProtectedHeader header = mobileTicketBundle.getIssuerSignatureProtectedHeader();
+		if (header != null) {
 			// note here what kind of algorithm we are using
-			// EC and RSA do not encode the input to the internal authenticate funtion
+			// EC and RSA do not encode the input to the internal authenticate function
 			// in the same way.
 
-			setIccKeyAlgorithm((String) m.get("alg"));
+			setIccKeyAlgorithm(header.getAlg());
 
-			IssuerPublicKey issuerPublicKey = participantPublicKeys.getIssuerPublicKey(iid, kid);
+			IssuerPublicKey issuerPublicKey = participantPublicKeys.getIssuerPublicKey(Long.parseLong(header.getIid()), header.getKid());
 
 			if (issuerPublicKey == null) {
 				LOGGER.info("Unable to find issuer public key");
@@ -139,16 +114,14 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 				iccPublicKeyBuilder.withIssuerPublicKey(issuerPublicKey);
 			}
 
-			iccPublicKeyBuilder.withIssuerSignatureProtectedHeader(m);
+			iccPublicKeyBuilder.withIssuerSignatureProtectedHeader(header);
 
 			try {
-				byte[] thumbprint = thumbprintFactory.create(m);
+				byte[] thumbprint = thumbprintFactory.create(header);
 				updateResult(card -> card.setThumbprint(thumbprint));
 			} catch (UnableToConstructThumbprintKeyException e) {
 				LOGGER.info("Unable to construct thumbprint", e);
 			}
-
-			break;
 		}
 
 		try {

@@ -10,6 +10,8 @@ import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
+
 public class IccSignatureFactoryTest {
 
 	private ObjectMapper objectMapper = new ObjectMapper();
@@ -24,7 +26,7 @@ public class IccSignatureFactoryTest {
 
 		List<Map<String, Object>> list = (List<Map<String, Object>>) fields.get("p");
 
-		IccPublicKey create = factory.create(list.get(0));
+		IccPublicKey create = factory.create(objectMapper.convertValue(list.get(0), IssuerSignatureProtectedHeader.class));
 		assertNotNull(create);
 	}
 }

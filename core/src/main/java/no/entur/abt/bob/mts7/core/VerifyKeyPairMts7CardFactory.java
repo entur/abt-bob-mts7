@@ -2,7 +2,6 @@ package no.entur.abt.bob.mts7.core;
 
 import java.security.NoSuchAlgorithmException;
 import java.security.Provider;
-import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,6 +11,9 @@ import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
+import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
+import no.entur.abt.bob.mts7.mtb.MobileTicketBundle;
+import no.entur.abt.bob.mts7.mtb.MobileTicketBundleParser;
 
 /**
  * 
@@ -29,6 +31,7 @@ public class VerifyKeyPairMts7CardFactory {
 
 	protected final Mts7CardEnricher enricher;
 	protected final CBORMapper cborMapper;
+	protected final MobileTicketBundleParser mobileTicketBundleParser;
 	protected final ThumbprintFactory thumbprintFactory;
 
 	public VerifyKeyPairMts7CardFactory() throws NoSuchAlgorithmException {
@@ -60,6 +63,7 @@ public class VerifyKeyPairMts7CardFactory {
 		this.iccPublicKeyFactory = iccPublicKeyFactory;
 		this.enricher = enricher;
 		this.cborMapper = cborMapper;
+		this.mobileTicketBundleParser = new MobileTicketBundleParser(cborMapper);
 		this.thumbprintFactory = thumbprintFactory;
 	}
 
@@ -68,48 +72,23 @@ public class VerifyKeyPairMts7CardFactory {
 		try {
 			enricher.enrichSelectApplicationResponsePayload(result, card.getSelectApplicationOutput());
 
-			Map<String, Object> otherValue = cborMapper.readValue(card.getGetDataOutput(), Map.class);
-			byte[] p = (byte[]) otherValue.get("p");
-
-			byte[][] cborArray = cborMapper.readValue(p, byte[][].class);
-
 			IccPublicKey iccPublicKey = null;
 
-			// determine which issuer key to use
-			for (int i = 0; i < cborArray.length - 1; i++) {
-				byte[] value = cborArray[i];
+			MobileTicketBundle mobileTicketBundle = mobileTicketBundleParser.parse(card.getGetDataOutput());
 
-				Map<String, Object> m = cborMapper.readValue(value, Map.class);
-
-				// To be able to distinguish between the Issuer Signature and the Device Signature (see section 2.5) header, the Issuer Signature Protected
-				// Header MUST NOT contain a did parameter.
-				if (m.containsKey("did")) {
-					continue;
-				}
-
-				Object kidObject = m.get("kid");
-				if (kidObject == null) {
-					continue;
-				}
-
-				Object iidObject = m.get("iid");
-				if (iidObject == null) {
-					continue;
-				}
-
+			IssuerSignatureProtectedHeader header = mobileTicketBundle.getIssuerSignatureProtectedHeader();
+			if (header != null) {
 				try {
-					iccPublicKey = iccPublicKeyFactory.create(m);
+					iccPublicKey = iccPublicKeyFactory.create(header);
 				} catch (UnableToConstructIccKeyException e) {
 					LOGGER.info("Unable to create ICC public key", e);
 				}
 
 				try {
-					result.setThumbprint(thumbprintFactory.create(m));
+					result.setThumbprint(thumbprintFactory.create(header));
 				} catch (UnableToConstructThumbprintKeyException e) {
 					LOGGER.info("Unable to construct thumbprint", e);
 				}
-
-				break;
 			}
 
 			if (iccPublicKey != null && iccPublicKey.verify(card.getInternalAuthenticateInput(), card.getInternalAuthenticateOutput())) {

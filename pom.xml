@@ -81,6 +81,11 @@
             </dependency>
             <dependency>
                 <groupId>no.entur.abt.bob.mts7</groupId>
+                <artifactId>mtb</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>no.entur.abt.bob.mts7</groupId>
                 <artifactId>reader</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -388,6 +393,7 @@
     <modules>
         <module>api</module>
         <module>utils</module>
+        <module>mtb</module>
         <module>test</module>
         <module>core</module>
         <module>simple/simple-api</module>
