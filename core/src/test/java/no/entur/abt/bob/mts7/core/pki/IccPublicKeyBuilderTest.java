@@ -25,6 +25,8 @@ import org.junit.jupiter.api.Test;
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 import com.nimbusds.jose.crypto.impl.ECDSA;
 
+import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
+
 public class IccPublicKeyBuilderTest {
 
 	private static final CBORMapper CBOR = new CBORMapper();
@@ -75,6 +77,10 @@ public class IccPublicKeyBuilderTest {
 		return header;
 	}
 
+	private static IssuerSignatureProtectedHeader issuerSignatureProtectedHeader() {
+		return CBOR.convertValue(header(), IssuerSignatureProtectedHeader.class);
+	}
+
 	private static byte[] sign(PrivateKey key, byte[] data) throws Exception {
 		Signature signature = Signature.getInstance("SHA256withECDSA");
 		signature.initSign(key);
@@ -104,7 +110,7 @@ public class IccPublicKeyBuilderTest {
 				.withSignedData(second, 0, second.length)
 				.withSignature(signature)
 				.withIssuerPublicKey(issuerKey())
-				.withIssuerSignatureProtectedHeader(header());
+				.withIssuerSignatureProtectedHeader(issuerSignatureProtectedHeader());
 	}
 
 	// signed data encoding
@@ -220,7 +226,7 @@ public class IccPublicKeyBuilderTest {
 				.withSignedData(second, 0, second.length)
 				.withSignature(signature)
 				.withIssuerPublicKey(issuerKey())
-				.withIssuerSignatureProtectedHeader(header());
+				.withIssuerSignatureProtectedHeader(issuerSignatureProtectedHeader());
 
 		assertThrows(SignatureException.class, builder::build);
 	}
@@ -230,7 +236,7 @@ public class IccPublicKeyBuilderTest {
 		IccPublicKeyBuilder builder = newBuilder();
 		assertFalse(builder.canBuild());
 
-		builder.withSignedData(new byte[] { 1 }, 0, 1).withSignature(new byte[64]).withIssuerSignatureProtectedHeader(header());
+		builder.withSignedData(new byte[] { 1 }, 0, 1).withSignature(new byte[64]).withIssuerSignatureProtectedHeader(issuerSignatureProtectedHeader());
 		// no issuer key
 		assertFalse(builder.canBuild());
 	}

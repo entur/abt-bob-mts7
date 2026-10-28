@@ -1,6 +1,5 @@
 package no.entur.abt.bob.mts7.reader.processor;
 
-import java.util.Map;
 import java.util.concurrent.Executor;
 
 import org.slf4j.Logger;
@@ -16,6 +15,9 @@ import no.entur.abt.bob.mts7.core.UnableToVerifyKeyPairException;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
+import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
+import no.entur.abt.bob.mts7.mtb.MobileTicketBundle;
+import no.entur.abt.bob.mts7.mtb.MobileTicketBundleParser;
 import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
 
 /**
@@ -32,6 +34,7 @@ public class VerifyKeyPairMts7Processor extends AbstractMts7Processor {
 
 	protected final IccPublicKeyFactory iccSignatureFactory;
 	protected final CBORMapper cborMapper;
+	protected final MobileTicketBundleParser mobileTicketBundleParser;
 	protected final Mts7CardEnricher enricher;
 
 	protected final ThumbprintFactory thumbprintFactory;
@@ -43,6 +46,7 @@ public class VerifyKeyPairMts7Processor extends AbstractMts7Processor {
 		this.iccSignatureFactory = factory;
 
 		this.cborMapper = cborMapper;
+		this.mobileTicketBundleParser = new MobileTicketBundleParser(cborMapper);
 		this.enricher = enricher;
 		this.thumbprintFactory = thumbprintFactory;
 	}
@@ -57,7 +61,6 @@ public class VerifyKeyPairMts7Processor extends AbstractMts7Processor {
 		return card;
 	}
 
-	@SuppressWarnings("unchecked")
 	@Override
 	protected void process() throws Exception {
 		if (!awaitInput(() -> selectApplicationResponsePayload != null)) {
@@ -73,55 +76,30 @@ public class VerifyKeyPairMts7Processor extends AbstractMts7Processor {
 			return;
 		}
 
-		Map<String, Object> otherValue = cborMapper.readValue(getDataResponsePayload, Map.class);
-		byte[] p = (byte[]) otherValue.get("p");
-
-		byte[][] cborArray = cborMapper.readValue(p, byte[][].class);
+		MobileTicketBundle mobileTicketBundle = mobileTicketBundleParser.parse(getDataResponsePayload);
 
 		IccPublicKey iccPublicKey = null;
 
-		// determine which issuer key to use
-		for (int i = 0; i < cborArray.length - 1; i++) {
-			byte[] value = cborArray[i];
-
-			Map<String, Object> m = cborMapper.readValue(value, Map.class);
-
-			// To be able to distinguish between the Issuer Signature and the Device Signature (see section 2.5) header, the Issuer Signature Protected
-			// Header MUST NOT contain a did parameter.
-			if (m.containsKey("did")) {
-				continue;
-			}
-
-			Object kidObject = m.get("kid");
-			if (kidObject == null) {
-				continue;
-			}
-
-			Object iidObject = m.get("iid");
-			if (iidObject == null) {
-				continue;
-			}
-
+		IssuerSignatureProtectedHeader header = mobileTicketBundle.getIssuerSignatureProtectedHeader();
+		if (header != null) {
 			// note here what kind of algorithm we are using
 			// EC and RSA do not encode the input to the internal authenticate function
 			// in the same way.
 
-			setIccKeyAlgorithm((String) m.get("alg"));
+			setIccKeyAlgorithm(header.getAlg());
 
 			try {
-				iccPublicKey = iccSignatureFactory.create(m);
+				iccPublicKey = iccSignatureFactory.create(header);
 			} catch (UnableToConstructIccKeyException e) {
 				LOGGER.info("Unable to create ICC public key", e);
 			}
 
 			try {
-				byte[] thumbprint = thumbprintFactory.create(m);
+				byte[] thumbprint = thumbprintFactory.create(header);
 				updateResult(card -> card.setThumbprint(thumbprint));
 			} catch (UnableToConstructThumbprintKeyException e) {
 				LOGGER.info("Unable to construct thumbprint", e);
 			}
-
-			break;
 		}
 
 		LOGGER.info("Processed 'get (next) data' response");
