@@ -1,0 +1,161 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 580" width="1000" height="580" role="img" aria-labelledby="title desc">
+  <title id="title">MTS7 trust chain</title>
+  <desc id="desc">Three nested boxes. The terminal starts outside, holding issuer keys from the participant metadata. Door 1 into the root certificate box is the issuer key the terminal already has. Door 2, the root's OUT door and the card certificate's IN door, is sealed by the issuer's private key and opens with the root public key; it proves the card certificate is intact. Door 3 into the live tap is sealed by the card's private key during INTERNAL AUTHENTICATE and opens with the card public key from the card certificate; it proves the chip is genuine.</desc>
+  <style>
+    svg {
+      --sheet: #F3F6F1; --ink: #1A201E; --ink-2: #56615C; --grid: #D0D8D2;
+      --room-1: #EBEFEA; --room-2: #F3F6F1; --room-3: #FFFFFF;
+      --root: #9A5C10; --card: #0E6F70; --on-seal: #FFFFFF;
+      --sans: ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    }
+    @media (prefers-color-scheme: dark) {
+      svg {
+        --sheet: #151A18; --ink: #E2E8E4; --ink-2: #98A49E; --grid: #2A3330;
+        --room-1: #1A201E; --room-2: #20272A; --room-3: #29322E;
+        --root: #E2A24A; --card: #4BC0BA; --on-seal: #101413;
+      }
+    }
+    .bg { fill: var(--sheet); }
+    .grid-dot { fill: var(--grid); }
+    .room-1 { fill: var(--room-1); } .room-2 { fill: var(--room-2); } .room-3 { fill: var(--room-3); }
+    .wall { fill: none; stroke: var(--ink); stroke-linejoin: miter; stroke-linecap: butt; }
+    .w1 { stroke-width: 6; } .w2 { stroke-width: 5; } .w3 { stroke-width: 2.5; }
+    .c-root { color: var(--root); } .c-card { color: var(--card); } .c-muted { color: var(--ink-2); }
+    text { font-family: var(--mono); }
+    .t-eyebrow { font-size: 10.5px; font-weight: 600; letter-spacing: .1em; fill: var(--ink-2); }
+    .t-eyebrow.c-root, .t-eyebrow.c-card { fill: currentColor; }
+    .t-name { font-family: var(--sans); font-size: 16px; font-weight: 700; fill: var(--ink); }
+    .t-meta { font-size: 10.5px; fill: var(--ink-2); }
+    .t-key { font-family: var(--sans); font-size: 12px; font-weight: 600; fill: var(--ink); }
+    .t-body { font-family: var(--sans); font-size: 12px; fill: var(--ink-2); }
+    .t-seal { font-size: 10px; font-weight: 600; letter-spacing: .08em; fill: var(--ink); }
+    .t-door { font-size: 10.5px; font-weight: 700; letter-spacing: .14em; fill: var(--ink); }
+    .ring { fill: none; stroke: var(--ink-2); stroke-width: 1.6; }
+    .bracket path { fill: none; stroke: var(--ink-2); stroke-width: 1.2; }
+    .bracket text { font-size: 10px; font-weight: 600; letter-spacing: .1em; fill: var(--ink-2); text-anchor: middle; }
+    .path { fill: none; stroke: var(--ink); stroke-width: 2; stroke-dasharray: 1 6; stroke-linecap: round; }
+    .arrow { fill: var(--ink); }
+    .walker-dot { fill: var(--ink); stroke: var(--sheet); stroke-width: 3; }
+    .leaf { stroke: var(--ink); stroke-width: 4; }
+    .swing { fill: none; stroke: var(--ink-2); stroke-width: 1; stroke-dasharray: 3 3; }
+    .seal { fill: currentColor; }
+    .seal-ring { fill: none; stroke: currentColor; stroke-width: 1.5; }
+    .seal-num { font-size: 11px; font-weight: 700; fill: var(--on-seal); text-anchor: middle; dominant-baseline: central; }
+  </style>
+  <defs>
+    <pattern id="dots" width="20" height="20" patternUnits="userSpaceOnUse">
+      <circle class="grid-dot" cx="10" cy="10" r="1"/>
+    </pattern>
+    <g id="key" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <circle cx="6" cy="0" r="5"/>
+      <path d="M11 0 H24 M18 0 V5 M22 0 V4"/>
+    </g>
+    <g id="safe" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+      <rect x="0" y="-8" width="24" height="16" rx="2"/>
+      <circle cx="11" cy="0" r="3.5" stroke-width="1.6"/>
+      <path d="M19 -3.5 V3.5"/>
+    </g>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1000" height="580"/>
+
+  <!-- floors -->
+  <rect class="room-1" x="140" y="30" width="850" height="500"/>
+  <rect class="room-2" x="420" y="70" width="550" height="420"/>
+  <rect class="room-3" x="700" y="110" width="250" height="340"/>
+  <rect x="0" y="0" width="1000" height="580" fill="url(#dots)"/>
+
+  <!-- walls, each with a door gap at y 250–310 -->
+  <path class="wall w1" d="M140 250 V30 H990 V530 H140 V310"/>
+  <path class="wall w2" d="M420 250 V70 H970 V490 H420 V310"/>
+  <path class="wall w3" d="M700 250 V110 H950 V450 H700 V310"/>
+
+  <!-- outside: the terminal -->
+  <text class="t-eyebrow" x="62" y="196" text-anchor="middle">TERMINAL</text>
+  <text class="t-name" x="62" y="216" text-anchor="middle">Reader</text>
+  <ellipse class="ring" cx="62" cy="348" rx="20" ry="6"/>
+  <use href="#key" class="c-muted" transform="translate(47 352) rotate(90)"/>
+  <use href="#key" class="c-root" transform="translate(62 354) rotate(90)"/>
+  <use href="#key" class="c-muted" transform="translate(77 352) rotate(90)"/>
+  <text class="t-meta" x="62" y="400" text-anchor="middle">issuer keys</text>
+  <text class="t-meta" x="62" y="414" text-anchor="middle">from metadata</text>
+
+  <!-- root certificate box -->
+  <text class="t-eyebrow c-root" x="156" y="58">ROOT CERTIFICATE</text>
+  <text class="t-name" x="156" y="80">Card issuer</text>
+  <text class="t-meta" x="156" y="99">ES256 · P-256 public key</text>
+  <text class="t-meta" x="156" y="115">found by iid + kid</text>
+  <use href="#key" class="c-root" x="156" y="362"/>
+  <text class="t-key" x="190" y="366">Root public key</text>
+  <text class="t-meta" x="190" y="381">opens door 2</text>
+  <use href="#safe" class="c-root" x="156" y="406"/>
+  <text class="t-key" x="190" y="410">Root private key</text>
+  <text class="t-meta" x="190" y="425">sealed door 2 · kept by issuer</text>
+
+  <!-- card certificate box -->
+  <text class="t-eyebrow c-card" x="436" y="98">CARD CERTIFICATE</text>
+  <text class="t-name" x="436" y="120">ID MTB on the chip</text>
+  <text class="t-meta" x="436" y="139">tag 7F21 · readable by anyone</text>
+  <text class="t-meta" x="436" y="155">tpk = card public key</text>
+  <use href="#key" class="c-card" x="436" y="362"/>
+  <text class="t-key" x="470" y="366">Card public key (tpk)</text>
+  <text class="t-meta" x="470" y="381">opens door 3</text>
+  <use href="#safe" class="c-card" x="436" y="406"/>
+  <text class="t-key" x="470" y="410">Card private key</text>
+  <text class="t-meta" x="470" y="425">in the chip · cannot be read out</text>
+
+  <!-- live tap -->
+  <text class="t-eyebrow" x="716" y="138">LIVE TAP</text>
+  <text class="t-name" x="716" y="160">Card signs this tap</text>
+  <text class="t-meta" x="716" y="179">INTERNAL AUTHENTICATE</text>
+  <text class="t-body" x="716" y="352">Terminal sends a fresh</text>
+  <text class="t-body" x="716" y="368">32-byte challenge.</text>
+  <text class="t-body" x="716" y="384">The chip signs it right now.</text>
+
+  <!-- who supplies what -->
+  <g class="bracket">
+    <path d="M146 540 V548 H414 V540"/><text x="280" y="566">ON THE TERMINAL</text>
+    <path d="M426 540 V548 H694 V540"/><text x="560" y="566">READ FROM THE CARD</text>
+    <path d="M706 540 V548 H950 V540"/><text x="828" y="566">NEW ON EVERY READ</text>
+  </g>
+
+  <!-- the terminal's path, through all three doors -->
+  <line class="path" x1="62" y1="280" x2="808" y2="280"/>
+  <polygon class="arrow" points="808,274 820,280 808,286"/>
+
+  <!-- doors, drawn open -->
+  <g class="c-root">
+    <path class="swing" d="M200 250 A60 60 0 0 1 140 310"/>
+    <line class="leaf" x1="140" y1="250" x2="200" y2="250"/>
+    <circle class="seal-ring" cx="140" cy="236" r="14"/>
+    <circle class="seal" cx="140" cy="236" r="10"/>
+    <text class="seal-num" x="140" y="236">1</text>
+    <text class="t-seal" x="160" y="240">LOADED FROM METADATA</text>
+    <text class="t-door" x="152" y="332">IN</text>
+  </g>
+  <g class="c-root">
+    <path class="swing" d="M480 250 A60 60 0 0 1 420 310"/>
+    <line class="leaf" x1="420" y1="250" x2="480" y2="250"/>
+    <circle class="seal-ring" cx="420" cy="236" r="14"/>
+    <circle class="seal" cx="420" cy="236" r="10"/>
+    <text class="seal-num" x="420" y="236">2</text>
+    <text class="t-seal" x="440" y="240">SEALED BY ISSUER · INTEGRITY</text>
+    <text class="t-door" x="408" y="332" text-anchor="end">OUT</text>
+    <text class="t-door" x="432" y="332">IN</text>
+  </g>
+  <g class="c-card">
+    <path class="swing" d="M760 250 A60 60 0 0 1 700 310"/>
+    <line class="leaf" x1="700" y1="250" x2="760" y2="250"/>
+    <circle class="seal-ring" cx="700" cy="236" r="14"/>
+    <circle class="seal" cx="700" cy="236" r="10"/>
+    <text class="seal-num" x="700" y="236">3</text>
+    <text class="t-seal" x="720" y="240">LIVE CARD SEAL · AUTHENTICITY</text>
+    <text class="t-door" x="688" y="332" text-anchor="end">OUT</text>
+    <text class="t-door" x="712" y="332">IN</text>
+  </g>
+
+  <!-- the terminal, carrying the root key -->
+  <use href="#key" class="c-root" x="68" y="264"/>
+  <circle class="walker-dot" cx="62" cy="280" r="8"/>
+</svg>
