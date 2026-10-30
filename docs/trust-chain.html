@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MTS7 trust chain</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Schibsted+Grotesk:wght@400;500;600;700;800&display=swap">
+<style>
+/* Layout: an architect's floor plan. One wide drawing sheet on a dot grid, with the walk-through and notes set beneath it like a title block. The static version of the drawing is trust-chain.svg. */
+:root {
+  --paper: #E9EDE8;
+  --sheet: #F3F6F1;
+  --ink: #1A201E;
+  --ink-2: #56615C;
+  --rule: #C4CCC6;
+  --grid: #D0D8D2;
+  --room-1: #EBEFEA;
+  --room-2: #F3F6F1;
+  --room-3: #FFFFFF;
+  --root: #9A5C10;
+  --card: #0E6F70;
+  --bad: #BC3322;
+  --on-seal: #FFFFFF;
+  --focus: #4B4FB0;
+  --display: "Schibsted Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #101413; --sheet: #151A18; --ink: #E2E8E4; --ink-2: #98A49E; --rule: #333D39; --grid: #2A3330;
+    --room-1: #1A201E; --room-2: #20272A; --room-3: #29322E;
+    --root: #E2A24A; --card: #4BC0BA; --bad: #F07460; --on-seal: #101413; --focus: #A0A5F5;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #101413; --sheet: #151A18; --ink: #E2E8E4; --ink-2: #98A49E; --rule: #333D39; --grid: #2A3330;
+  --room-1: #1A201E; --room-2: #20272A; --room-3: #29322E;
+  --root: #E2A24A; --card: #4BC0BA; --bad: #F07460; --on-seal: #101413; --focus: #A0A5F5;
+  color-scheme: dark;
+}
+
+body { margin: 0; background: var(--paper); color: var(--ink); font: 400 16px/1.55 var(--display); }
+[hidden] { display: none !important; }
+.wrap {
+  max-width: 1080px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 44px 72px;
+  display: grid; gap: 44px;
+}
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+p { margin: 0; }
+a { color: inherit; text-underline-offset: 2px; }
+.eyebrow, .kicker, .checks-h, th {
+  font: 600 12px/1.3 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2);
+}
+
+/* Header */
+header { display: grid; gap: 12px; }
+h1 { font: 800 clamp(32px, 4.6vw, 48px)/1.05 var(--display); letter-spacing: -0.025em; }
+.lede { font-size: 18px; max-width: 66ch; }
+.lede strong { font-weight: 700; }
+
+/* Drawing sheet */
+.sheet { margin: 0; background: var(--sheet); border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
+.plan-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+svg.plan { display: block; width: 100%; min-width: 860px; height: auto; }
+.sheet figcaption {
+  border-top: 1px solid var(--rule); padding: 14px 20px 16px;
+  font-size: 14px; color: var(--ink-2); display: grid; gap: 6px;
+}
+.sheet figcaption p { max-width: 86ch; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font: 500 12px var(--mono); color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.swatch { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
+.sw-root { background: var(--root); } .sw-card { background: var(--card); } .sw-bad { background: var(--bad); }
+.scroll-hint { display: none; font: 500 12px var(--mono); color: var(--ink-2); padding: 10px 20px 0; }
+
+/* SVG drawing */
+.grid-dot { fill: var(--grid); }
+.room { stroke: none; }
+.room-1 { fill: var(--room-1); } .room-2 { fill: var(--room-2); } .room-3 { fill: var(--room-3); }
+.wall { fill: none; stroke: var(--ink); stroke-linejoin: miter; stroke-linecap: butt; }
+.w1 { stroke-width: 6; } .w2 { stroke-width: 5; } .w3 { stroke-width: 2.5; }
+.c-root { color: var(--root); } .c-card { color: var(--card); } .c-muted { color: var(--ink-2); }
+.plan.edited .k-card, .plan.cloned .k-copy { color: var(--bad); }
+.k-priv { transition: opacity .3s; }
+.plan.cloned .k-priv { opacity: .28; }
+.t-eyebrow { font: 600 10.5px var(--mono); letter-spacing: .1em; fill: var(--ink-2); }
+.t-eyebrow.c-root, .t-eyebrow.c-card { fill: currentColor; }
+.t-name { font: 700 16px var(--display); fill: var(--ink); }
+.t-meta { font: 400 10.5px var(--mono); fill: var(--ink-2); }
+.t-key { font: 600 12px var(--display); fill: var(--ink); }
+.t-body { font: 400 12px var(--display); fill: var(--ink-2); }
+.t-seal { font: 600 10px var(--mono); letter-spacing: .08em; fill: var(--ink-2); transition: fill .3s; }
+.t-door { font: 700 10.5px var(--mono); letter-spacing: .14em; fill: var(--ink); }
+.t-verdict { font: 700 11px var(--mono); letter-spacing: .16em; fill: var(--ink); }
+.t-verdict.bad { fill: var(--bad); }
+.ring { fill: none; stroke: var(--ink-2); stroke-width: 1.6; }
+.bracket path { fill: none; stroke: var(--ink-2); stroke-width: 1.2; }
+.bracket text { font: 600 10px var(--mono); letter-spacing: .1em; fill: var(--ink-2); text-anchor: middle; }
+.path { stroke: var(--ink-2); stroke-width: 1.6; stroke-dasharray: 1 6; stroke-linecap: round; }
+.trail { stroke: var(--ink); stroke-width: 2.5; stroke-dasharray: 763; stroke-dashoffset: 763; transition: stroke-dashoffset .6s ease; }
+.plan.stopped .trail { stroke: var(--bad); }
+#walker { transition: transform .6s ease; }
+.walker-dot { fill: var(--ink); stroke: var(--sheet); stroke-width: 3; }
+.plan.stopped .walker-dot { fill: var(--bad); }
+#walker.carry-root .carry-key { color: var(--root); }
+#walker.carry-card .carry-key { color: var(--card); }
+
+.door .leaf { stroke: var(--ink); stroke-width: 4; transform-box: view-box; transition: transform .55s ease, stroke .3s; }
+.door.open .leaf { transform: rotate(-90deg); }
+.door .swing { fill: none; stroke: var(--ink-2); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0; transition: opacity .3s; }
+.door.open .swing { opacity: .8; }
+.seal { fill: currentColor; transition: fill .3s; }
+.seal-ring { fill: none; stroke: currentColor; stroke-width: 1.5; opacity: 0; transition: opacity .3s; }
+.door.open .seal-ring, .door.current .seal-ring { opacity: 1; }
+.door.current .seal-ring { stroke-width: 2.5; }
+.door.current .t-seal { fill: var(--ink); }
+.seal-num { font: 700 11px var(--mono); fill: var(--on-seal); text-anchor: middle; dominant-baseline: central; }
+.seal-x { display: none; }
+.seal-x line { stroke: var(--on-seal); stroke-width: 2; stroke-linecap: round; }
+.door.failed .seal { fill: var(--bad); }
+.door.failed .seal-ring { stroke: var(--bad); opacity: 1; }
+.door.failed .seal-num { display: none; }
+.door.failed .seal-x { display: inline; }
+.door.failed .leaf { stroke: var(--bad); }
+.door.failed .t-seal { fill: var(--bad); }
+
+/* Walk-through */
+.walk { display: grid; gap: 18px; }
+.walk-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; }
+h2 { font: 700 24px/1.2 var(--display); letter-spacing: -0.01em; }
+.modes { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; border: 0; margin: 0; padding: 0; min-width: 0; }
+.modes legend { float: left; font: 600 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); padding: 0; margin-right: 4px; }
+.mode-set { display: inline-flex; flex-wrap: wrap; gap: 3px; padding: 3px; border: 1px solid var(--rule); border-radius: 4px; background: var(--sheet); }
+.mode { position: relative; cursor: pointer; }
+.mode input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.mode span { display: block; font: 600 13px var(--display); padding: 7px 12px; border-radius: 2px; color: var(--ink); }
+.mode input:checked + span { background: var(--ink); color: var(--sheet); }
+.mode input[value="edited"]:checked + span, .mode input[value="cloned"]:checked + span { background: var(--bad); color: var(--on-seal); }
+.mode input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.tabs button {
+  font: 600 12px var(--mono); letter-spacing: .06em; text-transform: uppercase;
+  padding: 8px 12px; border: 1px solid var(--rule); background: var(--sheet); color: var(--ink);
+  border-radius: 3px; cursor: pointer;
+}
+.tabs button:hover:not(:disabled) { border-color: var(--ink-2); }
+.tabs button[aria-pressed="true"] { background: var(--ink); color: var(--sheet); border-color: var(--ink); }
+.tabs button:disabled { opacity: .4; cursor: not-allowed; text-decoration: line-through; }
+
+.walk-body {
+  display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 32px;
+  border-top: 2px solid var(--ink); padding-top: 22px;
+}
+.walk-text { display: grid; gap: 10px; align-content: start; min-width: 0; }
+.kicker[data-tone="root"] { color: var(--root); }
+.kicker[data-tone="card"] { color: var(--card); }
+.kicker[data-tone="bad"] { color: var(--bad); }
+h3 { font: 700 22px/1.25 var(--display); letter-spacing: -0.01em; }
+.walk-text p:last-child { max-width: 62ch; }
+.walk-checks { display: grid; gap: 10px; align-content: start; min-width: 0; }
+.walk-checks ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
+.walk-checks li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; font-size: 15px; line-height: 1.4; }
+.mark { width: 18px; height: 18px; display: inline-grid; place-items: center; margin-top: 1px; }
+.mark svg { width: 16px; height: 16px; }
+.mark.ok { color: var(--card); } .mark.bad { color: var(--bad); } .mark.info { color: var(--ink-2); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.walk-nav { display: flex; align-items: center; gap: 12px; }
+.btn {
+  font: 600 14px var(--display); padding: 10px 18px; border-radius: 3px; cursor: pointer;
+  border: 1px solid var(--ink); background: transparent; color: var(--ink);
+}
+.btn.primary { background: var(--ink); color: var(--sheet); }
+.btn:disabled { opacity: .35; cursor: not-allowed; }
+.count { font: 500 12px var(--mono); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* Notes and table */
+.notes { display: grid; gap: 18px; }
+.notes-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; }
+.notes-grid div { display: grid; gap: 6px; align-content: start; border-top: 1px solid var(--rule); padding-top: 14px; }
+.notes-grid h3 { font-size: 17px; }
+.notes-grid p { font-size: 15px; color: var(--ink-2); }
+.fields { display: grid; gap: 12px; }
+.fields > p { max-width: 72ch; color: var(--ink-2); }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 900px; }
+th { text-align: left; padding: 0 14px 8px 0; border-bottom: 1.5px solid var(--ink); font-size: 11px; }
+td { padding: 11px 14px 11px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+td code { font: 400 13px var(--mono); }
+td.box { font-weight: 700; white-space: nowrap; }
+td.box .swatch { margin-right: 8px; vertical-align: 1px; }
+.foot { font-size: 13px; color: var(--ink-2); max-width: 90ch; }
+
+@media (max-width: 900px) { .scroll-hint { display: block; } }
+@media (max-width: 760px) {
+  .walk-body { grid-template-columns: minmax(0, 1fr); gap: 22px; }
+  .notes-grid { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .lede { font-size: 17px; }
+  h3 { font-size: 20px; }
+  .modes legend { float: none; width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; }
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">abt-bob-mts7 · how a card is verified</p>
+    <h1>MTS7 trust chain</h1>
+    <p class="lede">An MTS7 chain has only two boxes. The <strong>root certificate</strong> is the card issuer's public key, which the terminal already holds. The <strong>card certificate</strong> is stored on the chip and sits inside the root's box. The issuer's seal on door 2 proves <strong>integrity</strong>. The chip's live seal on door 3 proves <strong>authenticity</strong>.</p>
+  </header>
+
+  <figure class="sheet">
+    <p class="scroll-hint">Swipe sideways to see the whole plan.</p>
+    <div class="plan-scroll">
+      <svg id="plan" class="plan" viewBox="0 0 1000 580" role="img" aria-label="Floor plan of a BoB MTS7 card chain as three nested boxes. The terminal starts outside, holding issuer keys from the Participant Metadata Set. Door 1 into the root certificate box is the key the terminal already loaded. Door 2, the root's OUT door and the card certificate's IN door, is sealed by the issuer's private key and opens with the root public key; it proves the card certificate is intact. Door 3 into the live tap is sealed by the card's private key during INTERNAL AUTHENTICATE and opens with the card public key from the card certificate; it proves the chip is genuine.">
+        <defs>
+          <pattern id="dots" width="20" height="20" patternUnits="userSpaceOnUse">
+            <circle class="grid-dot" cx="10" cy="10" r="1"/>
+          </pattern>
+          <g id="key" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="6" cy="0" r="5"/>
+            <path d="M11 0 H24 M18 0 V5 M22 0 V4"/>
+          </g>
+          <g id="safe" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">
+            <rect x="0" y="-8" width="24" height="16" rx="2"/>
+            <circle cx="11" cy="0" r="3.5" stroke-width="1.6"/>
+            <path d="M19 -3.5 V3.5"/>
+          </g>
+        </defs>
+
+        <!-- floors -->
+        <rect class="room room-1" x="140" y="30" width="850" height="500"/>
+        <rect class="room room-2" x="420" y="70" width="550" height="420"/>
+        <rect class="room room-3" x="700" y="110" width="250" height="340"/>
+        <rect x="0" y="0" width="1000" height="580" fill="url(#dots)"/>
+
+        <!-- walls, each with a door gap at y 250–310 -->
+        <path class="wall w1" d="M140 250 V30 H990 V530 H140 V310"/>
+        <path class="wall w2" d="M420 250 V70 H970 V490 H420 V310"/>
+        <path class="wall w3" d="M700 250 V110 H950 V450 H700 V310"/>
+
+        <!-- outside: the terminal -->
+        <text class="t-eyebrow" x="62" y="196" text-anchor="middle">TERMINAL</text>
+        <text class="t-name" x="62" y="216" text-anchor="middle">Validator</text>
+        <ellipse class="ring" cx="62" cy="348" rx="20" ry="6"/>
+        <use href="#key" class="c-muted" transform="translate(47 352) rotate(90)"/>
+        <use href="#key" class="c-root" transform="translate(62 354) rotate(90)"/>
+        <use href="#key" class="c-muted" transform="translate(77 352) rotate(90)"/>
+        <text class="t-meta" x="62" y="400" text-anchor="middle">issuer keys</text>
+        <text class="t-meta" x="62" y="414" text-anchor="middle">from metadata</text>
+
+        <!-- root certificate box -->
+        <text class="t-eyebrow c-root" x="156" y="58">ROOT CERTIFICATE</text>
+        <text class="t-name" x="156" y="80">Card issuer</text>
+        <text class="t-meta" x="156" y="99">ES256 · P-256 public key</text>
+        <text class="t-meta" x="156" y="115">from Participant Metadata</text>
+        <use href="#key" class="c-root" x="156" y="362"/>
+        <text class="t-key" x="190" y="366">Root public key</text>
+        <text class="t-meta" x="190" y="381">opens door 2</text>
+        <use href="#safe" class="c-root" x="156" y="406"/>
+        <text class="t-key" x="190" y="410">Root private key</text>
+        <text class="t-meta" x="190" y="425">sealed door 2 · kept by issuer</text>
+
+        <!-- card certificate box -->
+        <text class="t-eyebrow c-card k-card k-copy" x="436" y="98" data-edited="CARD CERTIFICATE · EDITED" data-cloned="CARD CERTIFICATE · COPY">CARD CERTIFICATE</text>
+        <text class="t-name" x="436" y="120">ID MTB on the chip</text>
+        <text class="t-meta" x="436" y="139">tag 7F21 · readable by anyone</text>
+        <text class="t-meta" x="436" y="155">tpk = card public key</text>
+        <use href="#key" class="c-card k-card" x="436" y="362"/>
+        <text class="t-key" x="470" y="366" data-edited="Swapped public key">Card public key (tpk)</text>
+        <text class="t-meta" x="470" y="381" data-edited="attacker's key, not the issuer's">opens door 3</text>
+        <use href="#safe" class="c-card k-card k-priv" x="436" y="406"/>
+        <text class="t-key" x="470" y="410" data-edited="Attacker private key">Card private key</text>
+        <text class="t-meta" x="470" y="425" data-edited="in the attacker's chip" data-cloned="not here: still in the real card">in the chip · cannot be read out</text>
+
+        <!-- live tap -->
+        <text class="t-eyebrow" x="716" y="138">LIVE TAP</text>
+        <text class="t-name" x="716" y="160">Card signs this tap</text>
+        <text class="t-meta" x="716" y="179">INTERNAL AUTHENTICATE</text>
+        <text class="t-body" x="716" y="352">Terminal sends a fresh</text>
+        <text class="t-body" x="716" y="368">32-byte challenge.</text>
+        <text class="t-body" x="716" y="384">The chip signs it right now.</text>
+
+        <!-- who supplies what -->
+        <g class="bracket">
+          <path d="M146 540 V548 H414 V540"/><text x="280" y="566">ON THE TERMINAL</text>
+          <path d="M426 540 V548 H694 V540"/><text x="560" y="566">READ FROM THE CARD</text>
+          <path d="M706 540 V548 H950 V540"/><text x="828" y="566">NEW ON EVERY TAP</text>
+        </g>
+
+        <!-- the terminal's path -->
+        <line class="path" x1="62" y1="280" x2="825" y2="280"/>
+        <line id="trail" class="trail" x1="62" y1="280" x2="825" y2="280"/>
+
+        <!-- doors -->
+        <g class="door c-root" data-door="1">
+          <path class="swing" d="M200 250 A60 60 0 0 1 140 310"/>
+          <line class="leaf" x1="140" y1="250" x2="140" y2="310" style="transform-origin:140px 250px"/>
+          <circle class="seal-ring" cx="140" cy="236" r="14"/>
+          <circle class="seal" cx="140" cy="236" r="10"/>
+          <text class="seal-num" x="140" y="236">1</text>
+          <g class="seal-x"><line x1="135.5" y1="231.5" x2="144.5" y2="240.5"/><line x1="144.5" y1="231.5" x2="135.5" y2="240.5"/></g>
+          <text class="t-seal" x="160" y="240">LOADED FROM METADATA</text>
+          <text class="t-door" x="152" y="332">IN</text>
+        </g>
+        <g class="door c-root" data-door="2">
+          <path class="swing" d="M480 250 A60 60 0 0 1 420 310"/>
+          <line class="leaf" x1="420" y1="250" x2="420" y2="310" style="transform-origin:420px 250px"/>
+          <circle class="seal-ring" cx="420" cy="236" r="14"/>
+          <circle class="seal" cx="420" cy="236" r="10"/>
+          <text class="seal-num" x="420" y="236">2</text>
+          <g class="seal-x"><line x1="415.5" y1="231.5" x2="424.5" y2="240.5"/><line x1="424.5" y1="231.5" x2="415.5" y2="240.5"/></g>
+          <text class="t-seal" x="440" y="240" data-edited="CLAIMS ISSUER SEAL">SEALED BY ISSUER</text>
+          <text class="t-door" x="408" y="332" text-anchor="end">OUT</text>
+          <text class="t-door" x="432" y="332">IN</text>
+        </g>
+        <g class="door c-card k-card" data-door="3">
+          <path class="swing" d="M760 250 A60 60 0 0 1 700 310"/>
+          <line class="leaf" x1="700" y1="250" x2="700" y2="310" style="transform-origin:700px 250px"/>
+          <circle class="seal-ring" cx="700" cy="236" r="14"/>
+          <circle class="seal" cx="700" cy="236" r="10"/>
+          <text class="seal-num" x="700" y="236">3</text>
+          <g class="seal-x"><line x1="695.5" y1="231.5" x2="704.5" y2="240.5"/><line x1="704.5" y1="231.5" x2="695.5" y2="240.5"/></g>
+          <text class="t-seal" x="720" y="240" data-edited="ATTACKER SEAL" data-cloned="NO KEY, NO SEAL">LIVE CARD SEAL</text>
+          <text class="t-door" x="688" y="332" text-anchor="end">OUT</text>
+          <text class="t-door" x="712" y="332">IN</text>
+        </g>
+
+        <!-- verdicts -->
+        <text id="v-ok" class="t-verdict" x="825" y="310" text-anchor="middle" hidden>TRUSTED</text>
+        <text id="v-bad" class="t-verdict bad" x="382" y="310" text-anchor="end" hidden>REJECTED</text>
+
+        <!-- the terminal, carrying the key that opens the next door -->
+        <g id="walker" class="carry-root">
+          <use href="#key" class="carry-key" x="68" y="264"/>
+          <circle class="walker-dot" cx="62" cy="280" r="8"/>
+        </g>
+      </svg>
+    </div>
+    <figcaption>
+      <p>Each box sits inside the box whose key sealed its door. A door's seal was made with the private key of the box it leads out of, and the matching public key hangs inside that same box. The dot is the terminal, carrying the key for the next door.</p>
+      <div class="legend" aria-label="Key colors">
+        <span><i class="swatch sw-root"></i>card issuer's keys (root)</span>
+        <span><i class="swatch sw-card"></i>the card's own keys</span>
+        <span><i class="swatch sw-bad"></i>attacker or failed check</span>
+      </div>
+    </figcaption>
+  </figure>
+
+  <section class="walk" aria-labelledby="walk-h">
+    <div class="walk-top">
+      <h2 id="walk-h">Walk the chain</h2>
+      <fieldset class="modes">
+        <legend>Card on the reader</legend>
+        <div class="mode-set">
+          <label class="mode"><input type="radio" name="mode" id="mode-genuine" value="genuine" checked><span>Genuine card</span></label>
+          <label class="mode"><input type="radio" name="mode" id="mode-edited" value="edited"><span>Edited certificate</span></label>
+          <label class="mode"><input type="radio" name="mode" id="mode-cloned" value="cloned"><span>Cloned card</span></label>
+        </div>
+      </fieldset>
+    </div>
+    <div class="tabs" role="group" aria-label="Steps">
+      <button type="button" id="tab-0" data-step="0" aria-pressed="true">Start</button>
+      <button type="button" id="tab-1" data-step="1" aria-pressed="false">Door 1</button>
+      <button type="button" id="tab-2" data-step="2" aria-pressed="false">Door 2</button>
+      <button type="button" id="tab-3" data-step="3" aria-pressed="false">Door 3</button>
+      <button type="button" id="tab-4" data-step="4" aria-pressed="false">Inside</button>
+    </div>
+    <div class="walk-body">
+      <div class="walk-text" aria-live="polite">
+        <p class="kicker" id="s-kicker">Start · card on the reader</p>
+        <h3 id="s-title">The terminal starts with a root key it already trusts</h3>
+        <p id="s-body">A traveller taps a card on a validator. The terminal selects the BoB application (AID A0 00 00 07 81 01) and reads the card certificate with GET DATA. MTS7 lets anyone read it, so it proves nothing yet. The root is not on the card. The terminal brought it.</p>
+      </div>
+      <div class="walk-checks">
+        <p class="checks-h" id="s-head">In hand</p>
+        <ul id="s-items"></ul>
+      </div>
+    </div>
+    <div class="walk-nav">
+      <button type="button" class="btn" id="prev">Back</button>
+      <button type="button" class="btn primary" id="next">Next</button>
+      <span class="count" id="s-count">1 / 5</span>
+    </div>
+  </section>
+
+  <section class="notes" aria-labelledby="notes-h">
+    <h2 id="notes-h">Reading the plan</h2>
+    <div class="notes-grid">
+      <div>
+        <h3>Two certificates, no intermediate</h3>
+        <p>The root certificate is the outer box and the card certificate is the inner one. The card issuer signs every card certificate directly with the root private key.</p>
+      </div>
+      <div>
+        <h3>Door 2 is integrity</h3>
+        <p>The issuer's signature covers everything in the card certificate, including the card public key. Change any of it and door 2 stays shut.</p>
+      </div>
+      <div>
+        <h3>Door 3 is authenticity</h3>
+        <p>Anyone can read and copy the card certificate. Only the real chip can sign a fresh challenge, because its private key cannot be read out.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="fields" aria-labelledby="fields-h">
+    <h2 id="fields-h">What's in each box</h2>
+    <p>In the BoB specifications, the root is the issuer's public key, published as a JWK in the Participant Metadata Set (MTS4). The card certificate is an ID MTB (MTS1), which MTS7 stores in the Cardholder certificates data object.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Box</th><th>Where the terminal gets it</th><th>What's in it</th><th>Sealed with</th><th>In this library</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="box"><i class="swatch sw-root"></i>Root certificate</td>
+            <td>Participant Metadata Set, fetched ahead of time and signed by the Administrative Body</td>
+            <td>Issuer public key as JWK in <code>mtbPublicKeys</code>: <code>kid</code>, <code>kty</code>, <code>crv</code>, optional <code>bob_sc</code> (<code>id</code> limits it to ID MTBs)</td>
+            <td>The Administrative Body's signature on the metadata set</td>
+            <td><code>IssuerPublicKey</code>, looked up in <code>ParticipantPublicKeys</code> by <code>iid</code> and <code>kid</code></td>
+          </tr>
+          <tr>
+            <td class="box"><i class="swatch sw-card"></i>Card certificate</td>
+            <td>The card: <code>GET NEXT DATA 7F21</code></td>
+            <td>ID MTB with no ticket bundle. Issuer Signature Protected Header: <code>alg</code>, <code>iid</code>, <code>kid</code>, <code>miv</code>, <code>tpk</code> (card public key), optional <code>exp</code> and <code>nbf</code></td>
+            <td>Root private key, ES256 (door 2)</td>
+            <td><code>MobileTicketBundle</code>; <code>IccPublicKeyBuilder</code> checks the issuer signature, then turns <code>tpk</code> into the <code>IccPublicKey</code></td>
+          </tr>
+          <tr>
+            <td class="box"><i class="swatch sw-card"></i>Live tap</td>
+            <td>The card: <code>INTERNAL AUTHENTICATE</code> response</td>
+            <td>ECDSA signature (r‖s) over the 32-byte challenge</td>
+            <td>Card private key (door 3)</td>
+            <td><code>IccPublicKey.verify(..)</code>; the challenge is random bytes from <code>Mts7ApduExchangesFactory</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="foot">Based on Samtrafiken's BoB specifications <a href="https://bitbucket.org/samtrafiken/bob-mts-7-travel-card-application">MTS7 v1.1.0</a>, <a href="https://bitbucket.org/samtrafiken/bob-mts-1-mobile-ticket-format">MTS1</a> and <a href="https://bitbucket.org/samtrafiken/bob-mts-4-coordination-and-key-management">MTS4 v1.3.1</a>. ECDSA P-256 is shown. MTS7 also allows RSA 2048 on the card, and MTS1 keeps RS256 as the issuer's fallback algorithm. See <a href="https://github.com/entur/abt-bob-mts7/blob/main/docs/TRUST_CHAIN.md">TRUST_CHAIN.md</a> for which factory checks which door.</p>
+  </section>
+</div>
+
+<script>
+(() => {
+  const STEPS = [
+    { tone: '', kicker: 'Start · card on the reader', title: 'The terminal starts with a root key it already trusts',
+      body: 'A traveller taps a card on a validator. The terminal selects the BoB application (AID A0 00 00 07 81 01) and reads the card certificate with GET DATA. MTS7 lets anyone read it, so it proves nothing yet. The root is not on the card. The terminal brought it.',
+      head: 'In hand', items: [['info', 'Trust list: issuer keys from the Participant Metadata Set'], ['info', 'From the card: one card certificate (ID MTB, tag 7F21)']] },
+    { tone: 'root', kicker: 'Door 1 · into the root', title: 'The root is trusted because the terminal already has it',
+      body: 'The terminal fetched the card issuer’s public keys ahead of time, from the Participant Metadata Set that the Administrative Body signs and publishes. The root never comes from the card, so a card cannot bring its own root.',
+      head: 'Checked at this door', items: [['ok', 'Issuer key is in ParticipantPublicKeys, built from the participant metadata'], ['info', 'Picked up inside: Root public key']] },
+    { tone: 'root', kicker: 'Door 2 · root OUT, card certificate IN', title: 'The root key proves the card certificate is intact',
+      body: 'The issuer sealed the card certificate with the root private key when the card was personalised. The header names the issuer (iid) and the key (kid), so the terminal picks the matching root public key and checks the ES256 signature. If it verifies, every byte is as the issuer wrote it, including the card public key inside.',
+      head: 'Checked at this door', items: [['ok', 'Issuer signature verifies with Root public key'], ['ok', 'Only then is tpk turned into the card public key (IccPublicKeyBuilder)'], ['info', 'Not checked by this library: bob_sc, exp, nbf, revocation']] },
+    { tone: 'card', kicker: 'Door 3 · card certificate OUT, live tap IN', title: 'The chip proves it holds the card private key',
+      body: 'The terminal sends a fresh 32-byte challenge in INTERNAL AUTHENTICATE. This library uses random bytes; MTS7 suggests a SHA-256 hash of the time, the terminal ID and the card’s signature counter. The chip signs the challenge with the card private key. The terminal verifies the signature with the card public key from the card certificate.',
+      head: 'Checked at this door', items: [['ok', 'Signature verifies with Card public key (tpk)'], ['ok', 'The challenge is new for every read, so an old answer cannot be replayed'], ['info', 'Signature counter goes up by one on every tap']] },
+    { tone: 'card', kicker: 'Inside · chain complete', title: 'Intact certificate, genuine chip',
+      body: 'The root key proved the card certificate is unaltered and came from the issuer. The card public key proved this chip holds the matching private key. The Mts7Card reports both, together with the thumbprint which identifies the card.',
+      head: 'Result', items: [['ok', 'Integrity: isVerifiedTrustChain()'], ['ok', 'Authenticity: isVerifiedPrivateKeyPresent()'], ['info', 'Next: look up travel rights for the thumbprint (token ID)']] }
+  ];
+  const VARIANTS = {
+    edited: {
+      0: { title: 'Someone has edited the card certificate',
+        body: 'Here the attacker swapped the card public key for one of their own, so that a chip they control could answer door 3. They kept the issuer signature from the original card, because only the issuer can make a new one.',
+        items: [['info', 'Trust list: issuer keys from the Participant Metadata Set'], ['bad', 'From the card: an edited card certificate']] },
+      2: { tone: 'bad', title: 'One changed byte breaks the issuer’s seal',
+        body: 'The issuer signature covers the whole signed header, including the card public key. That key was changed, so the signature no longer matches the content and the root public key does not verify it. MTS7 says the terminal must reject the card before it parses anything else.',
+        items: [['bad', 'Issuer signature does not verify with Root public key'], ['ok', 'Header still names the real issuer and key ID'], ['info', 'VerifyKeyPairMts7CardFactory skips this door, so it would accept this card']] }
+    },
+    cloned: {
+      0: { title: 'Someone has copied a real card',
+        body: 'The card certificate can be read by anyone, so it is easy to copy byte for byte onto another chip or a phone that emulates a card. The private key cannot be copied. MTS7 requires it to be stored on the chip in a way that prevents extraction.',
+        items: [['info', 'Trust list: issuer keys from the Participant Metadata Set'], ['bad', 'From the card: an exact copy of a real card certificate']] },
+      2: { body: 'The copy carries the issuer’s real signature, untouched, so this door opens. Integrity holds because nothing was changed. This door cannot tell whether you are holding the original card.' },
+      3: { tone: 'bad', title: 'The copy cannot sign',
+        body: 'The clone has the card certificate but not the card private key, which never left the original chip. It cannot produce a signature that the card public key verifies. Replaying a signature captured from the real card fails too, because the challenge is new for every read.',
+        items: [['bad', 'No signature that verifies with Card public key'], ['bad', 'An old signature does not match this read’s challenge'], ['info', 'MTS7: the terminal must treat the card as invalid']] }
+    }
+  };
+  const MODES = { genuine: { failAt: null, stopX: 0 }, edited: { failAt: 2, stopX: 396 }, cloned: { failAt: 3, stopX: 676 } };
+  const POS = [62, 280, 560, 825, 825];
+  const CARRY = ['root', 'root', 'card', 'card', 'card'];
+  const START = 62, LEN = 763;
+  const ICON = {
+    ok: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    bad: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+    info: '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.5" fill="currentColor"/></svg>'
+  };
+  const SR = { ok: 'Passed: ', bad: 'Failed: ', info: '' };
+
+  const $ = id => document.getElementById(id);
+  const plan = $('plan');
+  const doors = Array.from(plan.querySelectorAll('.door'));
+  const alts = Array.from(plan.querySelectorAll('[data-edited], [data-cloned]'));
+  alts.forEach(el => { el.dataset.orig = el.textContent; });
+  const tabs = Array.from(document.querySelectorAll('.tabs button'));
+  const radios = Array.from(document.querySelectorAll('input[name="mode"]'));
+  const walker = $('walker'), trail = $('trail'), vBad = $('v-bad');
+
+  let step = 0;
+  let mode = 'genuine';
+  const maxStep = () => MODES[mode].failAt ?? STEPS.length - 1;
+
+  function render() {
+    const { failAt, stopX } = MODES[mode];
+    const s = Object.assign({}, STEPS[step], (VARIANTS[mode] || {})[step]);
+    const stopped = failAt !== null && step >= failAt;
+
+    plan.classList.toggle('edited', mode === 'edited');
+    plan.classList.toggle('cloned', mode === 'cloned');
+    plan.classList.toggle('stopped', stopped);
+    doors.forEach(d => {
+      const n = Number(d.dataset.door);
+      d.classList.toggle('open', step >= n && (failAt === null || n < failAt));
+      d.classList.toggle('failed', stopped && n === failAt);
+      d.classList.toggle('current', step === n);
+    });
+    alts.forEach(el => { el.textContent = el.dataset[mode] || el.dataset.orig; });
+
+    const x = stopped ? stopX : POS[step];
+    walker.style.transform = 'translateX(' + (x - START) + 'px)';
+    // a failed door gives no new key: keep the one from the box before it
+    walker.setAttribute('class', 'carry-' + CARRY[stopped ? failAt - 1 : step]);
+    trail.style.strokeDashoffset = String(LEN - (x - START));
+    $('v-ok').toggleAttribute('hidden', failAt !== null || step < 3);
+    vBad.toggleAttribute('hidden', !stopped);
+    if (stopped) vBad.setAttribute('x', String(stopX - 14));
+
+    const kicker = $('s-kicker');
+    kicker.textContent = s.kicker;
+    kicker.dataset.tone = s.tone;
+    $('s-title').textContent = s.title;
+    $('s-body').textContent = s.body;
+    $('s-head').textContent = s.head;
+    $('s-items').replaceChildren(...s.items.map(([kind, text]) => {
+      const li = document.createElement('li');
+      const mark = document.createElement('span');
+      mark.className = 'mark ' + kind;
+      mark.innerHTML = ICON[kind];
+      const label = document.createElement('span');
+      if (SR[kind]) {
+        const sr = document.createElement('span');
+        sr.className = 'sr';
+        sr.textContent = SR[kind];
+        label.append(sr);
+      }
+      label.append(text);
+      li.append(mark, label);
+      return li;
+    }));
+
+    tabs.forEach((b, i) => {
+      b.setAttribute('aria-pressed', String(i === step));
+      b.disabled = i > maxStep();
+    });
+    $('prev').disabled = step === 0;
+    $('next').disabled = step >= maxStep();
+    $('s-count').textContent = (step + 1) + ' / ' + (maxStep() + 1);
+  }
+
+  tabs.forEach(b => b.addEventListener('click', () => { step = Number(b.dataset.step); render(); }));
+  $('prev').addEventListener('click', () => { if (step > 0) { step--; render(); } });
+  $('next').addEventListener('click', () => { if (step < maxStep()) { step++; render(); } });
+  radios.forEach(r => r.addEventListener('change', () => {
+    if (!r.checked) return;
+    mode = r.value;
+    step = Math.min(step, maxStep());
+    render();
+  }));
+
+  const checked = radios.find(r => r.checked);
+  if (checked) mode = checked.value;
+  render();
+})();
+</script>
+</body>
+</html>

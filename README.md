@@ -213,6 +213,10 @@ Mts7Card card = cardFactory.create(payloads);
 ```
 </details>
 
+## Trust chain
+
+A card is verified with a chain of two certificates, the public key of the issuer (from the participant metadata) and the card certificate on the chip, followed by a signature made by the card. See [Trust chain](docs/TRUST_CHAIN.md) for an illustration and for what each factory checks.
+
 ## Threads and performance
 
 The factories are thread safe and are meant to be created **once** and shared by all threads and card readers. The first card is much slower than the next ones, unless the application warms up first. See [Performance](docs/PERFORMANCE.md) for how to warm up, with measurements from a phone.
