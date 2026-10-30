@@ -531,7 +531,8 @@ td.box .swatch { margin-right: 8px; vertical-align: 1px; }
 
     const x = stopped ? stopX : POS[step];
     walker.style.transform = 'translateX(' + (x - START) + 'px)';
-    walker.setAttribute('class', 'carry-' + CARRY[step]);
+    // a failed door gives no new key: keep the one from the box before it
+    walker.setAttribute('class', 'carry-' + CARRY[stopped ? failAt - 1 : step]);
     trail.style.strokeDashoffset = String(LEN - (x - START));
     $('v-ok').toggleAttribute('hidden', failAt !== null || step < 3);
     vBad.toggleAttribute('hidden', !stopped);
