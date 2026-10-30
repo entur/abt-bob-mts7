@@ -4,7 +4,7 @@ How a card is verified, drawn as boxes in boxes. The chain has only two certific
 
 ![The MTS7 trust chain: the root certificate, the card certificate on the chip and the live signature, as three nested boxes with doors 1 to 3](trust-chain.svg)
 
-For a step-by-step version, which also shows an edited and a cloned card, open [trust-chain.html](trust-chain.html) in a browser.
+For a step-by-step version, which also shows an edited and a cloned card, see the [interactive trust chain](https://entur.github.io/abt-bob-mts7/trust-chain.html) (served by GitHub Pages from [trust-chain.html](trust-chain.html)).
 
 ## The boxes
 
