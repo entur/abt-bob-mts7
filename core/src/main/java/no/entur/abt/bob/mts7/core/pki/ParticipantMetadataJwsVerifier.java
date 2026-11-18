@@ -6,6 +6,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.JWSObjectJSON;
@@ -29,6 +32,8 @@ import no.entur.abt.bob.mts7.core.UnableToVerifyParticipantMetadataException;
  */
 
 public class ParticipantMetadataJwsVerifier {
+
+	private static final Logger LOGGER = LoggerFactory.getLogger(ParticipantMetadataJwsVerifier.class);
 
 	private static final DateTimeFormatter TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmssX");
 
@@ -78,7 +83,7 @@ public class ParticipantMetadataJwsVerifier {
 	/**
 	 * Verify the signatures. The payload is not parsed; get it from the JWS after verification.
 	 * <p>
-	 * Signatures which are not trusted, outside of the validity period or invalid are skipped.
+	 * Signatures which are not trusted, outside of the validity period or invalid are skipped, and logged at info level.
 	 *
 	 * @param jws  JWS in general JSON serialization, with the participant metadata as payload
 	 * @param time time to check the validity period against, in milliseconds since epoch (for example <code>System.currentTimeMillis()</code>)
@@ -89,14 +94,12 @@ public class ParticipantMetadataJwsVerifier {
 	public List<JWSHeader> verify(JWSObjectJSON jws, long time) throws UnableToVerifyParticipantMetadataException {
 		List<JWSHeader> verified = new ArrayList<>();
 
-		String reason = "No signatures";
-
 		for (JWSObjectJSON.Signature signature : jws.getSignatures()) {
 			JWSHeader header = signature.getHeader();
 
 			JWK key = header.getKeyID() != null ? trustedKeys.getKeyByKeyId(header.getKeyID()) : null;
 			if (key == null) {
-				reason = "No trusted key for kid " + header.getKeyID();
+				LOGGER.info("No trusted key for kid {}", header.getKeyID());
 				continue;
 			}
 
@@ -105,11 +108,11 @@ public class ParticipantMetadataJwsVerifier {
 
 				JWSVerifier verifier = verifierFactory.createJWSVerifier(header, KeyConverter.toJavaKeys(Collections.singletonList(key)).get(0));
 				if (!signature.verify(verifier)) {
-					reason = "Invalid signature for kid " + header.getKeyID();
+					LOGGER.info("Invalid signature for kid {}", header.getKeyID());
 					continue;
 				}
 			} catch (JOSEException | UnableToVerifyParticipantMetadataException e) {
-				reason = e.getMessage();
+				LOGGER.info("Unable to verify signature for kid {}: {}", header.getKeyID(), e.getMessage());
 				continue;
 			}
 
@@ -117,7 +120,7 @@ public class ParticipantMetadataJwsVerifier {
 		}
 
 		if (verified.isEmpty()) {
-			throw new UnableToVerifyParticipantMetadataException("Unable to verify participant metadata: " + reason);
+			throw new UnableToVerifyParticipantMetadataException("Unable to verify participant metadata, no valid signatures");
 		}
 
 		return verified;
