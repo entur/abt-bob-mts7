@@ -1,0 +1,17 @@
+{
+	"keys": [
+		{
+			"kty": "EC",
+			"kid": "16:metadata_201701",
+			"x": "Zm2b36TBIwcL-pHkeKDRo9MKeJz0iuXx400OnjxfPMM",
+			"y": "Y3Ript4940frVOAKb8fEq0hmxKMRQ1AUoylFHQBrKpI",
+			"crv": "P-256"
+		},
+		{
+			"kty": "RSA",
+			"kid": "16:metadata_201701_fallback",
+			"n": "3l3eRlydrhGg-zQwk6X4-WOIJWfcTUSK3o1MEoDzo6c7vKRCQkFLAnllP-qDAKp-PX35nNhZrUXXTUzolJhqFHFiq5Dtd5xjWhINom-_bRlUCIEqzEhnTjRWkqRbTEqYcoRnA4H6fUlgHh4qFm-FZYrTcX9e-zCsKmmArvMygOvAUepRrC7LQmsmV0QUnpmfoHkcXvtFSnrJ2PbuJ0vf4MCoXnuSROpoSMSOOKBCRoWZXtRdPqDgMaw0009ZANHt5ZhY-ZRZOc6sRF_Q1lM8fkLazbQeTopvEhibWtcxEXnHj68ha_MLG-chAcvJkfSPy81h-Ql7RTIISgYuDidHP3cBaiMIEezvh3t4Dbdu8ADZ8jhkYiPc3Xt9FoT1sb2eiFp5osiaT2QstdHyXRzYVCGuXlBKU-U3eJ9l5kd82x2UCepYXZIE1n4qzeeVDdAndkjyfVgmMSFT3xrCMBhQKKELGYtOxN4mD5CODNLnUC2tRTeTwJI-k0pdF50jbGWz_AQwjjHx5zpNLSqkIADk3VDNvkmOYMblmfqY7dDHB7h5W-p_QIx00S3ariD7yLDQjwS8wSe9uqtakPQzATNXCDJby4N3211_ANgHbKbX7T69cFBuHpae8jsGZOUrAU51D8QCyO6h1VJzZGgxeiRg5XHqm9Y4bv6elh6XpeSic5s",
+			"e": "AQAB"
+		}
+	]
+}
