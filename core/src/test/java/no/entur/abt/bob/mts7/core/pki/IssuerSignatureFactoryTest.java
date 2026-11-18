@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nimbusds.jose.crypto.impl.ECDSA;
 
-import no.entur.abt.bob.api.pm.model.JwkPublic;
+import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
 
 public class IssuerSignatureFactoryTest {
@@ -51,7 +51,7 @@ public class IssuerSignatureFactoryTest {
 		ECPublicKey publicKey = (ECPublicKey) keyPair.getPublic();
 
 		// no alg, as in the participant metadata
-		JwkPublic jwk = new JwkPublic().kty("EC")
+		MtbJwkPublic jwk = new MtbJwkPublic().kty("EC")
 				.kid("10:ec")
 				.crv("P-256")
 				.x(base64Url(publicKey.getW().getAffineX(), 32))
@@ -76,7 +76,7 @@ public class IssuerSignatureFactoryTest {
 		KeyPair keyPair = generator.generateKeyPair();
 		RSAPublicKey publicKey = (RSAPublicKey) keyPair.getPublic();
 
-		JwkPublic jwk = new JwkPublic().kty("RSA")
+		MtbJwkPublic jwk = new MtbJwkPublic().kty("RSA")
 				.kid("11:rsa")
 				.n(base64Url(publicKey.getModulus(), (publicKey.getModulus().bitLength() + 7) / 8))
 				.e(base64Url(publicKey.getPublicExponent(), (publicKey.getPublicExponent().bitLength() + 7) / 8));
@@ -102,7 +102,7 @@ public class IssuerSignatureFactoryTest {
 		int ec = 0;
 		int rsa = 0;
 		for (ParticipantMetadata p : participantMetadata) {
-			for (JwkPublic jwk : p.getMtbPublicKeys()) {
+			for (MtbJwkPublic jwk : p.getMtbPublicKeys()) {
 				IssuerPublicKey issuerPublicKey = factory.createIssuerPublicKey(p.getPid(), jwk);
 
 				// the participant metadata does not contain an alg

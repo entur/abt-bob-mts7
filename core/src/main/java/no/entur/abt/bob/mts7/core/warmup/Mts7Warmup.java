@@ -15,7 +15,7 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
-import no.entur.abt.bob.api.pm.model.JwkPublic;
+import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.mts7.core.LenientMts7CardFactory;
 import no.entur.abt.bob.mts7.core.Mts7ApduPayloads;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
@@ -386,7 +386,7 @@ public class Mts7Warmup implements Runnable {
 	}
 
 	private static ParticipantPublicKeys createSampleIssuerKeys(Provider provider) {
-		JwkPublic jwk = new JwkPublic().kty("EC").kid(SAMPLE_ISSUER_KID).crv("P-256").x(SAMPLE_ISSUER_X).y(SAMPLE_ISSUER_Y);
+		MtbJwkPublic jwk = new MtbJwkPublic().kty("EC").kid(SAMPLE_ISSUER_KID).crv("P-256").x(SAMPLE_ISSUER_X).y(SAMPLE_ISSUER_Y);
 
 		Map<String, ParticipantPublicKeys.IssuerKey> keys = new HashMap<>();
 		keys.put(SAMPLE_ISSUER_KID, new ParticipantPublicKeys.IssuerKey(jwk));

@@ -21,11 +21,26 @@ import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import no.entur.abt.bob.api.pm.model.JwkPublic;
+import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
 import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
 
 public class ParticipantPublicKeysTest {
+
+	@Test
+	public void parseMetadataWithSignatureConstraintAndAuthtokenKeys() throws Exception {
+		String json = "[{\"pid\": 99, \"organisationName\": \"Test\", \"domainName\": \"test.example\","
+				+ "\"mtbPublicKeys\": [{\"kty\": \"EC\", \"kid\": \"99:1\", \"crv\": \"P-256\", \"x\": \"AAAA\", \"y\": \"AAAA\", \"bob_sc\": \"ticket\"}],"
+				+ "\"authtokenPublicKeys\": [{\"kty\": \"EC\", \"kid\": \"99:a\", \"crv\": \"P-256\", \"x\": \"AAAA\", \"y\": \"AAAA\"}]}]";
+
+		ParticipantMetadata[] parsed = new ObjectMapper().readValue(json, ParticipantMetadata[].class);
+
+		assertEquals(MtbJwkPublic.BobScEnum.TICKET, parsed[0].getMtbPublicKeys().get(0).getBobSc());
+		assertEquals(1, parsed[0].getAuthtokenPublicKeys().size());
+
+		ParticipantPublicKeys keys = ParticipantPublicKeys.newBuilder().withParticipants(Arrays.asList(parsed)).build();
+		assertNotNull(keys);
+	}
 
 	@Test
 	public void parseRootCertififcates() throws Exception {
@@ -39,9 +54,9 @@ public class ParticipantPublicKeysTest {
 		ParticipantPublicKeys participantPublicKeys = ParticipantPublicKeys.newBuilder().withParticipants(participantMetadata).build();
 
 		for (ParticipantMetadata p : participantMetadata) {
-			List<JwkPublic> mtbPublicKeys = p.getMtbPublicKeys();
+			List<MtbJwkPublic> mtbPublicKeys = p.getMtbPublicKeys();
 
-			for (JwkPublic key : mtbPublicKeys) {
+			for (MtbJwkPublic key : mtbPublicKeys) {
 				IssuerPublicKey issuerPublicKey = participantPublicKeys.getIssuerPublicKey(p.getPid(), key.getKid());
 
 				assertNotNull(issuerPublicKey);
@@ -81,7 +96,7 @@ public class ParticipantPublicKeysTest {
 		List<ParticipantMetadata> participantMetadata = new ArrayList<>(readParticipantMetadata());
 
 		// not a point on the curve
-		JwkPublic invalid = new JwkPublic().kty("EC").kid("99:invalid").crv("P-256").x("AAAA").y("AAAA");
+		MtbJwkPublic invalid = new MtbJwkPublic().kty("EC").kid("99:invalid").crv("P-256").x("AAAA").y("AAAA");
 		participantMetadata.add(new ParticipantMetadata().pid(99L).organisationName("Invalid").addMtbPublicKeysItem(invalid));
 
 		ParticipantPublicKeys participantPublicKeys = ParticipantPublicKeys.newBuilder().withParticipants(participantMetadata).build();
@@ -131,7 +146,7 @@ public class ParticipantPublicKeysTest {
 		}
 
 		@Override
-		public IssuerPublicKey createIssuerPublicKey(long pid, JwkPublic jwkPublic) {
+		public IssuerPublicKey createIssuerPublicKey(long pid, MtbJwkPublic jwkPublic) {
 			calls++;
 			return null;
 		}
@@ -142,7 +157,7 @@ public class ParticipantPublicKeysTest {
 		UnsupportedKeyFactory factory = new UnsupportedKeyFactory();
 
 		Map<String, ParticipantPublicKeys.IssuerKey> keys = new HashMap<>();
-		keys.put("99:unsupported", new ParticipantPublicKeys.IssuerKey(new JwkPublic().kty("EC").kid("99:unsupported")));
+		keys.put("99:unsupported", new ParticipantPublicKeys.IssuerKey(new MtbJwkPublic().kty("EC").kid("99:unsupported")));
 
 		Map<Long, ParticipantPublicKeys.Issuer> issuers = new HashMap<>();
 		issuers.put(99L, new ParticipantPublicKeys.Issuer("Unsupported", 99L, keys, factory));
