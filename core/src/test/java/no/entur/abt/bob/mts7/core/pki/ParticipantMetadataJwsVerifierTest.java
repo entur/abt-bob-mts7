@@ -31,7 +31,7 @@ public class ParticipantMetadataJwsVerifierTest {
 
 	@Test
 	public void verifyWithPrimaryKey() throws Exception {
-		byte[] payload = new ParticipantMetadataJwsVerifier(keys).verify(jws, VALID);
+		byte[] payload = new ParticipantMetadataJwsVerifier(keys).verify(jws, VALID).getPayload().toBytes();
 
 		assertEquals(10, new ObjectMapper().readValue(payload, ParticipantMetadata[].class)[0].getPid());
 	}
@@ -40,7 +40,7 @@ public class ParticipantMetadataJwsVerifierTest {
 	public void verifyWithFallbackKeyOnly() throws Exception {
 		JWKSet fallbackOnly = new JWKSet(keys.getKeyByKeyId("16:metadata_201701_fallback"));
 
-		assertTrue(new ParticipantMetadataJwsVerifier(fallbackOnly).verify(jws, VALID).length > 0);
+		assertTrue(new ParticipantMetadataJwsVerifier(fallbackOnly).verify(jws, VALID).getPayload().toBytes().length > 0);
 	}
 
 	@Test
@@ -82,14 +82,14 @@ public class ParticipantMetadataJwsVerifierTest {
 	public void acceptExpiredWhenNotCheckingNotValidAfter() throws Exception {
 		long after = Instant.parse("2026-11-26T00:00:00Z").toEpochMilli();
 
-		assertTrue(new ParticipantMetadataJwsVerifier(keys, true, false).verify(jws, after).length > 0);
+		assertTrue(new ParticipantMetadataJwsVerifier(keys, true, false).verify(jws, after).getPayload().toBytes().length > 0);
 	}
 
 	@Test
 	public void acceptNotYetValidWhenNotCheckingNotValidBefore() throws Exception {
 		long before = Instant.parse("2026-11-17T00:00:00Z").toEpochMilli();
 
-		assertTrue(new ParticipantMetadataJwsVerifier(keys, false, true).verify(jws, before).length > 0);
+		assertTrue(new ParticipantMetadataJwsVerifier(keys, false, true).verify(jws, before).getPayload().toBytes().length > 0);
 	}
 
 	@Test

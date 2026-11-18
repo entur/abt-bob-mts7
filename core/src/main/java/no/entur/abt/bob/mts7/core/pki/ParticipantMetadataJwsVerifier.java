@@ -64,12 +64,13 @@ public class ParticipantMetadataJwsVerifier {
 	 * Verify the signatures, using the current time for the validity period.
 	 *
 	 * @param jws JWS in general JSON serialization, with the participant metadata as payload
-	 * @return the verified payload (the participant metadata as JSON)
+	 * @return the parsed JWS, of which at least one signature is verified (see {@linkplain JWSObjectJSON.Signature#isVerified()}); the payload is
+	 *         the participant metadata as JSON
 	 * @throws UnableToVerifyParticipantMetadataException if the JWS could not be parsed, or if no signature could be verified
 	 * @see #verify(String, long)
 	 */
 
-	public byte[] verify(String jws) throws UnableToVerifyParticipantMetadataException {
+	public JWSObjectJSON verify(String jws) throws UnableToVerifyParticipantMetadataException {
 		return verify(jws, System.currentTimeMillis());
 	}
 
@@ -78,11 +79,12 @@ public class ParticipantMetadataJwsVerifier {
 	 *
 	 * @param jws  JWS in general JSON serialization, with the participant metadata as payload
 	 * @param time time to check the validity period against, in milliseconds since epoch (for example <code>System.currentTimeMillis()</code>)
-	 * @return the verified payload (the participant metadata as JSON)
+	 * @return the parsed JWS, of which at least one signature is verified (see {@linkplain JWSObjectJSON.Signature#isVerified()}); the payload is
+	 *         the participant metadata as JSON
 	 * @throws UnableToVerifyParticipantMetadataException if the JWS could not be parsed, or if no signature could be verified
 	 */
 
-	public byte[] verify(String jws, long time) throws UnableToVerifyParticipantMetadataException {
+	public JWSObjectJSON verify(String jws, long time) throws UnableToVerifyParticipantMetadataException {
 		JWSObjectJSON object;
 		try {
 			object = JWSObjectJSON.parse(jws);
@@ -114,7 +116,7 @@ public class ParticipantMetadataJwsVerifier {
 				continue;
 			}
 
-			return object.getPayload().toBytes();
+			return object;
 		}
 
 		throw new UnableToVerifyParticipantMetadataException("Unable to verify participant metadata: " + reason);
