@@ -34,27 +34,43 @@ public class ParticipantMetadataJwsVerifier {
 	private static final String NOT_VALID_AFTER = "notvalidafter";
 
 	private final JWKSet trustedKeys;
+	private final boolean checkNotValidBefore;
+	private final boolean checkNotValidAfter;
 	private final JWSVerifierFactory verifierFactory = new DefaultJWSVerifierFactory();
 
 	/**
+	 * Check both <code>notvalidbefore</code> and <code>notvalidafter</code>.
+	 *
 	 * @param trustedKeys keys used for verifying the signature, for example from <code>samtrafiken-prod.json</code>
 	 */
 
 	public ParticipantMetadataJwsVerifier(JWKSet trustedKeys) {
-		this.trustedKeys = trustedKeys;
+		this(trustedKeys, true, true);
 	}
 
 	/**
-	 * Verify the signatures, checking both <code>notvalidbefore</code> and <code>notvalidafter</code> against the current time.
+	 * @param trustedKeys         keys used for verifying the signature, for example from <code>samtrafiken-prod.json</code>
+	 * @param checkNotValidBefore check <code>notvalidbefore</code> against the time
+	 * @param checkNotValidAfter  check <code>notvalidafter</code> against the time
+	 */
+
+	public ParticipantMetadataJwsVerifier(JWKSet trustedKeys, boolean checkNotValidBefore, boolean checkNotValidAfter) {
+		this.trustedKeys = trustedKeys;
+		this.checkNotValidBefore = checkNotValidBefore;
+		this.checkNotValidAfter = checkNotValidAfter;
+	}
+
+	/**
+	 * Verify the signatures, using the current time for the validity period.
 	 *
 	 * @param jws JWS in general JSON serialization, with the participant metadata as payload
 	 * @return the verified payload (the participant metadata as JSON)
 	 * @throws UnableToVerifyParticipantMetadataException if the JWS could not be parsed, or if no signature could be verified
-	 * @see #verify(String, long, boolean, boolean)
+	 * @see #verify(String, long)
 	 */
 
 	public byte[] verify(String jws) throws UnableToVerifyParticipantMetadataException {
-		return verify(jws, System.currentTimeMillis(), true, true);
+		return verify(jws, System.currentTimeMillis());
 	}
 
 	/**
@@ -62,13 +78,11 @@ public class ParticipantMetadataJwsVerifier {
 	 *
 	 * @param jws  JWS in general JSON serialization, with the participant metadata as payload
 	 * @param time time to check the validity period against, in milliseconds since epoch (for example <code>System.currentTimeMillis()</code>)
-	 * @param checkNotValidBefore check <code>notvalidbefore</code> against the time
-	 * @param checkNotValidAfter  check <code>notvalidafter</code> against the time
 	 * @return the verified payload (the participant metadata as JSON)
 	 * @throws UnableToVerifyParticipantMetadataException if the JWS could not be parsed, or if no signature could be verified
 	 */
 
-	public byte[] verify(String jws, long time, boolean checkNotValidBefore, boolean checkNotValidAfter) throws UnableToVerifyParticipantMetadataException {
+	public byte[] verify(String jws, long time) throws UnableToVerifyParticipantMetadataException {
 		JWSObjectJSON object;
 		try {
 			object = JWSObjectJSON.parse(jws);
@@ -88,7 +102,7 @@ public class ParticipantMetadataJwsVerifier {
 			}
 
 			try {
-				checkValidityPeriod(header, time, checkNotValidBefore, checkNotValidAfter);
+				checkValidityPeriod(header, time);
 
 				JWSVerifier verifier = verifierFactory.createJWSVerifier(header, KeyConverter.toJavaKeys(Collections.singletonList(key)).get(0));
 				if (!signature.verify(verifier)) {
@@ -106,7 +120,7 @@ public class ParticipantMetadataJwsVerifier {
 		throw new UnableToVerifyParticipantMetadataException("Unable to verify participant metadata: " + reason);
 	}
 
-	private void checkValidityPeriod(JWSHeader header, long time, boolean checkNotValidBefore, boolean checkNotValidAfter) throws UnableToVerifyParticipantMetadataException {
+	private void checkValidityPeriod(JWSHeader header, long time) throws UnableToVerifyParticipantMetadataException {
 		if (checkNotValidBefore) {
 			Long notBefore = parse(header, NOT_VALID_BEFORE);
 			if (notBefore != null && time < notBefore) {
