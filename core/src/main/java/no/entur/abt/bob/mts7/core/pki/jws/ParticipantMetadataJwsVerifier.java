@@ -1,4 +1,4 @@
-package no.entur.abt.bob.mts7.core.pki;
+package no.entur.abt.bob.mts7.core.pki.jws;
 
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;

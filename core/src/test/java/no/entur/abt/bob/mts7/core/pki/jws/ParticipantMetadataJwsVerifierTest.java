@@ -1,4 +1,4 @@
-package no.entur.abt.bob.mts7.core.pki;
+package no.entur.abt.bob.mts7.core.pki.jws;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
