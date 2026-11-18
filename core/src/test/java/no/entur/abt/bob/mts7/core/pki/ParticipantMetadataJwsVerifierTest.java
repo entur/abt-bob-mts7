@@ -1,16 +1,20 @@
 package no.entur.abt.bob.mts7.core.pki;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 import java.time.Instant;
 
 import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.JWSObjectJSON;
 import com.nimbusds.jose.jwk.Curve;
 import com.nimbusds.jose.jwk.ECKey;
 import com.nimbusds.jose.jwk.JWKSet;
@@ -25,55 +29,72 @@ public class ParticipantMetadataJwsVerifierTest {
 	private static final long VALID = Instant.parse("2026-11-20T00:00:00Z").toEpochMilli();
 
 	private static final String ES256_KID = "16:metadata_201701";
+	private static final String FALLBACK_KID = "16:metadata_201701_fallback";
 
-	private final String jws = read("/participantMetadataJws.json");
+	private final String json = read("/participantMetadataJws.json");
 	private final JWKSet keys = parseKeys();
 
-	@Test
-	public void verifyWithPrimaryKey() throws Exception {
-		byte[] payload = new ParticipantMetadataJwsVerifier(keys).verify(jws, VALID).getPayload().toBytes();
+	private JWSObjectJSON jws() throws Exception {
+		return JWSObjectJSON.parse(json);
+	}
 
+	@Test
+	public void verifyBothSignatures() throws Exception {
+		JWSObjectJSON jws = jws();
+
+		List<JWSHeader> verified = new ParticipantMetadataJwsVerifier(keys).verify(jws, VALID);
+
+		assertEquals(Arrays.asList(ES256_KID, FALLBACK_KID), verified.stream().map(JWSHeader::getKeyID).collect(Collectors.toList()));
+
+		byte[] payload = jws.getPayload().toBytes();
 		assertEquals(10, new ObjectMapper().readValue(payload, ParticipantMetadata[].class)[0].getPid());
 	}
 
 	@Test
 	public void verifyWithFallbackKeyOnly() throws Exception {
-		JWKSet fallbackOnly = new JWKSet(keys.getKeyByKeyId("16:metadata_201701_fallback"));
+		JWKSet fallbackOnly = new JWKSet(keys.getKeyByKeyId(FALLBACK_KID));
 
-		assertTrue(new ParticipantMetadataJwsVerifier(fallbackOnly).verify(jws, VALID).getPayload().toBytes().length > 0);
+		List<JWSHeader> verified = new ParticipantMetadataJwsVerifier(fallbackOnly).verify(jws(), VALID);
+
+		assertEquals(1, verified.size());
+		assertEquals(FALLBACK_KID, verified.get(0).getKeyID());
 	}
 
 	@Test
-	public void rejectUnknownKey() {
+	public void rejectUnknownKey() throws Exception {
+		JWSObjectJSON jws = jws();
+
 		assertThrows(UnableToVerifyParticipantMetadataException.class, () -> new ParticipantMetadataJwsVerifier(new JWKSet()).verify(jws, VALID));
 	}
 
 	@Test
 	public void rejectOtherKeyWithSameKid() throws Exception {
-		// only the primary signature is considered, as the fallback key is not trusted
+		// the fallback key is not trusted, so only the primary signature is considered
 		ECKey other = new ECKeyGenerator(Curve.P_256).keyID(ES256_KID).generate().toPublicJWK();
+		JWSObjectJSON jws = jws();
 
-		assertThrows(UnableToVerifyParticipantMetadataException.class,
-				() -> new ParticipantMetadataJwsVerifier(new JWKSet(other)).verify(jws, VALID));
+		assertThrows(UnableToVerifyParticipantMetadataException.class, () -> new ParticipantMetadataJwsVerifier(new JWKSet(other)).verify(jws, VALID));
 	}
 
 	@Test
-	public void rejectTamperedPayload() {
-		String tampered = jws.replaceFirst("\"payload\": \"W3si", "\"payload\": \"W3tp");
+	public void rejectTamperedPayload() throws Exception {
+		JWSObjectJSON tampered = JWSObjectJSON.parse(json.replaceFirst("\"payload\": \"W3si", "\"payload\": \"W3tp"));
 
 		assertThrows(UnableToVerifyParticipantMetadataException.class, () -> new ParticipantMetadataJwsVerifier(keys).verify(tampered, VALID));
 	}
 
 	@Test
-	public void rejectExpired() {
+	public void rejectExpired() throws Exception {
 		long after = Instant.parse("2026-11-26T00:00:00Z").toEpochMilli();
+		JWSObjectJSON jws = jws();
 
 		assertThrows(UnableToVerifyParticipantMetadataException.class, () -> new ParticipantMetadataJwsVerifier(keys).verify(jws, after));
 	}
 
 	@Test
-	public void rejectNotYetValid() {
+	public void rejectNotYetValid() throws Exception {
 		long before = Instant.parse("2026-11-17T00:00:00Z").toEpochMilli();
+		JWSObjectJSON jws = jws();
 
 		assertThrows(UnableToVerifyParticipantMetadataException.class, () -> new ParticipantMetadataJwsVerifier(keys).verify(jws, before));
 	}
@@ -82,19 +103,14 @@ public class ParticipantMetadataJwsVerifierTest {
 	public void acceptExpiredWhenNotCheckingNotValidAfter() throws Exception {
 		long after = Instant.parse("2026-11-26T00:00:00Z").toEpochMilli();
 
-		assertTrue(new ParticipantMetadataJwsVerifier(keys, true, false).verify(jws, after).getPayload().toBytes().length > 0);
+		assertEquals(2, new ParticipantMetadataJwsVerifier(keys, true, false).verify(jws(), after).size());
 	}
 
 	@Test
 	public void acceptNotYetValidWhenNotCheckingNotValidBefore() throws Exception {
 		long before = Instant.parse("2026-11-17T00:00:00Z").toEpochMilli();
 
-		assertTrue(new ParticipantMetadataJwsVerifier(keys, false, true).verify(jws, before).getPayload().toBytes().length > 0);
-	}
-
-	@Test
-	public void rejectGarbage() {
-		assertThrows(UnableToVerifyParticipantMetadataException.class, () -> new ParticipantMetadataJwsVerifier(keys).verify("not json", VALID));
+		assertEquals(2, new ParticipantMetadataJwsVerifier(keys, false, true).verify(jws(), before).size());
 	}
 
 	private JWKSet parseKeys() {

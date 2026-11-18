@@ -2,7 +2,9 @@ package no.entur.abt.bob.mts7.core.pki;
 
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.JWSHeader;
@@ -64,37 +66,32 @@ public class ParticipantMetadataJwsVerifier {
 	 * Verify the signatures, using the current time for the validity period.
 	 *
 	 * @param jws JWS in general JSON serialization, with the participant metadata as payload
-	 * @return the parsed JWS, of which at least one signature is verified (see {@linkplain JWSObjectJSON.Signature#isVerified()}); the payload is
-	 *         the participant metadata as JSON
-	 * @throws UnableToVerifyParticipantMetadataException if the JWS could not be parsed, or if no signature could be verified
-	 * @see #verify(String, long)
+	 * @return the headers of the signatures which were verified, never empty
+	 * @throws UnableToVerifyParticipantMetadataException if no signature could be verified
+	 * @see #verify(JWSObjectJSON, long)
 	 */
 
-	public JWSObjectJSON verify(String jws) throws UnableToVerifyParticipantMetadataException {
+	public List<JWSHeader> verify(JWSObjectJSON jws) throws UnableToVerifyParticipantMetadataException {
 		return verify(jws, System.currentTimeMillis());
 	}
 
 	/**
-	 * Verify the signatures. The payload is not parsed.
+	 * Verify the signatures. The payload is not parsed; get it from the JWS after verification.
+	 * <p>
+	 * Signatures which are not trusted, outside of the validity period or invalid are skipped.
 	 *
 	 * @param jws  JWS in general JSON serialization, with the participant metadata as payload
 	 * @param time time to check the validity period against, in milliseconds since epoch (for example <code>System.currentTimeMillis()</code>)
-	 * @return the parsed JWS, of which at least one signature is verified (see {@linkplain JWSObjectJSON.Signature#isVerified()}); the payload is
-	 *         the participant metadata as JSON
-	 * @throws UnableToVerifyParticipantMetadataException if the JWS could not be parsed, or if no signature could be verified
+	 * @return the headers of the signatures which were verified, never empty
+	 * @throws UnableToVerifyParticipantMetadataException if no signature could be verified
 	 */
 
-	public JWSObjectJSON verify(String jws, long time) throws UnableToVerifyParticipantMetadataException {
-		JWSObjectJSON object;
-		try {
-			object = JWSObjectJSON.parse(jws);
-		} catch (Exception e) {
-			throw new UnableToVerifyParticipantMetadataException("Unable to parse JWS", e);
-		}
+	public List<JWSHeader> verify(JWSObjectJSON jws, long time) throws UnableToVerifyParticipantMetadataException {
+		List<JWSHeader> verified = new ArrayList<>();
 
 		String reason = "No signatures";
 
-		for (JWSObjectJSON.Signature signature : object.getSignatures()) {
+		for (JWSObjectJSON.Signature signature : jws.getSignatures()) {
 			JWSHeader header = signature.getHeader();
 
 			JWK key = header.getKeyID() != null ? trustedKeys.getKeyByKeyId(header.getKeyID()) : null;
@@ -116,10 +113,14 @@ public class ParticipantMetadataJwsVerifier {
 				continue;
 			}
 
-			return object;
+			verified.add(header);
 		}
 
-		throw new UnableToVerifyParticipantMetadataException("Unable to verify participant metadata: " + reason);
+		if (verified.isEmpty()) {
+			throw new UnableToVerifyParticipantMetadataException("Unable to verify participant metadata: " + reason);
+		}
+
+		return verified;
 	}
 
 	private void checkValidityPeriod(JWSHeader header, long time) throws UnableToVerifyParticipantMetadataException {
