@@ -43,8 +43,20 @@ public class ParticipantMetadataJwsParser {
 	 */
 
 	public List<ParticipantMetadata> parseParticipantMetadata(JWSObjectJSON jws) throws UnableToVerifyParticipantMetadataException {
+		return parseParticipantMetadata(jws.getPayload().toBytes());
+	}
+
+	/**
+	 * Parse a payload without a JWS, for example a stored payload which was verified when it was downloaded.
+	 *
+	 * @param payload the raw payload (a JSON array of participants)
+	 * @return the participants of the payload
+	 * @throws UnableToVerifyParticipantMetadataException if the payload could not be parsed
+	 */
+
+	public List<ParticipantMetadata> parseParticipantMetadata(byte[] payload) throws UnableToVerifyParticipantMetadataException {
 		try {
-			return Arrays.asList(mapper.readValue(jws.getPayload().toBytes(), ParticipantMetadata[].class));
+			return Arrays.asList(mapper.readValue(payload, ParticipantMetadata[].class));
 		} catch (Exception e) {
 			throw new UnableToVerifyParticipantMetadataException("Unable to parse participant metadata", e);
 		}

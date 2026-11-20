@@ -37,6 +37,15 @@ public class VerifiedParticipantMetadataFactoryTest {
 	}
 
 	@Test
+	public void parseStoredPayloadWithoutJws() throws Exception {
+		VerifiedParticipantMetadata verified = factory.create(jws, VALID);
+		byte[] payload = verified.getJws().getPayload().toBytes();
+
+		assertEquals(verified.getParticipantMetadata().size(), new ParticipantMetadataJwsParser().parseParticipantMetadata(payload).size());
+		assertThrows(UnableToVerifyParticipantMetadataException.class, () -> new ParticipantMetadataJwsParser().parseParticipantMetadata("nope".getBytes(StandardCharsets.UTF_8)));
+	}
+
+	@Test
 	public void rejectGarbage() {
 		assertThrows(UnableToVerifyParticipantMetadataException.class, () -> factory.create("not json", VALID));
 	}
