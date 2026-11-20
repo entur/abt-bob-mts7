@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import no.entur.abt.bob.api.pm.model.JwkPublic;
+import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
 import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
 
@@ -56,11 +56,11 @@ public class ParticipantPublicKeys {
 
 			for (ParticipantMetadata p : items) {
 
-				List<JwkPublic> mtbPublicKeys = p.getMtbPublicKeys();
+				List<MtbJwkPublic> mtbPublicKeys = p.getMtbPublicKeys();
 
 				Map<String, IssuerKey> map = new HashMap<>(mtbPublicKeys.size() * 4);
 
-				for (JwkPublic jwkPublic : mtbPublicKeys) {
+				for (MtbJwkPublic jwkPublic : mtbPublicKeys) {
 					map.put(jwkPublic.getKid(), new IssuerKey(jwkPublic));
 				}
 
@@ -81,9 +81,9 @@ public class ParticipantPublicKeys {
 		// the type of key is not supported, which will not change, so there is no point in trying again
 		private volatile boolean unsupported;
 
-		private final JwkPublic keyMaterial;
+		private final MtbJwkPublic keyMaterial;
 
-		public IssuerKey(JwkPublic keyMaterial) {
+		public IssuerKey(MtbJwkPublic keyMaterial) {
 			super();
 			this.keyMaterial = keyMaterial;
 		}
@@ -92,7 +92,7 @@ public class ParticipantPublicKeys {
 			return key;
 		}
 
-		public JwkPublic getKeyMaterial() {
+		public MtbJwkPublic getKeyMaterial() {
 			return keyMaterial;
 		}
 
