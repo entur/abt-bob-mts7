@@ -27,7 +27,9 @@ For a step-by-step version, which also shows an edited and a cloned card, see th
 | Genuine | accepted | accepted |
 | Edited certificate: the public key of the card swapped for one of the attacker's, on the attacker's chip | rejected at door 2 | **accepted**, as the chip of the attacker has the private key for the swapped `tpk` |
 | Cloned card: an exact copy of the certificate, without the private key | rejected at door 3 | rejected |
-| Card from an unknown issuer | rejected, there is no issuer public key | accepted |
+| Card from an unknown issuer | rejected, there is no issuer public key (accepted at door 3 alone with `trustUnknownRootKeys`) | accepted |
+
+`VerifyMts7CardFactory` and `VerifyTrustChainMts7ProcessorFactory` can be created with `trustUnknownRootKeys`, for when the issuer public keys are known to be incomplete. A card whose root key (by `iid` and `kid`) is not among the issuer public keys is then checked at door 3 only, like `VerifyKeyPairMts7CardFactory` does, and accepted with `isVerifiedTrustChain()` false. A card whose root key is known must still pass both doors, so an edited certificate of a known issuer is still rejected, but an attacker can claim an issuer or `kid` which is not in the set: such a card has the same strength as with `VerifyKeyPairMts7CardFactory`.
 
 The same goes for `VerifyTrustChainMts7ProcessorFactory` and `VerifyKeyPairMts7ProcessorFactory` in `reader`. A card which fails at door 2 is also reported with `UnableToVerifyKeyPairException`, because without a trusted key for the card the signature from door 3 cannot be verified either; `getResult().isVerifiedTrustChain()` tells the two apart.
 

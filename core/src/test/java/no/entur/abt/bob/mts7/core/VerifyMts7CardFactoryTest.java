@@ -3,6 +3,7 @@ package no.entur.abt.bob.mts7.core;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.InputStream;
@@ -13,7 +14,11 @@ import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
+import com.nimbusds.jose.jwk.Curve;
+import com.nimbusds.jose.jwk.ECKey;
+import com.nimbusds.jose.jwk.gen.ECKeyGenerator;
 
+import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
@@ -21,6 +26,13 @@ import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
 import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
 
 public class VerifyMts7CardFactoryTest {
+
+	// the responses of a genuine card (with status words), the challenge being 32 zero bytes; its issuer is participant 10, key 10:20230213
+	private static final String SELECT_APPLICATION_RESPONSE = "64296E274F10A0000007810101000A0000175F96B61D7A0593030000248A01007F660802020105020201029000";
+	private static final String GET_NEXT_DATA_RESPONSE = "A26176426131617058F88358B1A663616C6765455332353663696964623130636B69646B31303A3230323330323133636D69766136636E6266703230323330363136543131303233365A6374706BA4636B74796245436363727665502D3235366178782B67524531454B772D63475F37415543306835372D54355759416E51634457597275374A776D4C476756666F6179782B706B516B6A56636832543264615F582D4B5368735141515A306A47485A483179775A47546456646236645141A05840A5D45B265A806B649F19432F05F91FAB5854AEAFCFC1B75A63072B88F2EB35BA5A7A3B53B5FC71A3C3DCC7727E9C8C9845F7DEF2756179D54D111E46E58C46039000";
+	private static final String SIGNATURE_RESPONSE = "DCC5F055C2B689A3D5FBAE8ABB9892FF6B0228D05AAA69BBA435324F1E9A6D900C2B6F8DC7D43DD2D9DF47847C7ADF786E99474102E2EA1E19EDF0177221FE349000";
+	// as from a cloned card, which does not have the private key
+	private static final String OTHER_SIGNATURE_RESPONSE = SIGNATURE_RESPONSE.replace("DCC5", "DCC6");
 
 	@Test
 	public void testHelpersCanBeSharedWithOtherFactories() throws Exception {
@@ -72,6 +84,83 @@ public class VerifyMts7CardFactoryTest {
 		assertTrue(card.isVerifiedTrustChain());
 
 		assertEquals("0000175F96B61D", ByteArrayHexStringConverter.toHexString(card.getSerial()));
+	}
+
+	@Test
+	public void testUnknownRootKeyIsRejectedByDefault() throws Exception {
+		VerifyMts7CardFactory factory = new VerifyMts7CardFactory(ParticipantPublicKeys.newBuilder().build());
+
+		assertFalse(factory.isTrustUnknownRootKeys());
+		UnableToVerifyKeyPairException e = assertThrows(UnableToVerifyKeyPairException.class, () -> factory.create(card(SIGNATURE_RESPONSE)));
+		assertFalse(e.getResult().isVerifiedTrustChain());
+	}
+
+	@Test
+	public void testUnknownRootKeyIsTrustedWithOption() throws Exception {
+		VerifyMts7CardFactory factory = new VerifyMts7CardFactory(ParticipantPublicKeys.newBuilder().build(), null, true);
+
+		Mts7Card card = factory.create(card(SIGNATURE_RESPONSE));
+
+		assertTrue(factory.isTrustUnknownRootKeys());
+		assertTrue(card.isVerifiedPrivateKeyPresent());
+		assertFalse(card.isVerifiedTrustChain());
+		assertTrue(card.hasThumprint());
+		assertEquals("0000175F96B61D", ByteArrayHexStringConverter.toHexString(card.getSerial()));
+	}
+
+	@Test
+	public void testUnknownRootKeyWithoutPrivateKeyIsRejectedWithOption() throws Exception {
+		VerifyMts7CardFactory factory = new VerifyMts7CardFactory(ParticipantPublicKeys.newBuilder().build(), null, true);
+
+		assertThrows(UnableToVerifyKeyPairException.class, () -> factory.create(card(OTHER_SIGNATURE_RESPONSE)));
+	}
+
+	@Test
+	public void testKnownRootKeyIsVerifiedWithOption() throws Exception {
+		VerifyMts7CardFactory factory = new VerifyMts7CardFactory(participantPublicKeys(), null, true);
+
+		Mts7Card card = factory.create(card(SIGNATURE_RESPONSE));
+
+		assertTrue(card.isVerifiedPrivateKeyPresent());
+		assertTrue(card.isVerifiedTrustChain());
+	}
+
+	@Test
+	public void testCardNotSignedByKnownRootKeyIsRejectedWithOption() throws Exception {
+		// the root key of the card is known, but it is another key than the one which signed the card certificate
+		ECKey otherKey = new ECKeyGenerator(Curve.P_256).generate();
+		MtbJwkPublic otherJwk = new MtbJwkPublic().kty("EC").kid("10:20230213").crv("P-256").x(otherKey.getX().toString()).y(otherKey.getY().toString());
+		ParticipantMetadata issuer = new ParticipantMetadata().pid(10L).organisationName("Ten").mtbPublicKeys(List.of(otherJwk));
+		VerifyMts7CardFactory factory = new VerifyMts7CardFactory(ParticipantPublicKeys.newBuilder().withParticipants(List.of(issuer)).build(), null, true);
+
+		UnableToVerifyKeyPairException e = assertThrows(UnableToVerifyKeyPairException.class, () -> factory.create(card(SIGNATURE_RESPONSE)));
+
+		assertFalse(e.getResult().isVerifiedTrustChain());
+	}
+
+	@Test
+	public void testCardWithoutPrivateKeyIsRejectedWithOption() throws Exception {
+		VerifyMts7CardFactory factory = new VerifyMts7CardFactory(participantPublicKeys(), null, true);
+
+		UnableToVerifyKeyPairException e = assertThrows(UnableToVerifyKeyPairException.class, () -> factory.create(card(OTHER_SIGNATURE_RESPONSE)));
+
+		assertTrue(e.getResult().isVerifiedTrustChain());
+	}
+
+	private ParticipantPublicKeys participantPublicKeys() throws Exception {
+		try (InputStream is = getClass().getResourceAsStream("/participantMetadata.json")) {
+			List<ParticipantMetadata> participantMetadata = Arrays.asList(new ObjectMapper().readValue(is, ParticipantMetadata[].class));
+			return ParticipantPublicKeys.newBuilder().withParticipants(participantMetadata).build();
+		}
+	}
+
+	private Mts7ApduPayloads card(String signatureResponse) {
+		Mts7ApduPayloads card = new Mts7ApduPayloads();
+		card.setSelectApplicationOutput(fromResponseApdu(ByteArrayHexStringConverter.hexStringToByteArray(SELECT_APPLICATION_RESPONSE)));
+		card.setGetDataOutput(fromResponseApdu(ByteArrayHexStringConverter.hexStringToByteArray(GET_NEXT_DATA_RESPONSE)));
+		card.setInternalAuthenticateInput(new byte[32]);
+		card.setInternalAuthenticateOutput(fromResponseApdu(ByteArrayHexStringConverter.hexStringToByteArray(signatureResponse)));
+		return card;
 	}
 
 	public byte[] fromResponseApdu(byte[] response) {
