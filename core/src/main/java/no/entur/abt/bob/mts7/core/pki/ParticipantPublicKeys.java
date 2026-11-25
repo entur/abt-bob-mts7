@@ -150,6 +150,15 @@ public class ParticipantPublicKeys {
 		}
 
 		/**
+		 * @param id key id
+		 * @return whether the participant has a key with this id, also if the key cannot be used (see {@linkplain #getKey(String)})
+		 */
+
+		public boolean hasKey(String id) {
+			return keys.containsKey(id);
+		}
+
+		/**
 		 * @return the ids of the keys of the participant (a copy)
 		 */
 
@@ -174,6 +183,20 @@ public class ParticipantPublicKeys {
 			return key.getKey(kid);
 		}
 		return null;
+	}
+
+	/**
+	 * Whether the key is among the keys of the participants. This is also true for a key which cannot be used (not supported), for which
+	 * {@linkplain #getIssuerPublicKey(long, String)} returns null: such a key is known, so it is not the same as a key which nobody has heard of.
+	 *
+	 * @param pid participant id
+	 * @param kid key id
+	 * @return whether the participant is known, and has a key with this id
+	 */
+
+	public boolean hasIssuerPublicKey(long pid, String kid) {
+		Issuer key = keys.get(pid);
+		return key != null && key.hasKey(kid);
 	}
 
 	/**

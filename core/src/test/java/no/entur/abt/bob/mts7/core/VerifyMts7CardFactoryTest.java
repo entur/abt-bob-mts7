@@ -7,8 +7,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
@@ -16,13 +20,20 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 import com.nimbusds.jose.jwk.Curve;
 import com.nimbusds.jose.jwk.ECKey;
+import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator;
 
 import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
+import no.entur.abt.bob.mts7.core.pki.IssuerPublicKey;
+import no.entur.abt.bob.mts7.core.pki.IssuerSignatureFactory;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
 import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
+import no.entur.abt.bob.mts7.core.pki.jws.ParticipantMetadataJwsParser;
+import no.entur.abt.bob.mts7.core.pki.jws.ParticipantMetadataJwsVerifier;
+import no.entur.abt.bob.mts7.core.pki.jws.VerifiedParticipantMetadata;
+import no.entur.abt.bob.mts7.core.pki.jws.VerifiedParticipantMetadataFactory;
 import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
 
 public class VerifyMts7CardFactoryTest {
@@ -145,6 +156,61 @@ public class VerifyMts7CardFactoryTest {
 		UnableToVerifyKeyPairException e = assertThrows(UnableToVerifyKeyPairException.class, () -> factory.create(card(OTHER_SIGNATURE_RESPONSE)));
 
 		assertTrue(e.getResult().isVerifiedTrustChain());
+	}
+
+	@Test
+	public void testKnownUnsupportedRootKeyIsRejectedWithOption() throws Exception {
+		VerifyMts7CardFactory factory = new VerifyMts7CardFactory(unsupportedRootKey(), null, true);
+
+		UnableToVerifyKeyPairException e = assertThrows(UnableToVerifyKeyPairException.class, () -> factory.create(card(SIGNATURE_RESPONSE)));
+
+		assertFalse(e.getResult().isVerifiedTrustChain());
+	}
+
+	@Test
+	public void testVerifiedParticipantMetadataJws() throws Exception {
+		// from the signed participant metadata to a verified card
+		VerifiedParticipantMetadataFactory metadataFactory = new VerifiedParticipantMetadataFactory(new ParticipantMetadataJwsParser(),
+				new ParticipantMetadataJwsVerifier(JWKSet.parse(read("/samtrafiken-prod.json"))));
+
+		// the signatures are valid from 2026-11-18T10:03:02Z until 2026-11-25T10:03:02Z
+		VerifiedParticipantMetadata verified = metadataFactory.create(read("/participantMetadataJws.json"),
+				Instant.parse("2026-11-20T00:00:00Z").toEpochMilli());
+
+		ParticipantPublicKeys keys = ParticipantPublicKeys.newBuilder().withParticipants(verified.getParticipantMetadata()).build();
+		assertTrue(keys.hasIssuerPublicKey(10L, "10:20230213"));
+
+		Mts7Card card = new VerifyMts7CardFactory(keys).create(card(SIGNATURE_RESPONSE));
+
+		assertTrue(card.isVerifiedPrivateKeyPresent());
+		assertTrue(card.isVerifiedTrustChain());
+		assertEquals("0000175F96B61D", ByteArrayHexStringConverter.toHexString(card.getSerial()));
+
+		assertThrows(UnableToVerifyKeyPairException.class, () -> new VerifyMts7CardFactory(keys).create(card(OTHER_SIGNATURE_RESPONSE)));
+	}
+
+	// the root key of the card is among the issuer keys, but its type is not supported
+	private static ParticipantPublicKeys unsupportedRootKey() throws Exception {
+		IssuerSignatureFactory unsupported = new IssuerSignatureFactory() {
+			@Override
+			public IssuerPublicKey createIssuerPublicKey(long pid, MtbJwkPublic jwkPublic) {
+				return null;
+			}
+		};
+
+		Map<String, ParticipantPublicKeys.IssuerKey> keys = new HashMap<>();
+		keys.put("10:20230213", new ParticipantPublicKeys.IssuerKey(new MtbJwkPublic().kty("EC").kid("10:20230213")));
+
+		Map<Long, ParticipantPublicKeys.Issuer> issuers = new HashMap<>();
+		issuers.put(10L, new ParticipantPublicKeys.Issuer("Ten", 10L, keys, unsupported));
+
+		return new ParticipantPublicKeys(issuers);
+	}
+
+	private String read(String resource) throws Exception {
+		try (InputStream is = getClass().getResourceAsStream(resource)) {
+			return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+		}
 	}
 
 	private ParticipantPublicKeys participantPublicKeys() throws Exception {

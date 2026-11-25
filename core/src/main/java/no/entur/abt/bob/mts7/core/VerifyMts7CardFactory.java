@@ -172,13 +172,14 @@ public class VerifyMts7CardFactory {
 
 			IssuerSignatureProtectedHeader header = mobileTicketBundle.getIssuerSignatureProtectedHeader();
 			if (header != null) {
-				IssuerPublicKey issuerPublicKey = participantPublicKeys.getIssuerPublicKey(Long.parseLong(header.getIid()), header.getKid());
+				long iid = Long.parseLong(header.getIid());
+
+				IssuerPublicKey issuerPublicKey = participantPublicKeys.getIssuerPublicKey(iid, header.getKid());
 
 				if (issuerPublicKey == null) {
 					LOGGER.info("Unable to find issuer public key");
-					ParticipantPublicKeys.Issuer issuer = participantPublicKeys.getIssuer(Long.parseLong(header.getIid()));
-					trustedUnknownRootKey = trustUnknownRootKeys
-							&& (issuer == null || !issuer.getKeyIds().contains(header.getKid()));
+					// a key which is known, but cannot be used, is not an unknown key
+					trustedUnknownRootKey = trustUnknownRootKeys && !participantPublicKeys.hasIssuerPublicKey(iid, header.getKid());
 				} else {
 					iccPublicKeyBuilder.withIssuerPublicKey(issuerPublicKey);
 				}

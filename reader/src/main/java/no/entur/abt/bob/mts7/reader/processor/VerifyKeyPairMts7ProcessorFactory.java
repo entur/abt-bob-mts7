@@ -20,9 +20,9 @@ import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
  *
  * <p>
  * The processors run on the threads of an executor. A processor waits for the card reader to give it input, so the executor must be able to run all of the
- * processors which exist at the same time (a bounded pool with fewer threads than that will make them wait for each other), and must not run them on the
- * thread which reads the card (that thread would wait for itself). The executor belongs to the application, which shuts it down when it is no longer needed;
- * the factory neither creates nor shuts down any executors.
+ * processors which exist at the same time (a bounded pool with fewer threads than that will make them wait for each other), and must not run them on the thread
+ * which reads the card (that thread would wait for itself). The executor belongs to the application, which shuts it down when it is no longer needed; the
+ * factory neither creates nor shuts down any executors.
  */
 
 public class VerifyKeyPairMts7ProcessorFactory implements Mts7ProcessorFactory {

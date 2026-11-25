@@ -6,13 +6,19 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.mts7.api.apdu.CommandAPDU;
 import no.entur.abt.bob.mts7.core.Mts7Card;
 import no.entur.abt.bob.mts7.core.UnableToVerifyKeyPairException;
 import no.entur.abt.bob.mts7.core.UnableToVerifyTrustChainException;
+import no.entur.abt.bob.mts7.core.pki.IssuerPublicKey;
+import no.entur.abt.bob.mts7.core.pki.IssuerSignatureFactory;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
 import no.entur.abt.bob.mts7.reader.AbstractTest;
 import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
@@ -156,6 +162,34 @@ public class VerifyTrustChainMts7ProcessorTest extends AbstractTest {
 				() -> process(factory.create(), ByteArrayHexStringConverter.toHexString(getNextDataResponse), SIGNATURE_RESPONSE).waitForVerify(0));
 
 		assertFalse(e.getResult().isVerifiedTrustChain());
+	}
+
+	@Test
+	public void testKnownUnsupportedRootKeyIsRejectedWithOption() throws Exception {
+		VerifyTrustChainMts7ProcessorFactory factory = new VerifyTrustChainMts7ProcessorFactory(unsupportedRootKey(), null, true, executor);
+
+		UnableToVerifyKeyPairException e = assertThrows(UnableToVerifyKeyPairException.class,
+				() -> process(factory.create(), GET_NEXT_DATA_RESPONSE, SIGNATURE_RESPONSE).waitForVerify(0));
+
+		assertFalse(e.getResult().isVerifiedTrustChain());
+	}
+
+	// the root key of the card is among the issuer keys, but its type is not supported
+	private static ParticipantPublicKeys unsupportedRootKey() throws Exception {
+		IssuerSignatureFactory unsupported = new IssuerSignatureFactory() {
+			@Override
+			public IssuerPublicKey createIssuerPublicKey(long pid, MtbJwkPublic jwkPublic) {
+				return null;
+			}
+		};
+
+		Map<String, ParticipantPublicKeys.IssuerKey> keys = new HashMap<>();
+		keys.put("10:20230213", new ParticipantPublicKeys.IssuerKey(new MtbJwkPublic().kty("EC").kid("10:20230213")));
+
+		Map<Long, ParticipantPublicKeys.Issuer> issuers = new HashMap<>();
+		issuers.put(10L, new ParticipantPublicKeys.Issuer("Ten", 10L, keys, unsupported));
+
+		return new ParticipantPublicKeys(issuers);
 	}
 
 	private static Mts7Processor process(Mts7Processor processor, String getNextDataResponse, String signatureResponse) {

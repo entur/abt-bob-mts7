@@ -25,8 +25,8 @@ import no.entur.abt.bob.mts7.core.UnableToVerifyParticipantMetadataException;
  * Verify participant metadata wrapped in a JWS (general JSON serialization).
  * <p>
  * The payload is accepted if at least one of the signatures is valid for a trusted key (selected by <code>kid</code>), and the validity period
- * (<code>notvalidbefore</code> and <code>notvalidafter</code>) of the signature has not passed. Signatures by other keys are ignored, so a primary
- * and a fallback signature can be combined.
+ * (<code>notvalidbefore</code> and <code>notvalidafter</code>) of the signature has not passed. Signatures by other keys are ignored, so a primary and a
+ * fallback signature can be combined.
  * <p>
  * Instances are thread safe.
  */

@@ -23,7 +23,8 @@ public class VerifiedParticipantMetadataFactoryTest {
 
 	public VerifiedParticipantMetadataFactoryTest() throws Exception {
 		jws = read("/participantMetadataJws.json");
-		factory = new VerifiedParticipantMetadataFactory(new ParticipantMetadataJwsParser(), new ParticipantMetadataJwsVerifier(JWKSet.parse(read("/samtrafiken-prod.json"))));
+		factory = new VerifiedParticipantMetadataFactory(new ParticipantMetadataJwsParser(),
+				new ParticipantMetadataJwsVerifier(JWKSet.parse(read("/samtrafiken-prod.json"))));
 	}
 
 	@Test
@@ -42,7 +43,8 @@ public class VerifiedParticipantMetadataFactoryTest {
 		byte[] payload = verified.getJws().getPayload().toBytes();
 
 		assertEquals(verified.getParticipantMetadata().size(), new ParticipantMetadataJwsParser().parseParticipantMetadata(payload).size());
-		assertThrows(UnableToVerifyParticipantMetadataException.class, () -> new ParticipantMetadataJwsParser().parseParticipantMetadata("nope".getBytes(StandardCharsets.UTF_8)));
+		assertThrows(UnableToVerifyParticipantMetadataException.class,
+				() -> new ParticipantMetadataJwsParser().parseParticipantMetadata("nope".getBytes(StandardCharsets.UTF_8)));
 	}
 
 	@Test

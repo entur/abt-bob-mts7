@@ -119,11 +119,14 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 
 			setIccKeyAlgorithm(header.getAlg());
 
-			IssuerPublicKey issuerPublicKey = participantPublicKeys.getIssuerPublicKey(Long.parseLong(header.getIid()), header.getKid());
+			long iid = Long.parseLong(header.getIid());
+
+			IssuerPublicKey issuerPublicKey = participantPublicKeys.getIssuerPublicKey(iid, header.getKid());
 
 			if (issuerPublicKey == null) {
 				LOGGER.info("Unable to find issuer public key");
-				trustedUnknownRootKey = trustUnknownRootKeys;
+				// a key which is known, but cannot be used, is not an unknown key
+				trustedUnknownRootKey = trustUnknownRootKeys && !participantPublicKeys.hasIssuerPublicKey(iid, header.getKid());
 			} else {
 				iccPublicKeyBuilder.withIssuerPublicKey(issuerPublicKey);
 			}

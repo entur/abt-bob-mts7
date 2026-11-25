@@ -89,7 +89,7 @@ public class ExternalReaderCardFactoryIntegrationTest {
 			Mts7Card mts7Card = mts7CardFactory.create(mts7ApduPayloads);
 
 			System.out.println("MTS7 processed in " + (System.currentTimeMillis() - timestamp) + "ms");
-			
+
 			byte[] thumbprint = mts7Card.getThumbprint();
 			System.out.println("Thumbprint: " + (thumbprint != null ? Base64.getEncoder().encodeToString(thumbprint) : null));
 			System.out.println("Participant id: " + mts7Card.getParticipantIdentifier());

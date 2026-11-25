@@ -25,7 +25,7 @@ public class CardRecordingFactory {
 	public CardRecordingFactory() {
 		this.objectMapper = createObjectMapper();
 	}
-	
+
 	public CardRecording newInstance() {
 		return new CardRecording();
 	}
