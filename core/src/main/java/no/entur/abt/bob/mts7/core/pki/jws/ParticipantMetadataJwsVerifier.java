@@ -106,7 +106,12 @@ public class ParticipantMetadataJwsVerifier {
 			try {
 				checkValidityPeriod(header, time);
 
-				JWSVerifier verifier = verifierFactory.createJWSVerifier(header, KeyConverter.toJavaKeys(Collections.singletonList(key)).get(0));
+				List<java.security.Key> javaKeys = KeyConverter.toJavaKeys(Collections.singletonList(key));
+				if (javaKeys.isEmpty()) {
+					LOGGER.info("Unsupported trusted key for kid {}", header.getKeyID());
+					continue;
+				}
+				JWSVerifier verifier = verifierFactory.createJWSVerifier(header, javaKeys.get(0));
 				if (!signature.verify(verifier)) {
 					LOGGER.info("Invalid signature for kid {}", header.getKeyID());
 					continue;
