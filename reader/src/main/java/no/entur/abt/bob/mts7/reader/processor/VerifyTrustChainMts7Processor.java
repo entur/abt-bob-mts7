@@ -28,6 +28,9 @@ import no.entur.abt.bob.mts7.mtb.MobileTicketBundleParser;
  * 
  * Processor for MTS7 card integrity check which includes the root certificates.
  * <p>
+ * With <code>trustUnknownRootKeys</code>, a card whose root key is not among the issuer keys is accepted if it proves that it has the private key; see
+ * {@linkplain VerifyTrustChainMts7ProcessorFactory}.
+ * <p>
  * A processor is for one card only.
  * 
  */
@@ -37,6 +40,7 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 	private static final Logger LOGGER = LoggerFactory.getLogger(VerifyTrustChainMts7Processor.class);
 
 	protected final ParticipantPublicKeys participantPublicKeys;
+	protected final boolean trustUnknownRootKeys;
 	protected final IccPublicKeyFactory iccSignatureFactory;
 	protected final CBORMapper cborMapper;
 	protected final MobileTicketBundleParser mobileTicketBundleParser;
@@ -44,11 +48,20 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 
 	protected final ThumbprintFactory thumbprintFactory;
 
+	// set by the processing thread, read by the thread which waits for the result
+	private volatile boolean trustedUnknownRootKey;
+
 	public VerifyTrustChainMts7Processor(ParticipantPublicKeys participantPublicKeys, IccPublicKeyFactory factory, Mts7CardEnricher enricher,
 			CBORMapper cborMapper, ThumbprintFactory thumbprintFactory, Executor executor) {
+		this(participantPublicKeys, false, factory, enricher, cborMapper, thumbprintFactory, executor);
+	}
+
+	public VerifyTrustChainMts7Processor(ParticipantPublicKeys participantPublicKeys, boolean trustUnknownRootKeys, IccPublicKeyFactory factory,
+			Mts7CardEnricher enricher, CBORMapper cborMapper, ThumbprintFactory thumbprintFactory, Executor executor) {
 		super(executor);
 
 		this.participantPublicKeys = participantPublicKeys;
+		this.trustUnknownRootKeys = trustUnknownRootKeys;
 		this.iccSignatureFactory = factory;
 
 		this.cborMapper = cborMapper;
@@ -64,7 +77,7 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 			throw new UnableToVerifyKeyPairException(card);
 		}
 
-		if (!card.isVerifiedTrustChain()) {
+		if (!card.isVerifiedTrustChain() && !trustedUnknownRootKey) {
 			throw new UnableToVerifyTrustChainException(card);
 		}
 
@@ -106,10 +119,14 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 
 			setIccKeyAlgorithm(header.getAlg());
 
-			IssuerPublicKey issuerPublicKey = participantPublicKeys.getIssuerPublicKey(Long.parseLong(header.getIid()), header.getKid());
+			long iid = Long.parseLong(header.getIid());
+
+			IssuerPublicKey issuerPublicKey = participantPublicKeys.getIssuerPublicKey(iid, header.getKid());
 
 			if (issuerPublicKey == null) {
 				LOGGER.info("Unable to find issuer public key");
+				// a key which is known, but cannot be used, is not an unknown key
+				trustedUnknownRootKey = trustUnknownRootKeys && !participantPublicKeys.hasIssuerPublicKey(iid, header.getKid());
 			} else {
 				iccPublicKeyBuilder.withIssuerPublicKey(issuerPublicKey);
 			}
@@ -131,6 +148,11 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 				LOGGER.info("Verified ICC trust chain");
 
 				updateResult(card -> card.setVerifiedTrustChain(true));
+			} else if (trustedUnknownRootKey) {
+				// The issuer key is unknown, so the issuer signature of the card certificate cannot be checked. Take the public key of the card from the
+				// certificate as it is, and only check that the card has the private key for it, as VerifyKeyPairMts7Processor does. This does not say
+				// who issued the card, so the trust chain stays not verified.
+				iccPublicKey = iccSignatureFactory.create(header);
 			} else {
 				LOGGER.info("Unable to verify ICC trust chain");
 			}

@@ -18,9 +18,9 @@ import no.entur.abt.bob.mts7.core.Mts7Card;
  *
  * <p>
  * A processor is for a single card, so it must not be reused. The methods which receive the input from the card, {@linkplain #close()} and the methods which
- * wait for the result can be called from any thread, any number of times. The processing itself is done by {@linkplain #run()} (which is called by the
- * executor when the processor is started), and reads the input in the order in which it is needed, so the card reader can give the processor its input as soon
- * as it has it.
+ * wait for the result can be called from any thread, any number of times. The processing itself is done by {@linkplain #run()} (which is called by the executor
+ * when the processor is started), and reads the input in the order in which it is needed, so the card reader can give the processor its input as soon as it has
+ * it.
  *
  * <p>
  * The processing waits for input from the card, so it needs a thread to itself while it does: an executor which cannot run all of the processors which are
@@ -28,8 +28,8 @@ import no.entur.abt.bob.mts7.core.Mts7Card;
  *
  * <p>
  * The executor is always provided by the application, which owns it and so is the one to shut it down; nothing in this library creates an executor or a thread
- * of its own. As a processor stops waiting for the card after {@linkplain #DEFAULT_MAX_LIFETIME_MILLIS}, its thread is never blocked for much longer than
- * that, but the threads of the executor are not daemon threads unless the application makes them so.
+ * of its own. As a processor stops waiting for the card after {@linkplain #DEFAULT_MAX_LIFETIME_MILLIS}, its thread is never blocked for much longer than that,
+ * but the threads of the executor are not daemon threads unless the application makes them so.
  */
 
 public abstract class AbstractMts7Processor implements Mts7Processor {
@@ -184,7 +184,7 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 	 */
 
 	@Override
-public String waitForAlgorithm(long timeout) throws InterruptedException {
+	public String waitForAlgorithm(long timeout) throws InterruptedException {
 		if (timeout < 0) {
 			throw new IllegalArgumentException("timeout must not be negative");
 		}

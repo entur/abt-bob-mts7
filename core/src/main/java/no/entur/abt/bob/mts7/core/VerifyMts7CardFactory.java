@@ -23,6 +23,11 @@ import no.entur.abt.bob.mts7.mtb.MobileTicketBundleParser;
  * 
  * Verify key + trust chain.
  * <p>
+ * By default, a card whose root key (the public key of its issuer, by <code>iid</code> and <code>kid</code>) is not among the
+ * {@linkplain ParticipantPublicKeys} is rejected. With <code>trustUnknownRootKeys</code>, such a card is accepted if it proves that it has the private key
+ * (door 3 only, as {@linkplain VerifyKeyPairMts7CardFactory}), and {@linkplain Mts7Card#isVerifiedTrustChain()} is false. A card whose root key is known must
+ * still pass both doors.
+ * <p>
  * Instances are thread safe, so a single instance should be shared by all threads (this requires that the {@linkplain ParticipantPublicKeys} is shared too).
  * 
  */
@@ -38,6 +43,7 @@ public class VerifyMts7CardFactory {
 	protected final MobileTicketBundleParser mobileTicketBundleParser;
 	protected final ThumbprintFactory thumbprintFactory;
 	protected final ParticipantPublicKeys participantPublicKeys;
+	protected final boolean trustUnknownRootKeys;
 
 	public VerifyMts7CardFactory(ParticipantPublicKeys participantPublicKeys) throws NoSuchAlgorithmException {
 		this(participantPublicKeys, null);
@@ -52,7 +58,21 @@ public class VerifyMts7CardFactory {
 	 */
 
 	public VerifyMts7CardFactory(ParticipantPublicKeys participantPublicKeys, Provider provider) throws NoSuchAlgorithmException {
-		this(participantPublicKeys, new IccPublicKeyFactory(provider), new Mts7CardEnricher(), new CBORMapper(), new ThumbprintFactory(provider));
+		this(participantPublicKeys, provider, false);
+	}
+
+	/**
+	 * Constructor.
+	 *
+	 * @param participantPublicKeys issuer keys, shared with other factories and threads
+	 * @param provider              security provider (for signatures and digests), or null for the default
+	 * @param trustUnknownRootKeys  whether to accept a card whose root key is not among the issuer keys, if it proves that it has the private key
+	 * @throws NoSuchAlgorithmException if the digest algorithm is not available
+	 */
+
+	public VerifyMts7CardFactory(ParticipantPublicKeys participantPublicKeys, Provider provider, boolean trustUnknownRootKeys) throws NoSuchAlgorithmException {
+		this(participantPublicKeys, trustUnknownRootKeys, new IccPublicKeyFactory(provider), new Mts7CardEnricher(), new CBORMapper(),
+				new ThumbprintFactory(provider));
 	}
 
 	/**
@@ -67,12 +87,37 @@ public class VerifyMts7CardFactory {
 
 	public VerifyMts7CardFactory(ParticipantPublicKeys participantPublicKeys, IccPublicKeyFactory iccPublicKeyFactory, Mts7CardEnricher enricher,
 			CBORMapper cborMapper, ThumbprintFactory thumbprintFactory) {
+		this(participantPublicKeys, false, iccPublicKeyFactory, enricher, cborMapper, thumbprintFactory);
+	}
+
+	/**
+	 * Constructor for sharing the helpers with other factories. All of the helpers must be thread safe.
+	 *
+	 * @param participantPublicKeys issuer keys, shared with other factories and threads
+	 * @param trustUnknownRootKeys  whether to accept a card whose root key is not among the issuer keys, if it proves that it has the private key
+	 * @param iccPublicKeyFactory   factory for the public key of the card
+	 * @param enricher              card enricher
+	 * @param cborMapper            CBOR mapper
+	 * @param thumbprintFactory     thumbprint factory
+	 */
+
+	public VerifyMts7CardFactory(ParticipantPublicKeys participantPublicKeys, boolean trustUnknownRootKeys, IccPublicKeyFactory iccPublicKeyFactory,
+			Mts7CardEnricher enricher, CBORMapper cborMapper, ThumbprintFactory thumbprintFactory) {
 		this.participantPublicKeys = participantPublicKeys;
+		this.trustUnknownRootKeys = trustUnknownRootKeys;
 		this.iccPublicKeyFactory = iccPublicKeyFactory;
 		this.enricher = enricher;
 		this.cborMapper = cborMapper;
 		this.mobileTicketBundleParser = new MobileTicketBundleParser(cborMapper);
 		this.thumbprintFactory = thumbprintFactory;
+	}
+
+	/**
+	 * @return whether a card whose root key is not among the issuer keys is accepted, if it proves that it has the private key
+	 */
+
+	public boolean isTrustUnknownRootKeys() {
+		return trustUnknownRootKeys;
 	}
 
 	/**
@@ -109,6 +154,7 @@ public class VerifyMts7CardFactory {
 
 	public Mts7Card create(Mts7ApduPayloads card) throws UnableToVerifyKeyPairException, UnableToVerifyTrustChainException {
 		Mts7Card result = new Mts7Card();
+		boolean trustedUnknownRootKey = false;
 		try {
 			IccPublicKeyBuilder iccPublicKeyBuilder = new IccPublicKeyBuilder(iccPublicKeyFactory);
 
@@ -126,10 +172,14 @@ public class VerifyMts7CardFactory {
 
 			IssuerSignatureProtectedHeader header = mobileTicketBundle.getIssuerSignatureProtectedHeader();
 			if (header != null) {
-				IssuerPublicKey issuerPublicKey = participantPublicKeys.getIssuerPublicKey(Long.parseLong(header.getIid()), header.getKid());
+				long iid = Long.parseLong(header.getIid());
+
+				IssuerPublicKey issuerPublicKey = participantPublicKeys.getIssuerPublicKey(iid, header.getKid());
 
 				if (issuerPublicKey == null) {
 					LOGGER.info("Unable to find issuer public key");
+					// a key which is known, but cannot be used, is not an unknown key
+					trustedUnknownRootKey = trustUnknownRootKeys && !participantPublicKeys.hasIssuerPublicKey(iid, header.getKid());
 				} else {
 					iccPublicKeyBuilder.withIssuerPublicKey(issuerPublicKey);
 				}
@@ -148,6 +198,11 @@ public class VerifyMts7CardFactory {
 					iccPublicKey = iccPublicKeyBuilder.build();
 
 					result.setVerifiedTrustChain(true);
+				} else if (trustedUnknownRootKey) {
+					// The issuer key is unknown, so the issuer signature of the card certificate (door 2) cannot be checked. Take the public key of
+					// the card from the certificate as it is, and only check that the card has the private key for it (door 3), as
+					// VerifyKeyPairMts7CardFactory does. This does not say who issued the card, so the trust chain stays not verified.
+					iccPublicKey = iccPublicKeyFactory.create(header);
 				} else {
 					LOGGER.info("Unable to verify ICC trust chain");
 				}
@@ -171,7 +226,7 @@ public class VerifyMts7CardFactory {
 			throw new UnableToVerifyKeyPairException(result);
 		}
 
-		if (!result.isVerifiedTrustChain()) {
+		if (!result.isVerifiedTrustChain() && !trustedUnknownRootKey) {
 			throw new UnableToVerifyTrustChainException(result);
 		}
 

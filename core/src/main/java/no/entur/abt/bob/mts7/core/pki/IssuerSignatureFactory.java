@@ -15,7 +15,7 @@ import java.util.Map;
 import com.nimbusds.jose.jwk.JWK;
 import com.nimbusds.jose.jwk.KeyConverter;
 
-import no.entur.abt.bob.api.pm.model.JwkPublic;
+import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
 
 /**
@@ -43,7 +43,7 @@ public class IssuerSignatureFactory {
 	 * @throws UnableToConstructIssuerKeyException if the key could not be parsed or used
 	 */
 
-	public IssuerPublicKey createIssuerPublicKey(long pid, JwkPublic jwkPublic) throws UnableToConstructIssuerKeyException {
+	public IssuerPublicKey createIssuerPublicKey(long pid, MtbJwkPublic jwkPublic) throws UnableToConstructIssuerKeyException {
 		try {
 			Key key = parse(jwkPublic);
 
@@ -74,7 +74,7 @@ public class IssuerSignatureFactory {
 		}
 	}
 
-	private Key parse(JwkPublic jwkPublic) throws Exception {
+	private Key parse(MtbJwkPublic jwkPublic) throws Exception {
 		Map<String, Object> fields = convert(jwkPublic);
 
 		JWK jwk = JWK.parse(fields);
@@ -84,7 +84,7 @@ public class IssuerSignatureFactory {
 		return keys.get(0);
 	}
 
-	private Map<String, Object> convert(JwkPublic jwkPublic) {
+	private Map<String, Object> convert(MtbJwkPublic jwkPublic) {
 		Map<String, Object> converted = new HashMap<>();
 
 		converted.put("kty", jwkPublic.getKty());

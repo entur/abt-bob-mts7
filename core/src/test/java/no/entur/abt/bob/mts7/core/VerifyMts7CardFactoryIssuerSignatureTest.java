@@ -28,7 +28,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 import com.nimbusds.jose.crypto.impl.ECDSA;
 
-import no.entur.abt.bob.api.pm.model.JwkPublic;
+import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
 import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
@@ -183,7 +183,7 @@ public class VerifyMts7CardFactoryIssuerSignatureTest {
 		return ECDSA.transcodeSignatureToConcat(signature.sign(), 64);
 	}
 
-	private ParticipantPublicKeys issuers(long pid, JwkPublic key) throws Exception {
+	private ParticipantPublicKeys issuers(long pid, MtbJwkPublic key) throws Exception {
 		ParticipantMetadata participant = new ParticipantMetadata();
 		participant.setPid(pid);
 		participant.setOrganisationName("Test issuer");
@@ -196,7 +196,7 @@ public class VerifyMts7CardFactoryIssuerSignatureTest {
 		ECPublicKey publicKey = (ECPublicKey) issuerKeyPair.getPublic();
 
 		return issuers(pid,
-				new JwkPublic().kty("EC")
+				new MtbJwkPublic().kty("EC")
 						.kid(kid)
 						.crv("P-256")
 						.x(base64Url(unsigned(publicKey.getW().getAffineX(), 32)))
@@ -207,7 +207,7 @@ public class VerifyMts7CardFactoryIssuerSignatureTest {
 		RSAPublicKey publicKey = (RSAPublicKey) issuerKeyPair.getPublic();
 
 		return issuers(pid,
-				new JwkPublic().kty("RSA")
+				new MtbJwkPublic().kty("RSA")
 						.kid(kid)
 						.n(base64Url(unsigned(publicKey.getModulus(), (publicKey.getModulus().bitLength() + 7) / 8)))
 						.e(base64Url(unsigned(publicKey.getPublicExponent(), (publicKey.getPublicExponent().bitLength() + 7) / 8))));

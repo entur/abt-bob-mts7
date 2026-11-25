@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
-import no.entur.abt.bob.api.pm.model.JwkPublic;
+import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
 import no.entur.abt.bob.mts7.core.LenientMts7CardFactory;
 import no.entur.abt.bob.mts7.core.Mts7ApduPayloads;
@@ -191,7 +191,7 @@ public class Mts7WarmupTest {
 
 	@Test
 	public void testParticipantPublicKeysFailuresAreReported() throws Exception {
-		JwkPublic invalid = new JwkPublic().kty("EC").kid("99:invalid").crv("P-256").x("AAAA").y("AAAA");
+		MtbJwkPublic invalid = new MtbJwkPublic().kty("EC").kid("99:invalid").crv("P-256").x("AAAA").y("AAAA");
 		ParticipantPublicKeys keys = readKeys(new ParticipantMetadata().pid(99L).organisationName("Invalid").addMtbPublicKeysItem(invalid));
 
 		Mts7WarmupResult everyone = allFactories().withParticipantPublicKeys(keys).build().warmUp();
@@ -323,7 +323,7 @@ public class Mts7WarmupTest {
 		}
 
 		@Override
-		public IssuerPublicKey createIssuerPublicKey(long pid, JwkPublic jwkPublic) throws UnableToConstructIssuerKeyException {
+		public IssuerPublicKey createIssuerPublicKey(long pid, MtbJwkPublic jwkPublic) throws UnableToConstructIssuerKeyException {
 			calls.incrementAndGet();
 			return super.createIssuerPublicKey(pid, jwkPublic);
 		}
@@ -342,7 +342,7 @@ public class Mts7WarmupTest {
 		}
 
 		@Override
-		public IssuerPublicKey createIssuerPublicKey(long pid, JwkPublic jwkPublic) {
+		public IssuerPublicKey createIssuerPublicKey(long pid, MtbJwkPublic jwkPublic) {
 			calls++;
 			return null;
 		}
@@ -363,7 +363,7 @@ public class Mts7WarmupTest {
 		Map<Long, ParticipantPublicKeys.Issuer> issuers = new HashMap<>();
 		for (ParticipantMetadata p : participants) {
 			Map<String, ParticipantPublicKeys.IssuerKey> keys = new HashMap<>();
-			for (JwkPublic jwk : p.getMtbPublicKeys()) {
+			for (MtbJwkPublic jwk : p.getMtbPublicKeys()) {
 				keys.put(jwk.getKid(), new ParticipantPublicKeys.IssuerKey(jwk));
 			}
 			issuers.put(p.getPid(), new ParticipantPublicKeys.Issuer(p.getOrganisationName(), p.getPid(), keys, factory));
@@ -402,7 +402,7 @@ public class Mts7WarmupTest {
 
 		// so no more work for the first card
 		for (ParticipantMetadata p : participants) {
-			for (JwkPublic jwk : p.getMtbPublicKeys()) {
+			for (MtbJwkPublic jwk : p.getMtbPublicKeys()) {
 				assertNotNull(keys.getIssuerPublicKey(p.getPid(), jwk.getKid()));
 			}
 		}
@@ -443,7 +443,7 @@ public class Mts7WarmupTest {
 		UnsupportedKeyFactory factory = new UnsupportedKeyFactory();
 
 		Map<String, ParticipantPublicKeys.IssuerKey> keys = new HashMap<>();
-		keys.put("99:unsupported", new ParticipantPublicKeys.IssuerKey(new JwkPublic().kty("EC").kid("99:unsupported")));
+		keys.put("99:unsupported", new ParticipantPublicKeys.IssuerKey(new MtbJwkPublic().kty("EC").kid("99:unsupported")));
 
 		Map<Long, ParticipantPublicKeys.Issuer> issuers = new HashMap<>();
 		issuers.put(99L, new ParticipantPublicKeys.Issuer("Unsupported", 99L, keys, factory));
