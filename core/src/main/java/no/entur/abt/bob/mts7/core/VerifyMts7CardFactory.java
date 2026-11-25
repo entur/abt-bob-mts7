@@ -199,7 +199,9 @@ public class VerifyMts7CardFactory {
 
 					result.setVerifiedTrustChain(true);
 				} else if (trustedUnknownRootKey) {
-					// door 3 only, as there is no root key to verify the card certificate with
+					// The issuer key is unknown, so the issuer signature of the card certificate (door 2) cannot be checked. Take the public key of
+					// the card from the certificate as it is, and only check that the card has the private key for it (door 3), as
+					// VerifyKeyPairMts7CardFactory does. This does not say who issued the card, so the trust chain stays not verified.
 					iccPublicKey = iccPublicKeyFactory.create(header);
 				} else {
 					LOGGER.info("Unable to verify ICC trust chain");
