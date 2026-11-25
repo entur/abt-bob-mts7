@@ -29,11 +29,10 @@ public class ParticipantPublicKeysTest {
 
 	@Test
 	public void parseMetadataWithSignatureConstraintAndAuthtokenKeys() throws Exception {
-		String json = "[{\"pid\": 99, \"organisationName\": \"Test\", \"domainName\": \"test.example\","
-				+ "\"mtbPublicKeys\": [{\"kty\": \"EC\", \"kid\": \"99:1\", \"crv\": \"P-256\", \"x\": \"AAAA\", \"y\": \"AAAA\", \"bob_sc\": \"ticket\"}],"
-				+ "\"authtokenPublicKeys\": [{\"kty\": \"EC\", \"kid\": \"99:a\", \"crv\": \"P-256\", \"x\": \"AAAA\", \"y\": \"AAAA\"}]}]";
-
-		ParticipantMetadata[] parsed = new ObjectMapper().readValue(json, ParticipantMetadata[].class);
+		ParticipantMetadata[] parsed;
+		try (InputStream is = getClass().getResourceAsStream("/participantMetadataSignatureConstraint.json")) {
+			parsed = new ObjectMapper().readValue(is, ParticipantMetadata[].class);
+		}
 
 		assertEquals(MtbJwkPublic.BobScEnum.TICKET, parsed[0].getMtbPublicKeys().get(0).getBobSc());
 		assertEquals(1, parsed[0].getAuthtokenPublicKeys().size());

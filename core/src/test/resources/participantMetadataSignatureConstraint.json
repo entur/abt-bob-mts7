@@ -1,0 +1,26 @@
+[
+  {
+    "pid": 99,
+    "organisationName": "Test",
+    "domainName": "test.example",
+    "mtbPublicKeys": [
+      {
+        "kty": "EC",
+        "kid": "99:1",
+        "crv": "P-256",
+        "x": "AAAA",
+        "y": "AAAA",
+        "bob_sc": "ticket"
+      }
+    ],
+    "authtokenPublicKeys": [
+      {
+        "kty": "EC",
+        "kid": "99:a",
+        "crv": "P-256",
+        "x": "AAAA",
+        "y": "AAAA"
+      }
+    ]
+  }
+]
