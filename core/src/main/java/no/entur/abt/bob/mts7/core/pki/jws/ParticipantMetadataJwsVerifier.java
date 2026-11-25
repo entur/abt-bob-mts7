@@ -28,6 +28,10 @@ import no.entur.abt.bob.mts7.core.UnableToVerifyParticipantMetadataException;
  * (<code>notvalidbefore</code> and <code>notvalidafter</code>) of the signature has not passed. Signatures by other keys are ignored, so a primary and a
  * fallback signature can be combined.
  * <p>
+ * The validity period is optional: a signature without <code>notvalidbefore</code> is valid from the beginning of time, and one without
+ * <code>notvalidafter</code> does not expire. This is intended, and not the same as turning the checks off in the constructor, which ignores the values of
+ * signatures which do have them.
+ * <p>
  * Instances are thread safe.
  */
 

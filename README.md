@@ -152,7 +152,7 @@ Implementation:
  * add `reader` artifact
  * Implement your own class of type `Mts7Exchange` for talking to the card
  * Create a `Mts7ProcessorFactory`, which needs an `Executor` for its processors (yours: the library creates no threads, and you shut it down when the application stops):
-   * Most secure: `VerifyTrustChainMts7ProcessorFactory` (requires the public keys of the issuers via `ParticipantPublicKeys`, which you build from the participant metadata; with `trustUnknownRootKeys`, a card whose issuer key is not among them is only checked for the private key, see [TRUST_CHAIN.md](docs/TRUST_CHAIN.md)) or
+   * Most secure: `VerifyTrustChainMts7ProcessorFactory` (requires the public keys of the issuers via `ParticipantPublicKeys`, which you build from the participant metadata, see [signed participant metadata](#signed-participant-metadata); with `trustUnknownRootKeys`, a card whose issuer key is not among them is only checked for the private key, see [TRUST_CHAIN.md](docs/TRUST_CHAIN.md)) or
    * Less secure: `VerifyKeyPairMts7ProcessorFactory` (only checks that the card has the private key, not who issued it)
  * Create `InFlightMts7CardFactory` 
  * Create `InFlightMts7Card` from `InFlightMts7CardFactory.create(..)` which contains the `Mts7ApduExchanges`. It is `Closeable`: close it when done (try-with-resources), or the processor keeps waiting for the card (for at most a minute).
@@ -189,6 +189,34 @@ try (InFlightMts7Card inFlight = factory.create(exchange, null)) {
 }
 ```
 </details>
+
+### Signed participant metadata
+
+The participant metadata is published as a JWS (general JSON serialization), signed by the publisher of the metadata. Verify it before you use its keys, as whoever controls the participant metadata decides which cards are trusted:
+
+ * `VerifiedParticipantMetadataFactory` parses the JWS, verifies its signatures and only then parses the payload (`ParticipantMetadataJwsParser` and `ParticipantMetadataJwsVerifier` do the parts).
+ * The trusted keys are a JWK set which you have got from the publisher in advance; a signature is matched to a key by `kid`. One valid signature by a trusted key is enough, so a primary and a fallback signature can be combined; `getVerifiedHeaders()` tells which ones were verified.
+ * The validity period of a signature (`notvalidbefore` and `notvalidafter` in its header) is checked against the current time, or a time of your own. Each of the two checks can be turned off in the constructor of the verifier, and a signature which does not have them is not limited in time.
+ * `UnableToVerifyParticipantMetadataException` is thrown if the JWS or its payload cannot be parsed, or if no signature could be verified.
+
+<details>
+  <summary>Code example (trustedKeysJson and participantMetadataJws are your own)</summary>
+
+```java
+// the keys of the publisher of the participant metadata, which you trust
+JWKSet trustedKeys = JWKSet.parse(trustedKeysJson);
+
+VerifiedParticipantMetadataFactory metadataFactory = new VerifiedParticipantMetadataFactory(new ParticipantMetadataJwsParser(),
+        new ParticipantMetadataJwsVerifier(trustedKeys));
+
+// throws UnableToVerifyParticipantMetadataException if the participant metadata cannot be trusted
+VerifiedParticipantMetadata verified = metadataFactory.create(participantMetadataJws);
+
+ParticipantPublicKeys keys = ParticipantPublicKeys.newBuilder().withParticipants(verified.getParticipantMetadata()).build();
+```
+</details>
+
+To store the participant metadata, keep the JWS and verify it again when it is loaded, or keep the payload of a verified JWS (`getJws().getPayload().toBytes()`) and parse it with `ParticipantMetadataJwsParser.parseParticipantMetadata(byte[])`, which does not verify anything.
 
 ### Offline
 

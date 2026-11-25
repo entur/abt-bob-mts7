@@ -184,7 +184,7 @@ button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 /* Notes and table */
 .notes { display: grid; gap: 18px; }
-.notes-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; }
+.notes-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
 .notes-grid div { display: grid; gap: 6px; align-content: start; border-top: 1px solid var(--rule); padding-top: 14px; }
 .notes-grid h3 { font-size: 17px; }
 .notes-grid p { font-size: 15px; color: var(--ink-2); }
@@ -410,6 +410,10 @@ td.box .swatch { margin-right: 8px; vertical-align: 1px; }
       <div>
         <h3>Door 3 is authenticity</h3>
         <p>Anyone can read and copy the card certificate. Only the real chip can sign a fresh challenge, because its private key cannot be read out.</p>
+      </div>
+      <div>
+        <h3>No root key, no door 2</h3>
+        <p>A card whose root key the terminal does not have is rejected. With <code>trustUnknownRootKeys</code>, such a card only has to pass door 3, and its trust chain is reported as not verified. A card whose root key the terminal does have must still pass both doors.</p>
       </div>
     </div>
   </section>
