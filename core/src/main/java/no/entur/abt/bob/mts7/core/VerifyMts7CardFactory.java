@@ -176,7 +176,9 @@ public class VerifyMts7CardFactory {
 
 				if (issuerPublicKey == null) {
 					LOGGER.info("Unable to find issuer public key");
-					trustedUnknownRootKey = trustUnknownRootKeys;
+					ParticipantPublicKeys.Issuer issuer = participantPublicKeys.getIssuer(Long.parseLong(header.getIid()));
+					trustedUnknownRootKey = trustUnknownRootKeys
+							&& (issuer == null || !issuer.getKeyIds().contains(header.getKid()));
 				} else {
 					iccPublicKeyBuilder.withIssuerPublicKey(issuerPublicKey);
 				}
