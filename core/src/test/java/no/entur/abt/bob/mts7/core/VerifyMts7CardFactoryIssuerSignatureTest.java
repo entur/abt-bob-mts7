@@ -226,9 +226,7 @@ public class VerifyMts7CardFactoryIssuerSignatureTest {
 		Mts7Card result;
 		try {
 			result = factory.create(payloads);
-		} catch (UnableToVerifyKeyPairException e) {
-			result = e.getResult();
-		} catch (UnableToVerifyTrustChainException e) {
+		} catch (InvalidCardMts7Exception e) {
 			result = e.getResult();
 		}
 		if (result.isVerifiedTrustChain() && result.isVerifiedPrivateKeyPresent()) {

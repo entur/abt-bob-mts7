@@ -1,5 +1,6 @@
 package no.entur.abt.bob.mts7.reader.processor;
 
+import java.io.IOException;
 import java.util.concurrent.Executor;
 
 import org.slf4j.Logger;
@@ -7,11 +8,11 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
-import no.entur.abt.bob.mts7.core.Mts7Card;
+import no.entur.abt.bob.mts7.core.InvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.InvalidKeyPairMts7Exception;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
 import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
 import no.entur.abt.bob.mts7.core.UnableToConstructThumbprintKeyException;
-import no.entur.abt.bob.mts7.core.UnableToVerifyKeyPairException;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
@@ -51,16 +52,6 @@ public class VerifyKeyPairMts7Processor extends AbstractMts7Processor {
 		this.thumbprintFactory = thumbprintFactory;
 	}
 
-	public Mts7Card waitForVerify(long timeout) throws InterruptedException, UnableToVerifyKeyPairException {
-		Mts7Card card = awaitResult(timeout);
-
-		if (!card.isVerifiedPrivateKeyPresent()) {
-			throw new UnableToVerifyKeyPairException(card);
-		}
-
-		return card;
-	}
-
 	@Override
 	protected void process() throws Exception {
 		if (!awaitInput(() -> selectApplicationResponsePayload != null)) {
@@ -76,30 +67,36 @@ public class VerifyKeyPairMts7Processor extends AbstractMts7Processor {
 			return;
 		}
 
-		MobileTicketBundle mobileTicketBundle = mobileTicketBundleParser.parse(getDataResponsePayload);
-
-		IccPublicKey iccPublicKey = null;
+		MobileTicketBundle mobileTicketBundle;
+		try {
+			mobileTicketBundle = mobileTicketBundleParser.parse(getDataResponsePayload);
+		} catch (IOException e) {
+			throw new InvalidCardMts7Exception("Unable to parse the Mobile Ticket Bundle", result, e);
+		}
 
 		IssuerSignatureProtectedHeader header = mobileTicketBundle.getIssuerSignatureProtectedHeader();
-		if (header != null) {
-			// note here what kind of algorithm we are using
-			// EC and RSA do not encode the input to the internal authenticate function
-			// in the same way.
+		if (header == null) {
+			throw new InvalidCardMts7Exception("Missing Issuer Signature Protected Header", result);
+		}
 
-			setIccKeyAlgorithm(header.getAlg());
+		// note here what kind of algorithm we are using
+		// EC and RSA do not encode the input to the internal authenticate function
+		// in the same way.
 
-			try {
-				iccPublicKey = iccSignatureFactory.create(header);
-			} catch (UnableToConstructIccKeyException e) {
-				LOGGER.info("Unable to create ICC public key", e);
-			}
+		setIccKeyAlgorithm(header.getAlg());
 
-			try {
-				byte[] thumbprint = thumbprintFactory.create(header);
-				updateResult(card -> card.setThumbprint(thumbprint));
-			} catch (UnableToConstructThumbprintKeyException e) {
-				LOGGER.info("Unable to construct thumbprint", e);
-			}
+		try {
+			byte[] thumbprint = thumbprintFactory.create(header);
+			updateResult(card -> card.setThumbprint(thumbprint));
+		} catch (UnableToConstructThumbprintKeyException e) {
+			LOGGER.info("Unable to construct thumbprint", e);
+		}
+
+		IccPublicKey iccPublicKey;
+		try {
+			iccPublicKey = iccSignatureFactory.create(header);
+		} catch (UnableToConstructIccKeyException e) {
+			throw new InvalidCardMts7Exception("Unable to create ICC public key", result, e);
 		}
 
 		LOGGER.info("Processed 'get (next) data' response");
@@ -119,13 +116,13 @@ public class VerifyKeyPairMts7Processor extends AbstractMts7Processor {
 		}
 
 		// process signature - the only time-critical part of the logic here
-		boolean verified = iccPublicKey != null && iccPublicKey.verify(commandPayload, responsePayload);
-		if (verified) {
-			LOGGER.info("Verified ICC private key");
-		} else {
-			LOGGER.info("Unable to verify ICC private key");
+		if (!iccPublicKey.verify(commandPayload, responsePayload)) {
+			throw new InvalidKeyPairMts7Exception(result);
 		}
-		updateResult(card -> card.setVerifiedPrivateKeyPresent(verified));
+		LOGGER.info("Verified ICC private key");
+
+		// last, as the card has passed all of the checks
+		updateResult(card -> card.setVerifiedPrivateKeyPresent(true));
 
 		LOGGER.info("Processed 'internal authenticate' response");
 	}

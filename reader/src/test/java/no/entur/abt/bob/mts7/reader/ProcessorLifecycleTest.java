@@ -26,9 +26,9 @@ import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
 import no.entur.abt.bob.mts7.api.UnableToSelectApplicationException;
 import no.entur.abt.bob.mts7.api.apdu.CommandAPDU;
+import no.entur.abt.bob.mts7.core.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.Mts7Card;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
-import no.entur.abt.bob.mts7.core.UnableToVerifyKeyPairException;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
 import no.entur.abt.bob.mts7.reader.processor.Mts7Processor;
@@ -158,7 +158,7 @@ public class ProcessorLifecycleTest extends AbstractTest {
 			processor.start();
 
 			// no input, so this times out
-			UnableToVerifyKeyPairException e = assertThrows(UnableToVerifyKeyPairException.class, () -> processor.waitForVerify(100));
+			InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class, () -> processor.waitForVerify(100));
 			assertNotNull(e.getResult());
 
 			// the processor must still be closable after the timeout
@@ -175,7 +175,7 @@ public class ProcessorLifecycleTest extends AbstractTest {
 			processor.start();
 			processor.close();
 
-			UnableToVerifyKeyPairException e = assertThrows(UnableToVerifyKeyPairException.class, () -> processor.waitForVerify(1000));
+			InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class, () -> processor.waitForVerify(1000));
 			assertNotNull(e.getResult());
 		}
 	}
@@ -185,7 +185,7 @@ public class ProcessorLifecycleTest extends AbstractTest {
 		for (Mts7ProcessorFactory processorFactory : processorFactories()) {
 			Mts7Processor processor = processorFactory.create();
 			// never started
-			UnableToVerifyKeyPairException e = assertThrows(UnableToVerifyKeyPairException.class, () -> processor.waitForVerify(1));
+			InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class, () -> processor.waitForVerify(1));
 			assertNotNull(e.getResult());
 		}
 	}
@@ -219,7 +219,7 @@ public class ProcessorLifecycleTest extends AbstractTest {
 
 			// would wait forever for input if it had been started
 			assertTimeoutPreemptively(Duration.ofSeconds(5), () -> {
-				UnableToVerifyKeyPairException e = assertThrows(UnableToVerifyKeyPairException.class, () -> processor.waitForVerify(0));
+				InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class, () -> processor.waitForVerify(0));
 				assertNotNull(e.getResult());
 			}, name);
 
@@ -268,7 +268,7 @@ public class ProcessorLifecycleTest extends AbstractTest {
 			processor.onSelectApplicationResponseApdu(SELECT_APPLICATION_RESPONSE);
 
 			// still waiting for the rest
-			UnableToVerifyKeyPairException e = assertThrows(UnableToVerifyKeyPairException.class, () -> processor.waitForVerify(300));
+			InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class, () -> processor.waitForVerify(300));
 
 			Mts7Card timedOut = e.getResult();
 			assertNotNull(timedOut);
@@ -324,7 +324,7 @@ public class ProcessorLifecycleTest extends AbstractTest {
 
 			// nobody closes it, and there is no input, but it must not wait forever
 			assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
-				UnableToVerifyKeyPairException e = assertThrows(UnableToVerifyKeyPairException.class, () -> processor.waitForVerify(0));
+				InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class, () -> processor.waitForVerify(0));
 				assertNotNull(e.getResult());
 			}, name);
 

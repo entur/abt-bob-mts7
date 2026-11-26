@@ -3,7 +3,6 @@ package no.entur.abt.bob.mts7.core.pki;
 import java.security.Provider;
 import java.security.PublicKey;
 import java.security.Signature;
-import java.security.SignatureException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,11 +42,11 @@ public class IccPublicKey {
 		this.ec = algorithm.endsWith("ECDSA");
 	}
 
-	public boolean verify(byte[] data, byte[] expected) throws SignatureException {
+	public boolean verify(byte[] data, byte[] expected) {
 		return verify(data, 0, data == null ? 0 : data.length, expected);
 	}
 
-	public boolean verify(byte[] data, int offset, int length, byte[] expected) throws SignatureException {
+	public boolean verify(byte[] data, int offset, int length, byte[] expected) {
 		try {
 
 			// from MTS7 - 4.1.4. INTERNAL AUTHENTICATE:

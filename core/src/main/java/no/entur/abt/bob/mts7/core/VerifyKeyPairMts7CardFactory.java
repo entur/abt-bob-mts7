@@ -1,5 +1,6 @@
 package no.entur.abt.bob.mts7.core;
 
+import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.security.Provider;
 
@@ -67,43 +68,55 @@ public class VerifyKeyPairMts7CardFactory {
 		this.thumbprintFactory = thumbprintFactory;
 	}
 
-	public Mts7Card create(Mts7ApduPayloads card) throws UnableToVerifyKeyPairException {
+	/**
+	 * Verify that the card has the private key for the public key in its certificate.
+	 *
+	 * @param card the payloads read from the card
+	 * @return the verified card
+	 * @throws InvalidKeyPairMts7Exception if the card did not prove that it has the private key (a problem on the card side)
+	 * @throws InvalidCardMts7Exception    if a response from the card is missing or malformed (a problem on the card side). This is also the superclass of
+	 *                                     {@linkplain InvalidKeyPairMts7Exception}, so catch it for any problem on the card side.
+	 * @throws NoSuchAlgorithmException    if the signature algorithm of the card is not available from the security provider (a problem on our side)
+	 */
+
+	public Mts7Card create(Mts7ApduPayloads card) throws InvalidCardMts7Exception, NoSuchAlgorithmException {
 		Mts7Card result = new Mts7Card();
+
+		if (!card.hasSelectApplicationOutput() || !card.hasGetDataOutput() || !card.hasInternalAuthenticateOutput()) {
+			throw new InvalidCardMts7Exception("Missing response from the card", result);
+		}
+
+		enricher.enrichSelectApplicationResponsePayload(result, card.getSelectApplicationOutput());
+
+		MobileTicketBundle mobileTicketBundle;
 		try {
-			enricher.enrichSelectApplicationResponsePayload(result, card.getSelectApplicationOutput());
-
-			IccPublicKey iccPublicKey = null;
-
-			MobileTicketBundle mobileTicketBundle = mobileTicketBundleParser.parse(card.getGetDataOutput());
-
-			IssuerSignatureProtectedHeader header = mobileTicketBundle.getIssuerSignatureProtectedHeader();
-			if (header != null) {
-				try {
-					iccPublicKey = iccPublicKeyFactory.create(header);
-				} catch (UnableToConstructIccKeyException e) {
-					LOGGER.info("Unable to create ICC public key", e);
-				}
-
-				try {
-					result.setThumbprint(thumbprintFactory.create(header));
-				} catch (UnableToConstructThumbprintKeyException e) {
-					LOGGER.info("Unable to construct thumbprint", e);
-				}
-			}
-
-			if (iccPublicKey != null && iccPublicKey.verify(card.getInternalAuthenticateInput(), card.getInternalAuthenticateOutput())) {
-				result.setVerifiedPrivateKeyPresent(true);
-			} else {
-				LOGGER.info("Unable to verify ICC private key");
-				result.setVerifiedPrivateKeyPresent(false);
-			}
-		} catch (Exception e) {
-			LOGGER.info("Problem processing files", e);
+			mobileTicketBundle = mobileTicketBundleParser.parse(card.getGetDataOutput());
+		} catch (IOException e) {
+			throw new InvalidCardMts7Exception("Unable to parse the Mobile Ticket Bundle", result, e);
 		}
 
-		if (!result.isVerifiedPrivateKeyPresent()) {
-			throw new UnableToVerifyKeyPairException(result);
+		IssuerSignatureProtectedHeader header = mobileTicketBundle.getIssuerSignatureProtectedHeader();
+		if (header == null) {
+			throw new InvalidCardMts7Exception("Missing Issuer Signature Protected Header", result);
 		}
+
+		try {
+			result.setThumbprint(thumbprintFactory.create(header));
+		} catch (UnableToConstructThumbprintKeyException e) {
+			LOGGER.info("Unable to construct thumbprint", e);
+		}
+
+		IccPublicKey iccPublicKey;
+		try {
+			iccPublicKey = iccPublicKeyFactory.create(header);
+		} catch (UnableToConstructIccKeyException e) {
+			throw new InvalidCardMts7Exception("Unable to create ICC public key", result, e);
+		}
+
+		if (!iccPublicKey.verify(card.getInternalAuthenticateInput(), card.getInternalAuthenticateOutput())) {
+			throw new InvalidKeyPairMts7Exception(result);
+		}
+		result.setVerifiedPrivateKeyPresent(true);
 
 		return result;
 	}

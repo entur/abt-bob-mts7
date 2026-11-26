@@ -2,41 +2,104 @@ package no.entur.abt.bob.mts7.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.io.IOException;
+import java.security.NoSuchAlgorithmException;
+import java.security.Provider;
 
 import org.junit.jupiter.api.Test;
 
+import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
+
+import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
+import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
 import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
 
 public class VerifyKeyPairMts7CardFactoryTest {
 
+	// the responses of a genuine card (with status words), the challenge being 32 zero bytes
+	private static final String SELECT_APPLICATION_RESPONSE = "64296E274F10A0000007810101000A0000175F96B61D7A0593030000248A01007F660802020105020201029000";
+	private static final String GET_NEXT_DATA_RESPONSE = "A26176426131617058F88358B1A663616C6765455332353663696964623130636B69646B31303A3230323330323133636D69766136636E6266703230323330363136543131303233365A6374706BA4636B74796245436363727665502D3235366178782B67524531454B772D63475F37415543306835372D54355759416E51634457597275374A776D4C476756666F6179782B706B516B6A56636832543264615F582D4B5368735141515A306A47485A483179775A47546456646236645141A05840A5D45B265A806B649F19432F05F91FAB5854AEAFCFC1B75A63072B88F2EB35BA5A7A3B53B5FC71A3C3DCC7727E9C8C9845F7DEF2756179D54D111E46E58C46039000";
+	private static final String SIGNATURE_RESPONSE = "DCC5F055C2B689A3D5FBAE8ABB9892FF6B0228D05AAA69BBA435324F1E9A6D900C2B6F8DC7D43DD2D9DF47847C7ADF786E99474102E2EA1E19EDF0177221FE349000";
+	// as from a cloned card, which does not have the private key
+	private static final String OTHER_SIGNATURE_RESPONSE = SIGNATURE_RESPONSE.replace("DCC5", "DCC6");
+
+	private static final String SERIAL = "0000175F96B61D";
+
 	@Test
 	public void test() throws Exception {
-		byte[] challenge = ByteArrayHexStringConverter.hexStringToByteArray("0000000000000000000000000000000000000000000000000000000000000000");
-		byte[] selectApplicationResponse = ByteArrayHexStringConverter
-				.hexStringToByteArray("64296E274F10A0000007810101000A0000175F96B61D7A0593030000248A01007F660802020105020201029000");
-		byte[] getNextDataResponse = ByteArrayHexStringConverter.hexStringToByteArray(
-				"A26176426131617058F88358B1A663616C6765455332353663696964623130636B69646B31303A3230323330323133636D69766136636E6266703230323330363136543131303233365A6374706BA4636B74796245436363727665502D3235366178782B67524531454B772D63475F37415543306835372D54355759416E51634457597275374A776D4C476756666F6179782B706B516B6A56636832543264615F582D4B5368735141515A306A47485A483179775A47546456646236645141A05840A5D45B265A806B649F19432F05F91FAB5854AEAFCFC1B75A63072B88F2EB35BA5A7A3B53B5FC71A3C3DCC7727E9C8C9845F7DEF2756179D54D111E46E58C46039000");
-		byte[] signatureResponse = ByteArrayHexStringConverter.hexStringToByteArray(
-				"DCC5F055C2B689A3D5FBAE8ABB9892FF6B0228D05AAA69BBA435324F1E9A6D900C2B6F8DC7D43DD2D9DF47847C7ADF786E99474102E2EA1E19EDF0177221FE349000");
-
 		VerifyKeyPairMts7CardFactory factory = new VerifyKeyPairMts7CardFactory();
 
-		Mts7ApduPayloads binaryCard = new Mts7ApduPayloads();
-		binaryCard.setSelectApplicationOutput(fromResponseApdu(selectApplicationResponse));
-		binaryCard.setGetDataOutput(fromResponseApdu(getNextDataResponse));
-		binaryCard.setInternalAuthenticateInput(challenge);
-		binaryCard.setInternalAuthenticateOutput(fromResponseApdu(signatureResponse));
-
-		Mts7Card card = factory.create(binaryCard);
+		Mts7Card card = factory.create(card(GET_NEXT_DATA_RESPONSE, SIGNATURE_RESPONSE));
 
 		assertTrue(card.isVerifiedPrivateKeyPresent());
 		assertFalse(card.isVerifiedTrustChain());
 
-		assertEquals("0000175F96B61D", ByteArrayHexStringConverter.toHexString(card.getSerial()));
+		assertEquals(SERIAL, ByteArrayHexStringConverter.toHexString(card.getSerial()));
 	}
 
-	public byte[] fromResponseApdu(byte[] response) {
+	@Test
+	public void testCardWithoutPrivateKeyIsRejected() throws Exception {
+		VerifyKeyPairMts7CardFactory factory = new VerifyKeyPairMts7CardFactory();
+
+		InvalidKeyPairMts7Exception e = assertThrows(InvalidKeyPairMts7Exception.class,
+				() -> factory.create(card(GET_NEXT_DATA_RESPONSE, OTHER_SIGNATURE_RESPONSE)));
+
+		assertFalse(e.getResult().isVerifiedPrivateKeyPresent());
+		assertTrue(e.getResult().hasThumprint());
+		assertEquals(SERIAL, ByteArrayHexStringConverter.toHexString(e.getResult().getSerial()));
+	}
+
+	@Test
+	public void testMalformedMobileTicketBundleIsInvalidCard() throws Exception {
+		VerifyKeyPairMts7CardFactory factory = new VerifyKeyPairMts7CardFactory();
+
+		InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class, () -> factory.create(card("0102039000", SIGNATURE_RESPONSE)));
+
+		assertFalse(e instanceof InvalidKeyPairMts7Exception);
+		assertInstanceOf(IOException.class, e.getCause());
+		// the card as far as it was read
+		assertEquals(SERIAL, ByteArrayHexStringConverter.toHexString(e.getResult().getSerial()));
+	}
+
+	@Test
+	public void testMissingResponseIsInvalidCard() throws Exception {
+		VerifyKeyPairMts7CardFactory factory = new VerifyKeyPairMts7CardFactory();
+
+		Mts7ApduPayloads payloads = card(GET_NEXT_DATA_RESPONSE, SIGNATURE_RESPONSE);
+		payloads.setInternalAuthenticateOutput(null);
+
+		InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class, () -> factory.create(payloads));
+
+		assertFalse(e instanceof InvalidKeyPairMts7Exception);
+	}
+
+	@Test
+	public void testUnavailableSignatureAlgorithmIsNotInvalidCard() throws Exception {
+		// a problem on our side: the security provider does not have the signature algorithm of the card
+		Provider empty = new Provider("Empty", "1.0", "Without algorithms") {
+			private static final long serialVersionUID = 1L;
+		};
+		VerifyKeyPairMts7CardFactory factory = new VerifyKeyPairMts7CardFactory(new IccPublicKeyFactory(empty), new Mts7CardEnricher(), new CBORMapper(),
+				new ThumbprintFactory(null));
+
+		assertThrows(NoSuchAlgorithmException.class, () -> factory.create(card(GET_NEXT_DATA_RESPONSE, SIGNATURE_RESPONSE)));
+	}
+
+	private static Mts7ApduPayloads card(String getNextDataResponse, String signatureResponse) {
+		Mts7ApduPayloads card = new Mts7ApduPayloads();
+		card.setSelectApplicationOutput(fromResponseApdu(SELECT_APPLICATION_RESPONSE));
+		card.setGetDataOutput(fromResponseApdu(getNextDataResponse));
+		card.setInternalAuthenticateInput(new byte[32]);
+		card.setInternalAuthenticateOutput(fromResponseApdu(signatureResponse));
+		return card;
+	}
+
+	private static byte[] fromResponseApdu(String hex) {
+		byte[] response = ByteArrayHexStringConverter.hexStringToByteArray(hex);
 		byte[] payload = new byte[response.length - 2];
 		System.arraycopy(response, 0, payload, 0, payload.length);
 		return payload;

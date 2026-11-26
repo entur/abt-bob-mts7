@@ -68,7 +68,7 @@ public class LenientMts7CardFactory {
 		this.thumbprintFactory = thumbprintFactory;
 	}
 
-	public Mts7Card create(Mts7ApduPayloads card) throws UnableToVerifyKeyPairException {
+	public Mts7Card create(Mts7ApduPayloads card) throws InvalidKeyPairMts7Exception {
 		Mts7Card result = new Mts7Card();
 		try {
 			if (card.hasSelectApplicationOutput()) {
@@ -85,7 +85,7 @@ public class LenientMts7CardFactory {
 				if (header != null) {
 					try {
 						iccPublicKey = iccPublicKeyFactory.create(header);
-					} catch (UnableToConstructIccKeyException e) {
+					} catch (UnableToConstructIccKeyException | NoSuchAlgorithmException e) {
 						LOGGER.info("Unable to create ICC public key", e);
 					}
 

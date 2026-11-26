@@ -1,5 +1,6 @@
 package no.entur.abt.bob.mts7.core.pki;
 
+import java.security.NoSuchAlgorithmException;
 import java.security.SignatureException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -90,11 +91,12 @@ public class IccPublicKeyBuilder {
 	 * Verify the issuer signature, and create the ICC public key.
 	 *
 	 * @return the ICC public key
-	 * @throws SignatureException               if the issuer signature is not valid
-	 * @throws UnableToConstructIccKeyException if the ICC public key could not be created
+	 * @throws SignatureException               if the issuer signature is not valid (a problem on the card side)
+	 * @throws UnableToConstructIccKeyException if the ICC public key could not be created from the certificate of the card (a problem on the card side)
+	 * @throws NoSuchAlgorithmException         if the signature algorithm of the card is not available from the security provider (a problem on our side)
 	 */
 
-	public IccPublicKey build() throws SignatureException, UnableToConstructIccKeyException {
+	public IccPublicKey build() throws SignatureException, UnableToConstructIccKeyException, NoSuchAlgorithmException {
 		byte[] data = getSignedData();
 
 		if (!issuerPublicKey.verify(data, signature)) {

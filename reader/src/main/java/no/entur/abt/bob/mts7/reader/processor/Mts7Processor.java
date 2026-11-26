@@ -1,9 +1,10 @@
 package no.entur.abt.bob.mts7.reader.processor;
 
+import java.util.concurrent.ExecutionException;
+
 import no.entur.abt.bob.mts7.api.apdu.CommandAPDU;
+import no.entur.abt.bob.mts7.core.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.Mts7Card;
-import no.entur.abt.bob.mts7.core.UnableToVerifyKeyPairException;
-import no.entur.abt.bob.mts7.core.UnableToVerifyTrustChainException;
 
 public interface Mts7Processor extends Runnable {
 
@@ -13,7 +14,19 @@ public interface Mts7Processor extends Runnable {
 
 	String waitForAlgorithm(long delay) throws InterruptedException;
 
-	Mts7Card waitForVerify(long timeout) throws InterruptedException, UnableToVerifyKeyPairException, UnableToVerifyTrustChainException;
+	/**
+	 * Wait for the card to be processed, and return it if it was verified.
+	 *
+	 * @param timeout time to wait in milliseconds, or zero to wait until the processing is finished
+	 * @return the verified card
+	 * @throws InterruptedException     if interrupted while waiting
+	 * @throws InvalidCardMts7Exception if the card is not valid, could not be verified, or was not completely read (a problem on the card side). See the
+	 *                                  subclasses {@linkplain no.entur.abt.bob.mts7.core.InvalidKeyPairMts7Exception} and
+	 *                                  {@linkplain no.entur.abt.bob.mts7.core.InvalidTrustChainMts7Exception}.
+	 * @throws ExecutionException       if the processing failed because of a problem on our side, which is the cause
+	 */
+
+	Mts7Card waitForVerify(long timeout) throws InterruptedException, InvalidCardMts7Exception, ExecutionException;
 
 	void onGetData(byte[] responsePayload);
 

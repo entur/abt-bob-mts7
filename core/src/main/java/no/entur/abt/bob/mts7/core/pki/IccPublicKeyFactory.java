@@ -1,6 +1,7 @@
 package no.entur.abt.bob.mts7.core.pki;
 
 import java.security.Key;
+import java.security.NoSuchAlgorithmException;
 import java.security.Provider;
 import java.security.PublicKey;
 import java.security.interfaces.ECPublicKey;
@@ -46,7 +47,16 @@ public class IccPublicKeyFactory {
 		return provider;
 	}
 
-	public IccPublicKey create(IssuerSignatureProtectedHeader header) throws UnableToConstructIccKeyException {
+	/**
+	 * Create the public key of a card from its certificate.
+	 *
+	 * @param header the Issuer Signature Protected Header of the card
+	 * @return the public key of the card
+	 * @throws UnableToConstructIccKeyException if the token public key or the algorithm of the card is missing, unknown or invalid (a problem on the card side)
+	 * @throws NoSuchAlgorithmException         if the signature algorithm is not available from the security provider (a problem on our side)
+	 */
+
+	public IccPublicKey create(IssuerSignatureProtectedHeader header) throws UnableToConstructIccKeyException, NoSuchAlgorithmException {
 		TokenPublicKey tpk = header.getTpk();
 
 		String algorithm = header.getAlg();
@@ -82,7 +92,7 @@ public class IccPublicKeyFactory {
 			} else {
 				throw new UnableToConstructIccKeyException("Unknown algorithm " + algorithm);
 			}
-		} catch (UnableToConstructIccKeyException e) {
+		} catch (UnableToConstructIccKeyException | NoSuchAlgorithmException e) {
 			throw e;
 		} catch (Exception e) {
 			throw new UnableToConstructIccKeyException(e);

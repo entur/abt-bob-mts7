@@ -177,7 +177,15 @@ public class ParticipantPublicKeys {
 		this.keys = keys;
 	}
 
-	public IssuerPublicKey getIssuerPublicKey(long pid, String kid) throws Exception {
+	/**
+	 * @param pid participant id
+	 * @param kid key id
+	 * @return the key, or null if the participant or key is unknown, or if the type of key is not supported (see
+	 *         {@linkplain #hasIssuerPublicKey(long, String)})
+	 * @throws UnableToConstructIssuerKeyException if the key is known, but could not be created (a problem on our side)
+	 */
+
+	public IssuerPublicKey getIssuerPublicKey(long pid, String kid) throws UnableToConstructIssuerKeyException {
 		Issuer key = keys.get(pid);
 		if (key != null) {
 			return key.getKey(kid);

@@ -2,6 +2,7 @@ package no.entur.abt.bob.mts7.reader.processor;
 
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
@@ -10,6 +11,7 @@ import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import no.entur.abt.bob.mts7.core.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.Mts7Card;
 
 /**
@@ -30,6 +32,11 @@ import no.entur.abt.bob.mts7.core.Mts7Card;
  * The executor is always provided by the application, which owns it and so is the one to shut it down; nothing in this library creates an executor or a thread
  * of its own. As a processor stops waiting for the card after {@linkplain #DEFAULT_MAX_LIFETIME_MILLIS}, its thread is never blocked for much longer than that,
  * but the threads of the executor are not daemon threads unless the application makes them so.
+ *
+ * <p>
+ * The processing reports a problem on the card side by throwing an {@linkplain InvalidCardMts7Exception} (or a subclass) from {@linkplain #process()}, which
+ * {@linkplain #waitForVerify(long)} then throws as it is. Anything else which it throws is a problem on our side, which {@linkplain #waitForVerify(long)}
+ * throws as the cause of an {@linkplain ExecutionException}.
  */
 
 public abstract class AbstractMts7Processor implements Mts7Processor {
@@ -90,6 +97,9 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 
 	private volatile long deadline;
 
+	// why the processing failed, or null if it did not (yet). Set before the processing is finished
+	private volatile Exception failure;
+
 	/**
 	 * Constructor.
 	 *
@@ -143,7 +153,8 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 		try {
 			executor.execute(this);
 		} catch (RuntimeException e) {
-			// not running, and never will
+			// not running, and never will: a problem on our side
+			failure = e;
 			close();
 			finished.countDown();
 
@@ -213,6 +224,36 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 	 * @return the card; if the processing is not finished then a snapshot of it, which will not change
 	 * @throws InterruptedException if interrupted while waiting
 	 */
+
+	/**
+	 * Wait for the processing to finish, unless it is closed or never started, and return the card if it was verified.
+	 *
+	 * @param timeout time to wait in milliseconds, or zero to wait until the processing is finished
+	 * @return the verified card
+	 * @throws InterruptedException     if interrupted while waiting
+	 * @throws InvalidCardMts7Exception if the card is not valid, or could not be verified (a problem on the card side), or if the card was not completely read
+	 *                                  and processed (because the processor was closed, the card was not read in time, or the timeout expired)
+	 * @throws ExecutionException       if the processing failed because of a problem on our side, which is the cause
+	 */
+
+	@Override
+	public Mts7Card waitForVerify(long timeout) throws InterruptedException, InvalidCardMts7Exception, ExecutionException {
+		Mts7Card card = awaitResult(timeout);
+
+		// the processing sets this last, when the card has passed all of its checks
+		if (card.isVerifiedPrivateKeyPresent()) {
+			return card;
+		}
+
+		Exception failure = this.failure;
+		if (failure instanceof InvalidCardMts7Exception) {
+			throw (InvalidCardMts7Exception) failure;
+		}
+		if (failure != null) {
+			throw new ExecutionException("Unable to process the card", failure);
+		}
+		throw new InvalidCardMts7Exception("The card was not completely read and processed", card);
+	}
 
 	protected Mts7Card awaitResult(long timeout) throws InterruptedException {
 		boolean wait;
@@ -295,9 +336,11 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 
 	/**
 	 * Process the input from the card, as it arrives. Use {@linkplain #awaitInput(BooleanSupplier)} for waiting for the input, and
-	 * {@linkplain #updateResult(Consumer)} to modify the result.
+	 * {@linkplain #updateResult(Consumer)} to modify the result. Set {@linkplain Mts7Card#setVerifiedPrivateKeyPresent(boolean)} last, and only when the card
+	 * has passed all of the checks.
 	 *
-	 * @throws Exception if the processing failed
+	 * @throws InvalidCardMts7Exception if the card is not valid, or could not be verified (a problem on the card side)
+	 * @throws Exception                if the processing failed because of a problem on our side
 	 */
 
 	protected abstract void process() throws Exception;
@@ -307,10 +350,20 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 		deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(getMaxLifetimeMillis());
 		try {
 			process();
+		} catch (InvalidCardMts7Exception e) {
+			logger.info("Invalid card: {}", e.getMessage());
+
+			failure = e;
 		} catch (InterruptedException e) {
+			// for example when the executor is shut down: a problem on our side
 			Thread.currentThread().interrupt();
+
+			failure = e;
 		} catch (Exception e) {
-			logger.info("Problem processing files", e);
+			// handed over to the thread which waits for the result
+			logger.warn("Unable to process the card", e);
+
+			failure = e;
 		} finally {
 			// notify result waiters
 			synchronized (outputMonitor) {

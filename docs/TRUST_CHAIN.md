@@ -31,7 +31,7 @@ For a step-by-step version, which also shows an edited and a cloned card, see th
 
 `VerifyMts7CardFactory` and `VerifyTrustChainMts7ProcessorFactory` can be created with `trustUnknownRootKeys`, for when the issuer public keys are known to be incomplete. A card whose root key (by `iid` and `kid`) is not among the issuer public keys is then checked at door 3 only, like `VerifyKeyPairMts7CardFactory` does, and accepted with `isVerifiedTrustChain()` false. A card whose root key is known must still pass both doors, so an edited certificate of a known issuer is still rejected, but an attacker can claim an issuer or `kid` which is not in the set: such a card has the same strength as with `VerifyKeyPairMts7CardFactory`.
 
-The same goes for `VerifyTrustChainMts7ProcessorFactory` and `VerifyKeyPairMts7ProcessorFactory` in `reader`. A card which fails at door 2 is also reported with `UnableToVerifyKeyPairException`, because without a trusted key for the card the signature from door 3 cannot be verified either; `getResult().isVerifiedTrustChain()` tells the two apart.
+The same goes for `VerifyTrustChainMts7ProcessorFactory` and `VerifyKeyPairMts7ProcessorFactory` in `reader`. A card which fails at door 2 is rejected with `InvalidTrustChainMts7Exception` (the issuer key is unknown or not supported, or the issuer signature is not valid), and one which fails at door 3 with `InvalidKeyPairMts7Exception`. Both are subclasses of `InvalidCardMts7Exception`, which is for any problem on the card side.
 
 ## Not checked by this library
 
