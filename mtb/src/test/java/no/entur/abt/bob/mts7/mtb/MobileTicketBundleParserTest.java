@@ -108,6 +108,37 @@ public class MobileTicketBundleParserTest {
 		assertThrows(IOException.class, () -> parser.parse(encode(new byte[] { 1 })));
 	}
 
+	@Test
+	public void testRejectsNullElement() throws Exception {
+		// CBOR null instead of a byte string, as a signed element or as the signature
+		byte[] header = CBOR.writeValueAsBytes(header());
+		assertThrows(IOException.class, () -> parser.parse(encode(header, null, new byte[] { 1 })));
+		assertThrows(IOException.class, () -> parser.parse(encode(null, header, new byte[] { 1 })));
+		assertThrows(IOException.class, () -> parser.parse(encode(header, null)));
+	}
+
+	@Test
+	public void testSkipsElementWhichIsCborNull() throws Exception {
+		// a byte string with CBOR null in it is not an Issuer Signature Protected Header
+		byte[] cborNull = CBOR.writeValueAsBytes(null);
+
+		assertFalse(parser.parse(encode(cborNull, new byte[] { 1 })).hasIssuerSignatureProtectedHeader());
+
+		MobileTicketBundle bundle = parser.parse(encode(cborNull, CBOR.writeValueAsBytes(header()), new byte[] { 1 }));
+		assertEquals("10", bundle.getIssuerSignatureProtectedHeader().getIid());
+	}
+
+	@Test
+	public void testEmptyKidOrIidIsNoIssuerSignatureProtectedHeader() throws Exception {
+		Map<String, Object> emptyKid = header();
+		emptyKid.put("kid", "");
+		assertFalse(parser.parse(encode(CBOR.writeValueAsBytes(emptyKid), new byte[] { 1 })).hasIssuerSignatureProtectedHeader());
+
+		Map<String, Object> emptyIid = header();
+		emptyIid.put("iid", "");
+		assertFalse(parser.parse(encode(CBOR.writeValueAsBytes(emptyIid), new byte[] { 1 })).hasIssuerSignatureProtectedHeader());
+	}
+
 	private static Map<String, Object> header() {
 		Map<String, Object> tpk = new LinkedHashMap<>();
 		tpk.put("kty", "EC");

@@ -163,10 +163,11 @@ Implementation:
 `getMts7Card(..)` tells problems on the card side from problems on our side:
 
  * `InvalidCardMts7Exception` if the card cannot be trusted (a problem on the card side). The exception has the card as far as it was read, in `getResult()`.
-   * `InvalidTrustChainMts7Exception` (trust chain only) if the card certificate was not signed by a known issuer: the issuer key is not among the public keys (unless the factory was created with `trustUnknownRootKeys`) or not supported, or the issuer signature is not valid.
-   * `InvalidKeyPairMts7Exception` if the card did not prove that it has the private key, as for a cloned card.
-   * `InvalidCardMts7Exception` itself if what the card returned is malformed, or if the card was not completely read and processed (the card was closed or not read in time, or the timeout expired).
- * `ExecutionException` if the processing failed because of a problem on our side, which is the cause: for example `UnableToConstructIssuerKeyException` if the issuer key of the card is among the public keys but cannot be created, `NoSuchAlgorithmException` if the security provider does not have the signature algorithm of the card, or `RejectedExecutionException` if the executor did not run the processor.
+   * `TrustChainInvalidCardMts7Exception` (trust chain only) if the card certificate was not signed by a known issuer: the issuer signature is not valid, or the issuer key is not among the public keys (unless the factory was created with `trustUnknownRootKeys`).
+     * `UnknownIssuerKeyInvalidCardMts7Exception` (a subclass) if the issuer key is not among the public keys, with `getIssuerId()` and `getKeyId()`. This may be a forged card, but also a genuine card while the participant metadata is out of date, so it is worth logging separately.
+   * `KeyPairInvalidCardMts7Exception` if the card did not prove that it has the private key, as for a cloned card.
+   * `InvalidCardMts7Exception` itself if what the card returned is malformed (including a select application response without a valid application identifier, which has the serial and the participant identifier), or if the card was not completely read and processed (the card was closed or not read in time, or the timeout expired).
+ * `ExecutionException` if the processing failed because of a problem on our side, which is the cause: for example `UnableToConstructIssuerKeyException` if the issuer key of the card is among the public keys but cannot be created, is of a type which is not supported, or is not accepted by the security provider, `NoSuchAlgorithmException` if the security provider does not have a signature algorithm, `UnableToConstructThumbprintKeyException` if the thumbprint of the card's public key cannot be created although the key can, or `RejectedExecutionException` if the executor did not run the processor.
 
 <details>
   <summary>Code example (backend, participantMetadataJson and useLocally are your own code)</summary>
@@ -250,16 +251,19 @@ Mts7ApduPayloads payloads = payloadsFactory.createCard(exchanges);
 
 try {
     Mts7Card card = cardFactory.create(payloads);
+} catch (UnknownIssuerKeyInvalidCardMts7Exception e) {
+    // the card refers to an issuer key which is not among the keys: a forged card, or the participant metadata is out of date;
+    // log e.getIssuerId() and e.getKeyId() separately
 } catch (InvalidCardMts7Exception e) {
     // a problem on the card side: it does not have the private key, was not issued by one of the issuers of the keys, or returned something malformed;
     // e.getResult() has the card as far as it was read
-} catch (UnableToConstructIssuerKeyException | NoSuchAlgorithmException e) {
-    // a problem on our side: an issuer key which cannot be created, or a security provider without the signature algorithm of the card
+} catch (UnableToConstructIssuerKeyException | NoSuchAlgorithmException | UnableToConstructThumbprintKeyException e) {
+    // a problem on our side: an issuer key which cannot be created, a security provider without a signature algorithm, or a thumbprint which cannot be created
 }
 ```
 </details>
 
-The card factories tell problems on the card side from problems on our side, as the processors do (see above). `InvalidCardMts7Exception` is for the card side: the card returned something which is missing or malformed, or did not pass verification, which is reported by its subclasses `InvalidTrustChainMts7Exception` (door 2, see [TRUST_CHAIN.md](docs/TRUST_CHAIN.md)) and `InvalidKeyPairMts7Exception` (door 3). Problems on our side are reported with other exceptions, as they are thrown on the calling thread: `UnableToConstructIssuerKeyException` if the issuer key of the card is among the public keys but cannot be created, and `NoSuchAlgorithmException` if the security provider does not have the signature algorithm of the card. Anything else, such as a `RuntimeException`, is a bug.
+The card factories tell problems on the card side from problems on our side, as the processors do (see above). `InvalidCardMts7Exception` is for the card side: the card returned something which is missing or malformed, or did not pass verification, which is reported by its subclasses `TrustChainInvalidCardMts7Exception` (door 2, see [TRUST_CHAIN.md](docs/TRUST_CHAIN.md), with the subclass `UnknownIssuerKeyInvalidCardMts7Exception` for an unknown issuer key) and `KeyPairInvalidCardMts7Exception` (door 3). Problems on our side are reported with other exceptions, as they are thrown on the calling thread: `UnableToConstructIssuerKeyException` if the issuer key of the card is among the public keys but cannot be created, is of a type which is not supported, or is not accepted by the security provider, `NoSuchAlgorithmException` if the security provider does not have a signature algorithm, and `UnableToConstructThumbprintKeyException` if the thumbprint of the card's public key cannot be created although the key can. A verified card always has a thumbprint. Anything else, such as a `RuntimeException`, is a bug.
 
 ## Trust chain
 

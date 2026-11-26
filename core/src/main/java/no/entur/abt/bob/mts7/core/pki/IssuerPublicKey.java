@@ -1,12 +1,15 @@
 package no.entur.abt.bob.mts7.core.pki;
 
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.security.Provider;
 import java.security.PublicKey;
 import java.security.Signature;
-import java.security.SignatureException;
 
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.crypto.impl.ECDSA;
+
+import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
 
 /**
  * Public key of an issuer, for verifying the issuer signature of a card.
@@ -46,33 +49,59 @@ public class IssuerPublicKey {
 		this.ec = algorithm.endsWith("ECDSA");
 	}
 
-	public boolean verify(byte[] data, byte[] sign) throws SignatureException {
+	/**
+	 * Verify a signature from a card.
+	 *
+	 * @param data signed data
+	 * @param sign signature
+	 * @return whether the signature is valid; false also if the data or the signature is malformed (a problem on the card side)
+	 * @throws NoSuchAlgorithmException            if the signature algorithm is not available from the security provider (a problem on our side)
+	 * @throws UnableToConstructIssuerKeyException if the key is not accepted by the security provider (a problem on our side)
+	 */
+
+	public boolean verify(byte[] data, byte[] sign) throws NoSuchAlgorithmException, UnableToConstructIssuerKeyException {
 		return verify(data, 0, data == null ? 0 : data.length, sign);
 	}
 
-	public boolean verify(byte[] data, int offset, int length, byte[] sign) throws SignatureException {
+	/**
+	 * Verify a signature from a card.
+	 *
+	 * @param data   buffer with the signed data
+	 * @param offset offset of the signed data in the buffer
+	 * @param length length of the signed data
+	 * @param sign   signature
+	 * @return whether the signature is valid; false also if the data or the signature is malformed (a problem on the card side)
+	 * @throws NoSuchAlgorithmException            if the signature algorithm is not available from the security provider (a problem on our side)
+	 * @throws UnableToConstructIssuerKeyException if the key is not accepted by the security provider (a problem on our side)
+	 */
+
+	public boolean verify(byte[] data, int offset, int length, byte[] sign) throws NoSuchAlgorithmException, UnableToConstructIssuerKeyException {
+		// a signature is stateful, so use a new one: it is not shared with anyone, and there is no need to restore it to a known state if something goes
+		// wrong. A problem with the algorithm or the key is on our side, so it is not caught here.
+		Signature signature = newSignature();
 		try {
 			byte[] encoded = encode(sign);
-
-			// a signature is stateful, so use a new one: it is not shared with anyone, and there is no need to restore it to a known state if something goes
-			// wrong
-			Signature signature = newSignature();
 
 			signature.update(data, offset, length);
 			return signature.verify(encoded);
 		} catch (Exception e) {
+			// the data or the signature from the card is malformed
 			return false;
 		}
 	}
 
-	private Signature newSignature() throws Exception {
+	private Signature newSignature() throws NoSuchAlgorithmException, UnableToConstructIssuerKeyException {
 		Signature signature;
 		if (provider != null) {
 			signature = Signature.getInstance(algorithm, provider);
 		} else {
 			signature = Signature.getInstance(algorithm);
 		}
-		signature.initVerify(publicKey);
+		try {
+			signature.initVerify(publicKey);
+		} catch (InvalidKeyException e) {
+			throw new UnableToConstructIssuerKeyException("Issuer public key " + kid + " of participant " + pid + " is not accepted", e);
+		}
 		return signature;
 	}
 

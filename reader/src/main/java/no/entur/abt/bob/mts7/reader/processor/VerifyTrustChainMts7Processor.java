@@ -10,11 +10,12 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
 import no.entur.abt.bob.mts7.core.InvalidCardMts7Exception;
-import no.entur.abt.bob.mts7.core.InvalidKeyPairMts7Exception;
-import no.entur.abt.bob.mts7.core.InvalidTrustChainMts7Exception;
+import no.entur.abt.bob.mts7.core.KeyPairInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
+import no.entur.abt.bob.mts7.core.TrustChainInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
-import no.entur.abt.bob.mts7.core.UnableToConstructThumbprintKeyException;
+import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
+import no.entur.abt.bob.mts7.core.UnknownIssuerKeyInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyBuilder;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
@@ -101,13 +102,6 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 
 		setIccKeyAlgorithm(header.getAlg());
 
-		try {
-			byte[] thumbprint = thumbprintFactory.create(header);
-			updateResult(card -> card.setThumbprint(thumbprint));
-		} catch (UnableToConstructThumbprintKeyException e) {
-			LOGGER.info("Unable to construct thumbprint", e);
-		}
-
 		long iid;
 		try {
 			iid = Long.parseLong(header.getIid());
@@ -130,7 +124,7 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 			try {
 				iccPublicKey = iccPublicKeyBuilder.build();
 			} catch (SignatureException e) {
-				throw new InvalidTrustChainMts7Exception("Issuer signature is not valid", result);
+				throw new TrustChainInvalidCardMts7Exception("Issuer signature is not valid", result);
 			} catch (UnableToConstructIccKeyException e) {
 				throw new InvalidCardMts7Exception("Unable to create ICC public key", result, e);
 			}
@@ -139,8 +133,8 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 
 			updateResult(card -> card.setVerifiedTrustChain(true));
 		} else if (participantPublicKeys.hasIssuerPublicKey(iid, header.getKid())) {
-			// a key which is known, but cannot be used, is not an unknown key
-			throw new InvalidTrustChainMts7Exception("Issuer public key " + header.getKid() + " of participant " + iid + " is not supported", result);
+			// a key which is known, but which we cannot use, is not an unknown key, and not the fault of the card
+			throw new UnableToConstructIssuerKeyException("Issuer public key " + header.getKid() + " of participant " + iid + " is not supported");
 		} else if (trustUnknownRootKeys) {
 			// The issuer key is unknown, so the issuer signature of the card certificate cannot be checked. Take the public key of the card from the
 			// certificate as it is, and only check that the card has the private key for it, as VerifyKeyPairMts7Processor does. This does not say
@@ -151,8 +145,12 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 				throw new InvalidCardMts7Exception("Unable to create ICC public key", result, e);
 			}
 		} else {
-			throw new InvalidTrustChainMts7Exception("Unknown issuer public key " + header.getKid() + " of participant " + iid, result);
+			throw new UnknownIssuerKeyInvalidCardMts7Exception(iid, header.getKid(), result);
 		}
+
+		// from the same token public key as the public key of the card, which could be created, so a problem here is on our side
+		byte[] thumbprint = thumbprintFactory.create(header);
+		updateResult(card -> card.setThumbprint(thumbprint));
 
 		LOGGER.info("Processed 'get (next) data' response");
 
@@ -168,7 +166,7 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 
 		// process signature - the only time-critical part of the logic here
 		if (!iccPublicKey.verify(commandPayload, responsePayload)) {
-			throw new InvalidKeyPairMts7Exception(result);
+			throw new KeyPairInvalidCardMts7Exception(result);
 		}
 		LOGGER.info("Verified ICC private key");
 

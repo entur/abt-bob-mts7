@@ -6,7 +6,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
-import java.util.function.Consumer;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -279,7 +278,23 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 		}
 	}
 
-	protected void updateResult(Consumer<Mts7Card> update) {
+	/**
+	 * A change of the result, which may find that the card is not valid.
+	 */
+
+	@FunctionalInterface
+	protected interface ResultUpdate {
+		void accept(Mts7Card card) throws InvalidCardMts7Exception;
+	}
+
+	/**
+	 * Modify the result.
+	 *
+	 * @param update the change
+	 * @throws InvalidCardMts7Exception if the change finds that the card is not valid (a problem on the card side)
+	 */
+
+	protected void updateResult(ResultUpdate update) throws InvalidCardMts7Exception {
 		synchronized (resultLock) {
 			update.accept(result);
 		}
@@ -336,8 +351,8 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 
 	/**
 	 * Process the input from the card, as it arrives. Use {@linkplain #awaitInput(BooleanSupplier)} for waiting for the input, and
-	 * {@linkplain #updateResult(Consumer)} to modify the result. Set {@linkplain Mts7Card#setVerifiedPrivateKeyPresent(boolean)} last, and only when the card
-	 * has passed all of the checks.
+	 * {@linkplain #updateResult(ResultUpdate)} to modify the result. Set {@linkplain Mts7Card#setVerifiedPrivateKeyPresent(boolean)} last, and only when the
+	 * card has passed all of the checks.
 	 *
 	 * @throws InvalidCardMts7Exception if the card is not valid, or could not be verified (a problem on the card side)
 	 * @throws Exception                if the processing failed because of a problem on our side

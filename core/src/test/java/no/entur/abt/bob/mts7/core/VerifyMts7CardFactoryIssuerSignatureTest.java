@@ -2,6 +2,7 @@ package no.entur.abt.bob.mts7.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -329,6 +330,11 @@ public class VerifyMts7CardFactoryIssuerSignatureTest {
 		byte[] getData = bundle(header, genuineSecondElement, signEc(issuerKeyPair.getPrivate(), signedData(header, genuineSecondElement)));
 
 		assertRejected(ecIssuer(77, "77:test", issuerKeyPair), payloads(getData, internalAuthenticate(tokenKeyPair)));
+
+		UnknownIssuerKeyInvalidCardMts7Exception e = assertThrows(UnknownIssuerKeyInvalidCardMts7Exception.class,
+				() -> new VerifyMts7CardFactory(ecIssuer(77, "77:test", issuerKeyPair)).create(payloads(getData, internalAuthenticate(tokenKeyPair))));
+		assertEquals(77, e.getIssuerId());
+		assertEquals("77:unknown", e.getKeyId());
 	}
 
 	// cards which are correctly signed by an issuer we know

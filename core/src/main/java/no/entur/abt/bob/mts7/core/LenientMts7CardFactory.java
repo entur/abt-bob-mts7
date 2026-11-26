@@ -68,11 +68,16 @@ public class LenientMts7CardFactory {
 		this.thumbprintFactory = thumbprintFactory;
 	}
 
-	public Mts7Card create(Mts7ApduPayloads card) throws InvalidKeyPairMts7Exception {
+	public Mts7Card create(Mts7ApduPayloads card) throws KeyPairInvalidCardMts7Exception {
 		Mts7Card result = new Mts7Card();
 		try {
 			if (card.hasSelectApplicationOutput()) {
-				enricher.enrichSelectApplicationResponsePayload(result, card.getSelectApplicationOutput());
+				try {
+					enricher.enrichSelectApplicationResponsePayload(result, card.getSelectApplicationOutput());
+				} catch (InvalidCardMts7Exception e) {
+					// lenient: carry on with the rest of the card
+					LOGGER.info("Unable to enrich the card with the select application response", e);
+				}
 			}
 
 			IccPublicKey iccPublicKey = null;

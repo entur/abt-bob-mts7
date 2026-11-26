@@ -45,7 +45,7 @@ public class VerifyKeyPairMts7CardFactoryTest {
 	public void testCardWithoutPrivateKeyIsRejected() throws Exception {
 		VerifyKeyPairMts7CardFactory factory = new VerifyKeyPairMts7CardFactory();
 
-		InvalidKeyPairMts7Exception e = assertThrows(InvalidKeyPairMts7Exception.class,
+		KeyPairInvalidCardMts7Exception e = assertThrows(KeyPairInvalidCardMts7Exception.class,
 				() -> factory.create(card(GET_NEXT_DATA_RESPONSE, OTHER_SIGNATURE_RESPONSE)));
 
 		assertFalse(e.getResult().isVerifiedPrivateKeyPresent());
@@ -59,7 +59,7 @@ public class VerifyKeyPairMts7CardFactoryTest {
 
 		InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class, () -> factory.create(card("0102039000", SIGNATURE_RESPONSE)));
 
-		assertFalse(e instanceof InvalidKeyPairMts7Exception);
+		assertFalse(e instanceof KeyPairInvalidCardMts7Exception);
 		assertInstanceOf(IOException.class, e.getCause());
 		// the card as far as it was read
 		assertEquals(SERIAL, ByteArrayHexStringConverter.toHexString(e.getResult().getSerial()));
@@ -74,7 +74,7 @@ public class VerifyKeyPairMts7CardFactoryTest {
 
 		InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class, () -> factory.create(payloads));
 
-		assertFalse(e instanceof InvalidKeyPairMts7Exception);
+		assertFalse(e instanceof KeyPairInvalidCardMts7Exception);
 	}
 
 	@Test

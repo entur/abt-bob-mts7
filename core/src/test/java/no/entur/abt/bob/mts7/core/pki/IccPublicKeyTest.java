@@ -8,7 +8,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.math.BigInteger;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
+import java.security.Provider;
 import java.security.Signature;
 import java.security.interfaces.ECPublicKey;
 import java.security.interfaces.RSAPublicKey;
@@ -248,6 +250,25 @@ public class IccPublicKeyTest {
 		header.setAlg("RS256");
 
 		assertThrows(UnableToConstructIccKeyException.class, () -> new IccPublicKeyFactory().create(header));
+	}
+
+	@Test
+	public void testUnavailableAlgorithmIsNotInvalidSignature() throws Exception {
+		// a problem on our side: the security provider does not have the algorithm
+		IccPublicKey key = new IccPublicKey(ecKeyPair.getPublic(), "NoneWithECDSA", new Provider("Empty", "1.0", "Without algorithms") {
+			private static final long serialVersionUID = 1L;
+		});
+
+		byte[] signature = signEc(ecKeyPair.getPrivate(), CHALLENGE);
+		assertThrows(NoSuchAlgorithmException.class, () -> key.verify(CHALLENGE, signature));
+	}
+
+	@Test
+	public void testKeyNotAcceptedIsNotValid() throws Exception {
+		// a problem on the card side: the key of the card does not fit its algorithm
+		IccPublicKey key = new IccPublicKey(rsaKeyPair.getPublic(), "NoneWithECDSA", null);
+
+		assertFalse(key.verify(CHALLENGE, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
 	}
 
 }

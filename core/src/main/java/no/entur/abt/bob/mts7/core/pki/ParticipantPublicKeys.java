@@ -2,11 +2,13 @@ package no.entur.abt.bob.mts7.core.pki;
 
 import java.security.Provider;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
@@ -16,8 +18,9 @@ import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
  * 
  * Lazy key cache.
  * <p>
- * Instances are thread safe, so a single instance should be shared by all threads. The keys are created when first used; see
- * {@linkplain no.entur.abt.bob.mts7.core.warmup.Mts7Warmup} for creating them in advance.
+ * Instances are thread safe, so a single instance should be shared by all threads. The keys are created when first used; see {@linkplain #createKeys()} (or
+ * {@linkplain no.entur.abt.bob.mts7.core.warmup.Mts7Warmup}) for creating them in advance, and {@linkplain #getIssuers()} with
+ * {@linkplain Issuer#getUnsupportedKeys()} for the keys whose type is not supported.
  * 
  */
 
@@ -81,6 +84,10 @@ public class ParticipantPublicKeys {
 		// the type of key is not supported, which will not change, so there is no point in trying again
 		private volatile boolean unsupported;
 
+		// the key could not be created, which will not change either (the key material and the security provider are the same), so there is no point in
+		// trying again
+		private volatile UnableToConstructIssuerKeyException failure;
+
 		private final MtbJwkPublic keyMaterial;
 
 		public IssuerKey(MtbJwkPublic keyMaterial) {
@@ -94,6 +101,14 @@ public class ParticipantPublicKeys {
 
 		public MtbJwkPublic getKeyMaterial() {
 			return keyMaterial;
+		}
+
+		/**
+		 * @return the key id (kid)
+		 */
+
+		public String getKeyId() {
+			return keyMaterial.getKid();
 		}
 
 		public void setKey(IssuerPublicKey key) {
@@ -110,6 +125,22 @@ public class ParticipantPublicKeys {
 
 		public void setUnsupported(boolean unsupported) {
 			this.unsupported = unsupported;
+		}
+
+		/**
+		 * @return why the key could not be created, or null if it has not failed (yet)
+		 */
+
+		public UnableToConstructIssuerKeyException getFailure() {
+			return failure;
+		}
+
+		public void setFailure(UnableToConstructIssuerKeyException failure) {
+			this.failure = failure;
+		}
+
+		public boolean hasFailure() {
+			return failure != null;
 		}
 	}
 
@@ -129,6 +160,15 @@ public class ParticipantPublicKeys {
 			this.factory = factory;
 		}
 
+		/**
+		 * Get a key, which is created when it is first asked for. Whether it could not be created, or its type is not supported, is remembered, so that this is
+		 * only tried once.
+		 *
+		 * @param id key id
+		 * @return the key, or null if the key is unknown, or its type is not supported (see {@linkplain #hasKey(String)})
+		 * @throws UnableToConstructIssuerKeyException if the key could not be created (every time it is asked for, with the first failure as the cause)
+		 */
+
 		public IssuerPublicKey getKey(String id) throws UnableToConstructIssuerKeyException {
 			IssuerKey issuerKey = keys.get(id);
 			if (issuerKey == null) {
@@ -136,15 +176,30 @@ public class ParticipantPublicKeys {
 			}
 
 			IssuerPublicKey key = issuerKey.getKey();
-			if (key == null && !issuerKey.isUnsupported()) {
+			if (key != null || issuerKey.isUnsupported()) {
+				return key;
+			}
+
+			UnableToConstructIssuerKeyException failure = issuerKey.getFailure();
+			if (failure == null) {
 				// creating a key has no side effects, and the result is thread safe, so there is no need to prevent several threads from creating one at the
-				// same time: all of the keys are equivalent
-				key = factory.createIssuerPublicKey(pid, issuerKey.getKeyMaterial());
-				if (key != null) {
-					issuerKey.setKey(key);
-				} else {
-					issuerKey.setUnsupported(true);
+				// same time: all of the keys (and failures) are equivalent
+				try {
+					key = factory.createIssuerPublicKey(pid, issuerKey.getKeyMaterial());
+				} catch (UnableToConstructIssuerKeyException e) {
+					failure = e;
+					issuerKey.setFailure(e);
 				}
+			}
+			if (failure != null) {
+				// a new exception for each caller, with the first failure as the cause
+				throw new UnableToConstructIssuerKeyException("Unable to create key " + id + " for participant " + pid, failure);
+			}
+
+			if (key != null) {
+				issuerKey.setKey(key);
+			} else {
+				issuerKey.setUnsupported(true);
 			}
 			return key;
 		}
@@ -166,8 +221,54 @@ public class ParticipantPublicKeys {
 			return new HashSet<>(keys.keySet());
 		}
 
+		/**
+		 * Create the keys of the participant which have not been created yet (otherwise each key is created when it is first used).
+		 *
+		 * @return the keys which could not be created, empty if none. A key whose type is not supported is not among them, but among
+		 *         {@linkplain #getUnsupportedKeys()} afterwards.
+		 */
+
+		public List<UnableToConstructIssuerKeyException> createKeys() {
+			List<UnableToConstructIssuerKeyException> failures = new ArrayList<>();
+			for (String kid : new TreeSet<>(keys.keySet())) {
+				try {
+					getKey(kid);
+				} catch (UnableToConstructIssuerKeyException e) {
+					// names the key and the participant
+					failures.add(e);
+				}
+			}
+			return failures;
+		}
+
+		/**
+		 * The keys whose type is not supported. This is found out when a key is created, so call {@linkplain #createKeys()} (or
+		 * {@linkplain ParticipantPublicKeys#createKeys()}) first to get all of them.
+		 *
+		 * @return the keys whose type is not supported, ordered by key id; empty if none (a copy)
+		 */
+
+		public List<IssuerKey> getUnsupportedKeys() {
+			List<IssuerKey> unsupported = new ArrayList<>();
+			for (String kid : new TreeSet<>(keys.keySet())) {
+				IssuerKey key = keys.get(kid);
+				if (key.isUnsupported()) {
+					unsupported.add(key);
+				}
+			}
+			return unsupported;
+		}
+
 		public String getName() {
 			return name;
+		}
+
+		/**
+		 * @return the participant id
+		 */
+
+		public long getPid() {
+			return pid;
 		}
 	}
 
@@ -182,7 +283,8 @@ public class ParticipantPublicKeys {
 	 * @param kid key id
 	 * @return the key, or null if the participant or key is unknown, or if the type of key is not supported (see
 	 *         {@linkplain #hasIssuerPublicKey(long, String)})
-	 * @throws UnableToConstructIssuerKeyException if the key is known, but could not be created (a problem on our side)
+	 * @throws UnableToConstructIssuerKeyException if the key is known, but could not be created (a problem on our side); this is only tried once, see
+	 *                                             {@linkplain Issuer#getKey(String)}
 	 */
 
 	public IssuerPublicKey getIssuerPublicKey(long pid, String kid) throws UnableToConstructIssuerKeyException {
@@ -213,6 +315,32 @@ public class ParticipantPublicKeys {
 
 	public Set<Long> getParticipantIds() {
 		return new HashSet<>(keys.keySet());
+	}
+
+	/**
+	 * @return the participants, ordered by participant id (a copy)
+	 */
+
+	public List<Issuer> getIssuers() {
+		List<Issuer> issuers = new ArrayList<>(keys.values());
+		issuers.sort(Comparator.comparingLong(Issuer::getPid));
+		return issuers;
+	}
+
+	/**
+	 * Create all of the keys which have not been created yet (otherwise each key is created when it is first used), for example to find keys which cannot be
+	 * used before a card needs them.
+	 *
+	 * @return the number of invalid keys: those which could not be created, and those whose type is not supported; zero if none. See
+	 *         {@linkplain Issuer#createKeys()} and {@linkplain Issuer#getUnsupportedKeys()} for which they are.
+	 */
+
+	public int createKeys() {
+		int invalid = 0;
+		for (Issuer issuer : getIssuers()) {
+			invalid += issuer.createKeys().size() + issuer.getUnsupportedKeys().size();
+		}
+		return invalid;
 	}
 
 	/**

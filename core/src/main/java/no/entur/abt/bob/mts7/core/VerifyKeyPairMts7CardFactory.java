@@ -4,9 +4,6 @@ import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.security.Provider;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
 import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
@@ -25,8 +22,6 @@ import no.entur.abt.bob.mts7.mtb.MobileTicketBundleParser;
  */
 
 public class VerifyKeyPairMts7CardFactory {
-
-	private static final Logger LOGGER = LoggerFactory.getLogger(VerifyKeyPairMts7CardFactory.class);
 
 	protected final IccPublicKeyFactory iccPublicKeyFactory;
 
@@ -73,13 +68,16 @@ public class VerifyKeyPairMts7CardFactory {
 	 *
 	 * @param card the payloads read from the card
 	 * @return the verified card
-	 * @throws InvalidKeyPairMts7Exception if the card did not prove that it has the private key (a problem on the card side)
-	 * @throws InvalidCardMts7Exception    if a response from the card is missing or malformed (a problem on the card side). This is also the superclass of
-	 *                                     {@linkplain InvalidKeyPairMts7Exception}, so catch it for any problem on the card side.
-	 * @throws NoSuchAlgorithmException    if the signature algorithm of the card is not available from the security provider (a problem on our side)
+	 * @throws KeyPairInvalidCardMts7Exception         if the card did not prove that it has the private key (a problem on the card side)
+	 * @throws InvalidCardMts7Exception                if a response from the card is missing or malformed (a problem on the card side). This is also the
+	 *                                                 superclass of {@linkplain KeyPairInvalidCardMts7Exception}, so catch it for any problem on the card side.
+	 * @throws NoSuchAlgorithmException                if the signature algorithm of the card is not available from the security provider (a problem on our
+	 *                                                 side)
+	 * @throws UnableToConstructThumbprintKeyException if the thumbprint of the public key of the card could not be created, although the key could (a problem
+	 *                                                 on our side)
 	 */
 
-	public Mts7Card create(Mts7ApduPayloads card) throws InvalidCardMts7Exception, NoSuchAlgorithmException {
+	public Mts7Card create(Mts7ApduPayloads card) throws InvalidCardMts7Exception, NoSuchAlgorithmException, UnableToConstructThumbprintKeyException {
 		Mts7Card result = new Mts7Card();
 
 		if (!card.hasSelectApplicationOutput() || !card.hasGetDataOutput() || !card.hasInternalAuthenticateOutput()) {
@@ -100,12 +98,6 @@ public class VerifyKeyPairMts7CardFactory {
 			throw new InvalidCardMts7Exception("Missing Issuer Signature Protected Header", result);
 		}
 
-		try {
-			result.setThumbprint(thumbprintFactory.create(header));
-		} catch (UnableToConstructThumbprintKeyException e) {
-			LOGGER.info("Unable to construct thumbprint", e);
-		}
-
 		IccPublicKey iccPublicKey;
 		try {
 			iccPublicKey = iccPublicKeyFactory.create(header);
@@ -113,8 +105,11 @@ public class VerifyKeyPairMts7CardFactory {
 			throw new InvalidCardMts7Exception("Unable to create ICC public key", result, e);
 		}
 
+		// from the same token public key as the public key of the card, which could be created, so a problem here is on our side
+		result.setThumbprint(thumbprintFactory.create(header));
+
 		if (!iccPublicKey.verify(card.getInternalAuthenticateInput(), card.getInternalAuthenticateOutput())) {
-			throw new InvalidKeyPairMts7Exception(result);
+			throw new KeyPairInvalidCardMts7Exception(result);
 		}
 		result.setVerifiedPrivateKeyPresent(true);
 

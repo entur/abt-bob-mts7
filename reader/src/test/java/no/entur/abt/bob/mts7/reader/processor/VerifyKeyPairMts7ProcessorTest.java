@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
 import no.entur.abt.bob.mts7.api.apdu.CommandAPDU;
-import no.entur.abt.bob.mts7.core.InvalidKeyPairMts7Exception;
+import no.entur.abt.bob.mts7.core.KeyPairInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.Mts7Card;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
@@ -71,7 +71,7 @@ public class VerifyKeyPairMts7ProcessorTest extends AbstractExecutorTest {
 	@Test
 	public void testCardWithoutPrivateKeyIsRejected() throws Exception {
 		// as from a cloned card, which does not have the private key
-		InvalidKeyPairMts7Exception e = assertThrows(InvalidKeyPairMts7Exception.class,
+		KeyPairInvalidCardMts7Exception e = assertThrows(KeyPairInvalidCardMts7Exception.class,
 				() -> process(processorFactory.create(), SIGNATURE_RESPONSE.replace("DCC5", "DCC6")).waitForVerify(0));
 
 		assertFalse(e.getResult().isVerifiedPrivateKeyPresent());

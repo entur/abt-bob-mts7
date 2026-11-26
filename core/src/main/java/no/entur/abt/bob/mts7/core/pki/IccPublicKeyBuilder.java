@@ -7,6 +7,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
+import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
 import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
 import no.entur.abt.bob.mts7.mtb.MobileTicketBundleWriter;
 
@@ -91,12 +92,13 @@ public class IccPublicKeyBuilder {
 	 * Verify the issuer signature, and create the ICC public key.
 	 *
 	 * @return the ICC public key
-	 * @throws SignatureException               if the issuer signature is not valid (a problem on the card side)
-	 * @throws UnableToConstructIccKeyException if the ICC public key could not be created from the certificate of the card (a problem on the card side)
-	 * @throws NoSuchAlgorithmException         if the signature algorithm of the card is not available from the security provider (a problem on our side)
+	 * @throws SignatureException                  if the issuer signature is not valid (a problem on the card side)
+	 * @throws UnableToConstructIccKeyException    if the ICC public key could not be created from the certificate of the card (a problem on the card side)
+	 * @throws NoSuchAlgorithmException            if a signature algorithm is not available from the security provider (a problem on our side)
+	 * @throws UnableToConstructIssuerKeyException if the issuer key is not accepted by the security provider (a problem on our side)
 	 */
 
-	public IccPublicKey build() throws SignatureException, UnableToConstructIccKeyException, NoSuchAlgorithmException {
+	public IccPublicKey build() throws SignatureException, UnableToConstructIccKeyException, NoSuchAlgorithmException, UnableToConstructIssuerKeyException {
 		byte[] data = getSignedData();
 
 		if (!issuerPublicKey.verify(data, signature)) {

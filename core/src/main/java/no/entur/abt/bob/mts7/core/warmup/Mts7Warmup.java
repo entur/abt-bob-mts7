@@ -372,14 +372,9 @@ public class Mts7Warmup implements Runnable {
 				// unknown
 				continue;
 			}
-			for (String kid : issuer.getKeyIds()) {
-				try {
-					if (issuer.getKey(kid) == null) {
-						failures.add(new UnableToConstructIssuerKeyException("Unsupported type of key " + kid + " for participant " + pid));
-					}
-				} catch (UnableToConstructIssuerKeyException e) {
-					failures.add(new UnableToConstructIssuerKeyException("Unable to create key " + kid + " for participant " + pid, e));
-				}
+			failures.addAll(issuer.createKeys());
+			for (ParticipantPublicKeys.IssuerKey key : issuer.getUnsupportedKeys()) {
+				failures.add(new UnableToConstructIssuerKeyException("Unsupported type of key " + key.getKeyId() + " for participant " + pid));
 			}
 		}
 		return failures;

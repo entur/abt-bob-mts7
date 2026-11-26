@@ -21,8 +21,8 @@ public interface Mts7Processor extends Runnable {
 	 * @return the verified card
 	 * @throws InterruptedException     if interrupted while waiting
 	 * @throws InvalidCardMts7Exception if the card is not valid, could not be verified, or was not completely read (a problem on the card side). See the
-	 *                                  subclasses {@linkplain no.entur.abt.bob.mts7.core.InvalidKeyPairMts7Exception} and
-	 *                                  {@linkplain no.entur.abt.bob.mts7.core.InvalidTrustChainMts7Exception}.
+	 *                                  subclasses {@linkplain no.entur.abt.bob.mts7.core.KeyPairInvalidCardMts7Exception} and
+	 *                                  {@linkplain no.entur.abt.bob.mts7.core.TrustChainInvalidCardMts7Exception}.
 	 * @throws ExecutionException       if the processing failed because of a problem on our side, which is the cause
 	 */
 

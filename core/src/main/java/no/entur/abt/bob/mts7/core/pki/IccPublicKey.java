@@ -1,5 +1,7 @@
 package no.entur.abt.bob.mts7.core.pki;
 
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.security.Provider;
 import java.security.PublicKey;
 import java.security.Signature;
@@ -42,11 +44,44 @@ public class IccPublicKey {
 		this.ec = algorithm.endsWith("ECDSA");
 	}
 
-	public boolean verify(byte[] data, byte[] expected) {
+	/**
+	 * Verify the signature of the card.
+	 *
+	 * @param data     signed data (the challenge)
+	 * @param expected signature from the card
+	 * @return whether the signature is valid; false also if the data or the signature is malformed, or the key of the card is not accepted (a problem on the
+	 *         card side)
+	 * @throws NoSuchAlgorithmException if the signature algorithm is not available from the security provider (a problem on our side)
+	 */
+
+	public boolean verify(byte[] data, byte[] expected) throws NoSuchAlgorithmException {
 		return verify(data, 0, data == null ? 0 : data.length, expected);
 	}
 
-	public boolean verify(byte[] data, int offset, int length, byte[] expected) {
+	/**
+	 * Verify the signature of the card.
+	 *
+	 * @param data     buffer with the signed data (the challenge)
+	 * @param offset   offset of the signed data in the buffer
+	 * @param length   length of the signed data
+	 * @param expected signature from the card
+	 * @return whether the signature is valid; false also if the data or the signature is malformed, or the key of the card is not accepted (a problem on the
+	 *         card side)
+	 * @throws NoSuchAlgorithmException if the signature algorithm is not available from the security provider (a problem on our side)
+	 */
+
+	public boolean verify(byte[] data, int offset, int length, byte[] expected) throws NoSuchAlgorithmException {
+		// a signature is stateful, so use a new one: it is not shared with anyone, and there is no need to restore it to a known state if something goes
+		// wrong. A missing algorithm is a problem on our side, so it is not caught here.
+		Signature signature;
+		try {
+			signature = newSignature();
+		} catch (InvalidKeyException e) {
+			// the key of the card
+			LOGGER.info("Key not accepted", e);
+			return false;
+		}
+
 		try {
 
 			// from MTS7 - 4.1.4. INTERNAL AUTHENTICATE:
@@ -68,13 +103,10 @@ public class IccPublicKey {
 				encoded = expected;
 			}
 
-			// a signature is stateful, so use a new one: it is not shared with anyone, and there is no need to restore it to a known state if something goes
-			// wrong
-			Signature signature = newSignature();
-
 			signature.update(data, offset, length);
 			return signature.verify(encoded);
 		} catch (Exception e) {
+			// the data or the signature from the card is malformed
 			LOGGER.info("Unable to verify signature", e);
 			return false;
 		}
@@ -84,10 +116,11 @@ public class IccPublicKey {
 	 * Create a signature which is initialized for verification with the key.
 	 *
 	 * @return a new signature
-	 * @throws Exception if the algorithm is not available or the key is not accepted
+	 * @throws NoSuchAlgorithmException if the algorithm is not available
+	 * @throws InvalidKeyException      if the key is not accepted
 	 */
 
-	Signature newSignature() throws Exception {
+	Signature newSignature() throws NoSuchAlgorithmException, InvalidKeyException {
 		Signature signature;
 		if (provider != null) {
 			signature = Signature.getInstance(algorithm, provider);

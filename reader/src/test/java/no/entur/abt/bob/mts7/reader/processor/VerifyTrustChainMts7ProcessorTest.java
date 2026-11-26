@@ -22,11 +22,12 @@ import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.mts7.api.apdu.CommandAPDU;
 import no.entur.abt.bob.mts7.core.InvalidCardMts7Exception;
-import no.entur.abt.bob.mts7.core.InvalidKeyPairMts7Exception;
-import no.entur.abt.bob.mts7.core.InvalidTrustChainMts7Exception;
+import no.entur.abt.bob.mts7.core.KeyPairInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.Mts7Card;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
+import no.entur.abt.bob.mts7.core.TrustChainInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
+import no.entur.abt.bob.mts7.core.UnknownIssuerKeyInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.IssuerPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IssuerSignatureFactory;
@@ -123,8 +124,10 @@ public class VerifyTrustChainMts7ProcessorTest extends AbstractTest {
 		VerifyTrustChainMts7ProcessorFactory factory = new VerifyTrustChainMts7ProcessorFactory(ParticipantPublicKeys.newBuilder().build(), executor);
 
 		assertFalse(factory.isTrustUnknownRootKeys());
-		InvalidTrustChainMts7Exception e = assertThrows(InvalidTrustChainMts7Exception.class,
+		UnknownIssuerKeyInvalidCardMts7Exception e = assertThrows(UnknownIssuerKeyInvalidCardMts7Exception.class,
 				() -> process(factory.create(), GET_NEXT_DATA_RESPONSE, SIGNATURE_RESPONSE).waitForVerify(0));
+		assertEquals(10, e.getIssuerId());
+		assertEquals("10:20230213", e.getKeyId());
 		assertFalse(e.getResult().isVerifiedTrustChain());
 	}
 
@@ -146,7 +149,7 @@ public class VerifyTrustChainMts7ProcessorTest extends AbstractTest {
 		VerifyTrustChainMts7ProcessorFactory factory = new VerifyTrustChainMts7ProcessorFactory(ParticipantPublicKeys.newBuilder().build(), null, true,
 				executor);
 
-		assertThrows(InvalidKeyPairMts7Exception.class, () -> process(factory.create(), GET_NEXT_DATA_RESPONSE, OTHER_SIGNATURE_RESPONSE).waitForVerify(0));
+		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> process(factory.create(), GET_NEXT_DATA_RESPONSE, OTHER_SIGNATURE_RESPONSE).waitForVerify(0));
 	}
 
 	@Test
@@ -168,20 +171,24 @@ public class VerifyTrustChainMts7ProcessorTest extends AbstractTest {
 			getNextDataResponse[i] = 0x42;
 		}
 
-		InvalidTrustChainMts7Exception e = assertThrows(InvalidTrustChainMts7Exception.class,
+		TrustChainInvalidCardMts7Exception e = assertThrows(TrustChainInvalidCardMts7Exception.class,
 				() -> process(factory.create(), ByteArrayHexStringConverter.toHexString(getNextDataResponse), SIGNATURE_RESPONSE).waitForVerify(0));
 
+		// the key is known, so the issuer signature is not valid
+		assertFalse(e instanceof UnknownIssuerKeyInvalidCardMts7Exception);
 		assertFalse(e.getResult().isVerifiedTrustChain());
 	}
 
 	@Test
-	public void testKnownUnsupportedRootKeyIsRejectedWithOption() throws Exception {
+	public void testKnownUnsupportedRootKeyIsNotInvalidCard() throws Exception {
+		// a problem on our side, also with the option: the key is known, so it is not an unknown key, and the card is not to blame
 		VerifyTrustChainMts7ProcessorFactory factory = new VerifyTrustChainMts7ProcessorFactory(unsupportedRootKey(), null, true, executor);
 
-		InvalidTrustChainMts7Exception e = assertThrows(InvalidTrustChainMts7Exception.class,
+		ExecutionException e = assertThrows(ExecutionException.class,
 				() -> process(factory.create(), GET_NEXT_DATA_RESPONSE, SIGNATURE_RESPONSE).waitForVerify(0));
 
-		assertFalse(e.getResult().isVerifiedTrustChain());
+		assertInstanceOf(UnableToConstructIssuerKeyException.class, e.getCause());
+		assertTrue(e.getCause().getMessage().contains("not supported"), e.getCause().getMessage());
 	}
 
 	@Test
@@ -189,8 +196,8 @@ public class VerifyTrustChainMts7ProcessorTest extends AbstractTest {
 		InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class,
 				() -> process(processorFactory.create(), "0102039000", SIGNATURE_RESPONSE).waitForVerify(0));
 
-		assertFalse(e instanceof InvalidKeyPairMts7Exception);
-		assertFalse(e instanceof InvalidTrustChainMts7Exception);
+		assertFalse(e instanceof KeyPairInvalidCardMts7Exception);
+		assertFalse(e instanceof TrustChainInvalidCardMts7Exception);
 		assertInstanceOf(IOException.class, e.getCause());
 		// the card as far as it was read
 		assertEquals("0000175F96B61D", ByteArrayHexStringConverter.toHexString(e.getResult().getSerial()));

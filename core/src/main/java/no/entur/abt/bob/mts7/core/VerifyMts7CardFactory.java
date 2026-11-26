@@ -5,9 +5,6 @@ import java.security.NoSuchAlgorithmException;
 import java.security.Provider;
 import java.security.SignatureException;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
 import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
@@ -34,8 +31,6 @@ import no.entur.abt.bob.mts7.mtb.MobileTicketBundleParser;
  */
 
 public class VerifyMts7CardFactory {
-
-	private static final Logger LOGGER = LoggerFactory.getLogger(VerifyMts7CardFactory.class);
 
 	protected final IccPublicKeyFactory iccPublicKeyFactory;
 
@@ -158,17 +153,23 @@ public class VerifyMts7CardFactory {
 	 *
 	 * @param card the payloads read from the card
 	 * @return the verified card
-	 * @throws InvalidTrustChainMts7Exception      if the certificate of the card was not signed by a known issuer (door 2): the issuer key is unknown (unless
-	 *                                             <code>trustUnknownRootKeys</code>) or not supported, or the issuer signature is not valid (a problem on the
-	 *                                             card side)
-	 * @throws InvalidKeyPairMts7Exception         if the card did not prove that it has the private key (door 3; a problem on the card side)
-	 * @throws InvalidCardMts7Exception            if a response from the card is missing or malformed (a problem on the card side). This is also the superclass
-	 *                                             of the above, so catch it for any problem on the card side.
-	 * @throws UnableToConstructIssuerKeyException if the issuer key of the card is known, but could not be created (a problem on our side)
-	 * @throws NoSuchAlgorithmException            if the signature algorithm of the card is not available from the security provider (a problem on our side)
+	 * @throws UnknownIssuerKeyInvalidCardMts7Exception if the issuer key of the certificate of the card is unknown (door 2, unless
+	 *                                                  <code>trustUnknownRootKeys</code>; a problem on the card side, or the participant metadata is out of
+	 *                                                  date)
+	 * @throws TrustChainInvalidCardMts7Exception       if the certificate of the card was not signed by a known issuer (door 2): the issuer signature is not
+	 *                                                  valid, or (as the subclass above) the issuer key is unknown (a problem on the card side)
+	 * @throws KeyPairInvalidCardMts7Exception          if the card did not prove that it has the private key (door 3; a problem on the card side)
+	 * @throws InvalidCardMts7Exception                 if a response from the card is missing or malformed (a problem on the card side). This is also the
+	 *                                                  superclass of the above, so catch it for any problem on the card side.
+	 * @throws UnableToConstructIssuerKeyException      if the issuer key of the card is known, but could not be created, is not supported, or is not accepted
+	 *                                                  by the security provider (a problem on our side)
+	 * @throws NoSuchAlgorithmException                 if a signature algorithm is not available from the security provider (a problem on our side)
+	 * @throws UnableToConstructThumbprintKeyException  if the thumbprint of the public key of the card could not be created, although the key could (a problem
+	 *                                                  on our side)
 	 */
 
-	public Mts7Card create(Mts7ApduPayloads card) throws InvalidCardMts7Exception, UnableToConstructIssuerKeyException, NoSuchAlgorithmException {
+	public Mts7Card create(Mts7ApduPayloads card)
+			throws InvalidCardMts7Exception, UnableToConstructIssuerKeyException, NoSuchAlgorithmException, UnableToConstructThumbprintKeyException {
 		Mts7Card result = new Mts7Card();
 
 		if (!card.hasSelectApplicationOutput() || !card.hasGetDataOutput() || !card.hasInternalAuthenticateOutput()) {
@@ -187,12 +188,6 @@ public class VerifyMts7CardFactory {
 		IssuerSignatureProtectedHeader header = mobileTicketBundle.getIssuerSignatureProtectedHeader();
 		if (header == null) {
 			throw new InvalidCardMts7Exception("Missing Issuer Signature Protected Header", result);
-		}
-
-		try {
-			result.setThumbprint(thumbprintFactory.create(header));
-		} catch (UnableToConstructThumbprintKeyException e) {
-			LOGGER.info("Unable to construct thumbprint", e);
 		}
 
 		long iid;
@@ -217,14 +212,14 @@ public class VerifyMts7CardFactory {
 			try {
 				iccPublicKey = iccPublicKeyBuilder.build();
 			} catch (SignatureException e) {
-				throw new InvalidTrustChainMts7Exception("Issuer signature is not valid", result);
+				throw new TrustChainInvalidCardMts7Exception("Issuer signature is not valid", result);
 			} catch (UnableToConstructIccKeyException e) {
 				throw new InvalidCardMts7Exception("Unable to create ICC public key", result, e);
 			}
 			result.setVerifiedTrustChain(true);
 		} else if (participantPublicKeys.hasIssuerPublicKey(iid, header.getKid())) {
-			// a key which is known, but cannot be used, is not an unknown key
-			throw new InvalidTrustChainMts7Exception("Issuer public key " + header.getKid() + " of participant " + iid + " is not supported", result);
+			// a key which is known, but which we cannot use, is not an unknown key, and not the fault of the card
+			throw new UnableToConstructIssuerKeyException("Issuer public key " + header.getKid() + " of participant " + iid + " is not supported");
 		} else if (trustUnknownRootKeys) {
 			// The issuer key is unknown, so the issuer signature of the card certificate (door 2) cannot be checked. Take the public key of
 			// the card from the certificate as it is, and only check that the card has the private key for it (door 3), as
@@ -235,11 +230,14 @@ public class VerifyMts7CardFactory {
 				throw new InvalidCardMts7Exception("Unable to create ICC public key", result, e);
 			}
 		} else {
-			throw new InvalidTrustChainMts7Exception("Unknown issuer public key " + header.getKid() + " of participant " + iid, result);
+			throw new UnknownIssuerKeyInvalidCardMts7Exception(iid, header.getKid(), result);
 		}
 
+		// from the same token public key as the public key of the card, which could be created, so a problem here is on our side
+		result.setThumbprint(thumbprintFactory.create(header));
+
 		if (!iccPublicKey.verify(card.getInternalAuthenticateInput(), card.getInternalAuthenticateOutput())) {
-			throw new InvalidKeyPairMts7Exception(result);
+			throw new KeyPairInvalidCardMts7Exception(result);
 		}
 		result.setVerifiedPrivateKeyPresent(true);
 

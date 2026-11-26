@@ -4,7 +4,7 @@ import no.entur.abt.bob.mts7.api.Mts7Exception;
 
 /**
  * The card is not a valid MTS7 card: a problem on the card side. Either what the card returned is missing or malformed, or (for the subclasses
- * {@linkplain InvalidKeyPairMts7Exception} and {@linkplain InvalidTrustChainMts7Exception}) the card did not pass verification.
+ * {@linkplain KeyPairInvalidCardMts7Exception} and {@linkplain TrustChainInvalidCardMts7Exception}) the card did not pass verification.
  * <p>
  * Problems on our side, such as an issuer key which cannot be constructed or a signature algorithm which the security provider does not have, are reported with
  * other exceptions.

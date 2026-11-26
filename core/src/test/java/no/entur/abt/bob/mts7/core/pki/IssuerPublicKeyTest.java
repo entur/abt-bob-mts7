@@ -2,12 +2,15 @@ package no.entur.abt.bob.mts7.core.pki;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
+import java.security.Provider;
 import java.security.PublicKey;
 import java.security.Signature;
 import java.security.spec.ECGenParameterSpec;
@@ -16,6 +19,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import com.nimbusds.jose.crypto.impl.ECDSA;
+
+import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
 
 public class IssuerPublicKeyTest {
 
@@ -128,6 +133,26 @@ public class IssuerPublicKeyTest {
 		assertFalse(ecKey().verify(DATA, null));
 		assertFalse(ecKey().verify(DATA, 0, DATA.length + 1, signEc(ecKeyPair.getPrivate(), DATA)));
 		assertFalse(ecKey().verify(DATA, -1, 1, signEc(ecKeyPair.getPrivate(), DATA)));
+	}
+
+	@Test
+	public void testUnavailableAlgorithmIsNotInvalidSignature() throws Exception {
+		// a problem on our side: the security provider does not have the algorithm
+		IssuerPublicKey key = new IssuerPublicKey(10, "10:test", ecKeyPair.getPublic(), "SHA256withECDSA", new Provider("Empty", "1.0", "Without algorithms") {
+			private static final long serialVersionUID = 1L;
+		});
+
+		byte[] signature = signEc(ecKeyPair.getPrivate(), DATA);
+		assertThrows(NoSuchAlgorithmException.class, () -> key.verify(DATA, signature));
+	}
+
+	@Test
+	public void testKeyNotAcceptedIsNotInvalidSignature() throws Exception {
+		// a problem on our side: the issuer key does not fit the algorithm
+		IssuerPublicKey key = issuerKey("SHA256withECDSA", rsaKeyPair.getPublic());
+
+		byte[] signature = signEc(ecKeyPair.getPrivate(), DATA);
+		assertThrows(UnableToConstructIssuerKeyException.class, () -> key.verify(DATA, signature));
 	}
 
 }

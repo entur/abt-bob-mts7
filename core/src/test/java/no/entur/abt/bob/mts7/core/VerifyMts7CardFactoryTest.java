@@ -106,7 +106,10 @@ public class VerifyMts7CardFactoryTest {
 		VerifyMts7CardFactory factory = new VerifyMts7CardFactory(ParticipantPublicKeys.newBuilder().build());
 
 		assertFalse(factory.isTrustUnknownRootKeys());
-		InvalidTrustChainMts7Exception e = assertThrows(InvalidTrustChainMts7Exception.class, () -> factory.create(card(SIGNATURE_RESPONSE)));
+		UnknownIssuerKeyInvalidCardMts7Exception e = assertThrows(UnknownIssuerKeyInvalidCardMts7Exception.class,
+				() -> factory.create(card(SIGNATURE_RESPONSE)));
+		assertEquals(10, e.getIssuerId());
+		assertEquals("10:20230213", e.getKeyId());
 		assertFalse(e.getResult().isVerifiedTrustChain());
 	}
 
@@ -127,7 +130,7 @@ public class VerifyMts7CardFactoryTest {
 	public void testUnknownRootKeyWithoutPrivateKeyIsRejectedWithOption() throws Exception {
 		VerifyMts7CardFactory factory = new VerifyMts7CardFactory(ParticipantPublicKeys.newBuilder().build(), null, true);
 
-		assertThrows(InvalidKeyPairMts7Exception.class, () -> factory.create(card(OTHER_SIGNATURE_RESPONSE)));
+		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> factory.create(card(OTHER_SIGNATURE_RESPONSE)));
 	}
 
 	@Test
@@ -148,8 +151,10 @@ public class VerifyMts7CardFactoryTest {
 		ParticipantMetadata issuer = new ParticipantMetadata().pid(10L).organisationName("Ten").mtbPublicKeys(List.of(otherJwk));
 		VerifyMts7CardFactory factory = new VerifyMts7CardFactory(ParticipantPublicKeys.newBuilder().withParticipants(List.of(issuer)).build(), null, true);
 
-		InvalidTrustChainMts7Exception e = assertThrows(InvalidTrustChainMts7Exception.class, () -> factory.create(card(SIGNATURE_RESPONSE)));
+		TrustChainInvalidCardMts7Exception e = assertThrows(TrustChainInvalidCardMts7Exception.class, () -> factory.create(card(SIGNATURE_RESPONSE)));
 
+		// the key is known, so the issuer signature is not valid
+		assertFalse(e instanceof UnknownIssuerKeyInvalidCardMts7Exception);
 		assertFalse(e.getResult().isVerifiedTrustChain());
 	}
 
@@ -157,18 +162,19 @@ public class VerifyMts7CardFactoryTest {
 	public void testCardWithoutPrivateKeyIsRejectedWithOption() throws Exception {
 		VerifyMts7CardFactory factory = new VerifyMts7CardFactory(participantPublicKeys(), null, true);
 
-		InvalidKeyPairMts7Exception e = assertThrows(InvalidKeyPairMts7Exception.class, () -> factory.create(card(OTHER_SIGNATURE_RESPONSE)));
+		KeyPairInvalidCardMts7Exception e = assertThrows(KeyPairInvalidCardMts7Exception.class, () -> factory.create(card(OTHER_SIGNATURE_RESPONSE)));
 
 		assertTrue(e.getResult().isVerifiedTrustChain());
 	}
 
 	@Test
-	public void testKnownUnsupportedRootKeyIsRejectedWithOption() throws Exception {
+	public void testKnownUnsupportedRootKeyIsNotInvalidCard() throws Exception {
+		// a problem on our side, also with the option: the key is known, so it is not an unknown key, and the card is not to blame
 		VerifyMts7CardFactory factory = new VerifyMts7CardFactory(unsupportedRootKey(), null, true);
 
-		InvalidTrustChainMts7Exception e = assertThrows(InvalidTrustChainMts7Exception.class, () -> factory.create(card(SIGNATURE_RESPONSE)));
+		UnableToConstructIssuerKeyException e = assertThrows(UnableToConstructIssuerKeyException.class, () -> factory.create(card(SIGNATURE_RESPONSE)));
 
-		assertFalse(e.getResult().isVerifiedTrustChain());
+		assertTrue(e.getMessage().contains("not supported"), e.getMessage());
 	}
 
 	@Test
@@ -190,7 +196,7 @@ public class VerifyMts7CardFactoryTest {
 		assertTrue(card.isVerifiedTrustChain());
 		assertEquals("0000175F96B61D", ByteArrayHexStringConverter.toHexString(card.getSerial()));
 
-		assertThrows(InvalidKeyPairMts7Exception.class, () -> new VerifyMts7CardFactory(keys).create(card(OTHER_SIGNATURE_RESPONSE)));
+		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> new VerifyMts7CardFactory(keys).create(card(OTHER_SIGNATURE_RESPONSE)));
 	}
 
 	@Test
@@ -227,7 +233,7 @@ public class VerifyMts7CardFactoryTest {
 
 		InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class, () -> factory.create(payloads));
 
-		assertFalse(e instanceof InvalidKeyPairMts7Exception);
+		assertFalse(e instanceof KeyPairInvalidCardMts7Exception);
 		assertInstanceOf(IOException.class, e.getCause());
 		// the card as far as it was read
 		assertEquals("0000175F96B61D", ByteArrayHexStringConverter.toHexString(e.getResult().getSerial()));

@@ -3,6 +3,12 @@ package no.entur.abt.bob.mts7.core;
 import no.entur.tlv.parser.LenientTlvPullParser;
 
 /**
+ * Enrich a card with the data of the select application response: the application identifier (version, participant identifier and serial), which is required,
+ * and the signature counter, the lifecycle status and the maximum APDU lengths, if present.
+ * <p>
+ * The response comes from the card, so anything wrong with it is a problem on the card side: {@linkplain InvalidCardMts7Exception}. The parsing never fails
+ * with any other exception.
+ * <p>
  * Instances are thread safe, so a single instance can be shared by all threads. The cards are not, so a card must only be enriched by one thread at a time.
  */
 
@@ -25,11 +31,56 @@ public class Mts7CardEnricher {
 
 	protected static final int APPLICATION_IDENTIFIER_LENGTH = 6 + 1 + 2 + 7;
 
-	public void enrichSelectApplicationResponsePayload(Mts7Card card, byte[] selectApplicationResponsePayload) {
-		// the parser is stateful, and cheap to create
-		LenientTlvPullParser pullParser = new LenientTlvPullParser();
-		pullParser.setBuffer(selectApplicationResponsePayload);
+	/**
+	 * Enrich the card with the payload of the select application response.
+	 *
+	 * @param card                             the card
+	 * @param selectApplicationResponsePayload response payload, without the status word
+	 * @throws InvalidCardMts7Exception if the response is malformed, or has no valid application identifier (a problem on the card side)
+	 */
 
+	public void enrichSelectApplicationResponsePayload(Mts7Card card, byte[] selectApplicationResponsePayload) throws InvalidCardMts7Exception {
+		enrich(card, selectApplicationResponsePayload, false);
+	}
+
+	/**
+	 * Enrich the card with the select application response.
+	 *
+	 * @param card                      the card
+	 * @param selectApplicationResponse response APDU, with the status word
+	 * @throws InvalidCardMts7Exception if the response is malformed, or has no valid application identifier (a problem on the card side)
+	 */
+
+	public void enrichSelectApplicationResponseApdu(Mts7Card card, byte[] selectApplicationResponse) throws InvalidCardMts7Exception {
+		enrich(card, selectApplicationResponse, true);
+	}
+
+	protected void enrich(Mts7Card card, byte[] response, boolean apdu) throws InvalidCardMts7Exception {
+		boolean applicationIdentifier;
+		try {
+			// the parser is stateful, and cheap to create
+			LenientTlvPullParser pullParser = new LenientTlvPullParser();
+			if (apdu) {
+				pullParser.setResponseApduPayload(response);
+			} else {
+				pullParser.setBuffer(response);
+			}
+			applicationIdentifier = parse(card, pullParser);
+		} catch (RuntimeException e) {
+			// the parsing is lenient, so this is not expected; whatever is wrong with the response, it came from the card
+			throw new InvalidCardMts7Exception("Malformed select application response", card, e);
+		}
+		if (!applicationIdentifier) {
+			throw new InvalidCardMts7Exception("Missing or malformed application identifier in the select application response", card);
+		}
+	}
+
+	/**
+	 * @return whether a valid application identifier was found
+	 */
+
+	protected boolean parse(Mts7Card card, LenientTlvPullParser pullParser) {
+		boolean applicationIdentifier = false;
 		do {
 			int tag = pullParser.nextTag();
 			if (tag == -1) {
@@ -37,28 +88,18 @@ public class Mts7CardEnricher {
 			}
 
 			if (tag == FILE_MANAGEMENT_TEMPLATE) {
-				parseFileManagementData(card, pullParser.parseTagLengthValuePayload());
+				applicationIdentifier |= parseFileManagementData(card, pullParser.parseTagLengthValuePayload());
 			}
 		} while (true);
+		return applicationIdentifier;
 	}
 
-	public void enrichSelectApplicationResponseApdu(Mts7Card card, byte[] selectApplicationResponse) {
-		LenientTlvPullParser pullParser = new LenientTlvPullParser();
-		pullParser.setResponseApduPayload(selectApplicationResponse);
+	/**
+	 * @return whether a valid application identifier was found
+	 */
 
-		do {
-			int tag = pullParser.nextTag();
-			if (tag == -1) {
-				break;
-			}
-
-			if (tag == FILE_MANAGEMENT_TEMPLATE) {
-				parseFileManagementData(card, pullParser.parseTagLengthValuePayload());
-			}
-		} while (true);
-	}
-
-	public void parseFileManagementData(Mts7Card card, LenientTlvPullParser payloadParser) {
+	public boolean parseFileManagementData(Mts7Card card, LenientTlvPullParser payloadParser) {
+		boolean applicationIdentifier = false;
 		do {
 			int tag = payloadParser.nextTag();
 			if (tag == -1) {
@@ -66,12 +107,18 @@ public class Mts7CardEnricher {
 			}
 
 			if (tag == APPLICATION_RELATED_DATA) {
-				parseApplicationRelatedData(card, payloadParser.parseTagLengthValuePayload());
+				applicationIdentifier |= parseApplicationRelatedData(card, payloadParser.parseTagLengthValuePayload());
 			}
 		} while (true);
+		return applicationIdentifier;
 	}
 
-	protected void parseApplicationRelatedData(Mts7Card card, LenientTlvPullParser payloadParser) {
+	/**
+	 * @return whether a valid application identifier was found
+	 */
+
+	protected boolean parseApplicationRelatedData(Mts7Card card, LenientTlvPullParser payloadParser) {
+		boolean applicationIdentifier = false;
 		do {
 			int tag = payloadParser.nextTag();
 			if (tag == -1) {
@@ -104,6 +151,7 @@ public class Mts7CardEnricher {
 				card.setParticipantIdentifier(pid);
 				card.setSerial(serial);
 
+				applicationIdentifier = true;
 				break;
 			}
 			case SECURITY_SUPPORT_DATA: {
@@ -129,6 +177,7 @@ public class Mts7CardEnricher {
 			}
 
 		} while (true);
+		return applicationIdentifier;
 	}
 
 	private void parseSecuritySupportData(Mts7Card card, LenientTlvPullParser payloadParser) {
