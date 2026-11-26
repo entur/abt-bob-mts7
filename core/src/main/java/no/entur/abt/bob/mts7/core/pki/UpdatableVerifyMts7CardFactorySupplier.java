@@ -39,9 +39,9 @@ import no.entur.abt.bob.mts7.core.VerifyMts7CardFactorySupplier;
  * Instances are thread safe.
  */
 
-public class ParticipantMetadataSource implements VerifyMts7CardFactorySupplier {
+public class UpdatableVerifyMts7CardFactorySupplier implements VerifyMts7CardFactorySupplier {
 
-	private static final Logger LOGGER = LoggerFactory.getLogger(ParticipantMetadataSource.class);
+	private static final Logger LOGGER = LoggerFactory.getLogger(UpdatableVerifyMts7CardFactorySupplier.class);
 
 	/**
 	 * By default, a set must have at least one issuer key which can be used.
@@ -134,11 +134,11 @@ public class ParticipantMetadataSource implements VerifyMts7CardFactorySupplier 
 		}
 
 		/**
-		 * @return the source, without a set (so it rejects every card until a set is loaded)
+		 * @return the supplier, without a set (so it rejects every card until a set is loaded)
 		 * @throws IllegalArgumentException if a limit is out of range
 		 */
 
-		public ParticipantMetadataSource build() {
+		public UpdatableVerifyMts7CardFactorySupplier build() {
 			if (minimumValidKeys < 1) {
 				// a set of keys which cannot be used would be accepted
 				throw new IllegalArgumentException("The minimum number of valid keys must be at least 1, not " + minimumValidKeys);
@@ -149,7 +149,7 @@ public class ParticipantMetadataSource implements VerifyMts7CardFactorySupplier 
 			if (minimumParticipants < 1) {
 				throw new IllegalArgumentException("The minimum number of participants must be at least 1, not " + minimumParticipants);
 			}
-			return new ParticipantMetadataSource(provider, minimumValidKeys, maximumInvalidKeys, minimumParticipants, requiredParticipants);
+			return new UpdatableVerifyMts7CardFactorySupplier(provider, minimumValidKeys, maximumInvalidKeys, minimumParticipants, requiredParticipants);
 		}
 	}
 
@@ -168,11 +168,11 @@ public class ParticipantMetadataSource implements VerifyMts7CardFactorySupplier 
 	 * @param provider security provider (for signatures), or null for the default
 	 */
 
-	public ParticipantMetadataSource(Provider provider) {
+	public UpdatableVerifyMts7CardFactorySupplier(Provider provider) {
 		this(provider, DEFAULT_MINIMUM_VALID_KEYS, DEFAULT_MAXIMUM_INVALID_KEYS, DEFAULT_MINIMUM_PARTICIPANTS, Collections.<Long>emptySet());
 	}
 
-	protected ParticipantMetadataSource(Provider provider, int minimumValidKeys, int maximumInvalidKeys, int minimumParticipants,
+	protected UpdatableVerifyMts7CardFactorySupplier(Provider provider, int minimumValidKeys, int maximumInvalidKeys, int minimumParticipants,
 			Set<Long> requiredParticipants) {
 		this.provider = provider;
 		this.minimumValidKeys = minimumValidKeys;
