@@ -5,9 +5,12 @@ import java.io.IOException;
 import java.security.SecureRandom;
 import java.util.Random;
 
+import no.entur.abt.bob.mts7.api.InsufficientCardCommandsException;
+import no.entur.abt.bob.mts7.api.MalformedCardResponseException;
 import no.entur.abt.bob.mts7.api.Mts7Exception;
 import no.entur.abt.bob.mts7.api.UnableToSelectApplicationException;
 import no.entur.abt.bob.mts7.api.UnexpectedCardResponseException;
+import no.entur.abt.bob.mts7.api.apdu.CommandAPDU;
 import no.entur.abt.bob.mts7.simple.api.Mts7ApduExchanges;
 
 /**
@@ -21,7 +24,10 @@ import no.entur.abt.bob.mts7.simple.api.Mts7ApduExchanges;
 
 public class Mts7ApduExchangesFactory {
 
-	public static final byte[] SELECT_BOB_COMMAND = new byte[] { 0x00, (byte) 0xA4, 0x04, 0x00, 0x06, (byte) 0xA0, 0x00, 0x00, 0x07, (byte) 0x81, 0x01 };
+	// with Le, so that a card which can returns its File Management Data (MTS7 section 4.1.1)
+	public static final byte[] SELECT_BOB_COMMAND = new byte[] { 0x00, (byte) 0xA4, 0x04, 0x00, 0x06, (byte) 0xA0, 0x00, 0x00, 0x07, (byte) 0x81, 0x01, 0x00 };
+	// GET DATA of the application-related data (6E), for a card whose select application response does not have it (MTS7 section 4.1.1)
+	public static final byte[] GET_APPLICATION_RELATED_DATA_COMMAND = new byte[] { 0x00, (byte) 0xCA, 0x00, 0x6E, 0x00 };
 	public static final byte[] GET_DATA_COMMAND = new byte[] { 0x00, (byte) 0xCA, 0x7F, 0x21, 0x00, 0x00, 0x00 };
 	public static final byte[] GET_NEXT_DATA_COMMAND = new byte[] { 0x00, (byte) 0xCC, 0x7F, 0x21, 0x00, 0x00, 0x00 };
 	public static final byte[] GET_RESPONSE_COMMAND = new byte[] { 0x00, (byte) 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00 };
@@ -34,8 +40,8 @@ public class Mts7ApduExchangesFactory {
 	public static final byte[] INTERNAL_AUTHENTICATE_COMMAND_POSTFIX = new byte[] { 0x00 };
 
 	/**
-	 * The maximum number of GET RESPONSE commands for a single GET (NEXT) DATA command. A card which keeps saying that there is more data must not keep the
-	 * reader busy forever. A real response is a few parts; with a typical maximum response length of a few hundred bytes this allows tens of kilobytes.
+	 * The maximum number of GET RESPONSE commands for a single command. A card which keeps saying that there is more data must not keep the reader busy
+	 * forever. A real response is a few parts; with a typical maximum response length of a few hundred bytes this allows tens of kilobytes.
 	 */
 
 	protected static final int MAX_GET_RESPONSE_COMMANDS = 256;
@@ -50,19 +56,49 @@ public class Mts7ApduExchangesFactory {
 		this(new SecureRandom());
 	}
 
+	/**
+	 * Read the card: select application, the application-related data if the select application response does not have it, the first MTB, and internal
+	 * authenticate.
+	 * <p>
+	 * A problem with the reader which does not stop the card from being checked is left to whoever checks it from the exchanges, so that a card which is not
+	 * valid is to blame for that, whatever else it did: if the rest of the select application response or the application-related data could not be retrieved,
+	 * the card is read on.
+	 *
+	 * @param mts7Exchange              the card
+	 * @param selectApplicationResponse the response to select application, if it has already been sent, otherwise null
+	 * @return the exchanges
+	 * @throws IOException   if the card cannot be reached
+	 * @throws Mts7Exception if the card does not respond with success ({@linkplain no.entur.abt.bob.mts7.api.InvalidCardMts7Exception}, a problem on the card
+	 *                       side), or the response could not be retrieved ({@linkplain no.entur.abt.bob.mts7.api.ReaderMts7Exception}, a problem with the
+	 *                       reader)
+	 */
+
 	public Mts7ApduExchanges createCard(Mts7Exchange mts7Exchange, byte[] selectApplicationResponse) throws IOException, Mts7Exception {
 		DefaultMts7Exchange card = new DefaultMts7Exchange(mts7Exchange);
 
-		handleSelectApplication(selectApplicationResponse, card);
+		byte[] selectApplication = handleSelectApplication(selectApplicationResponse, card);
+		if (selectApplication == null || !hasApplicationRelatedData(selectApplication)) {
+			handleGetApplicationRelatedDataIfPossible(card);
+		}
 
 		handleGetNextData(card);
 
-		handleInternalAuthenticate(card);
+		handleInternalAuthenticate(card, createInternalAuthenticateCommand());
 
 		return card;
 	}
 
-	protected void handleInternalAuthenticate(DefaultMts7Exchange card) throws IOException, UnexpectedCardResponseException {
+	/**
+	 * Authenticate the card (MTS7 section 4.1.4): the card signs the challenge with its private key, which is checked with the public key in the MTB.
+	 *
+	 * @param card    the card
+	 * @param command INTERNAL AUTHENTICATE with the challenge
+	 * @return the complete response, with the status word
+	 * @throws IOException   if the card cannot be reached
+	 * @throws Mts7Exception if the card does not respond with success ({@linkplain UnexpectedCardResponseException}, a problem on the card side)
+	 */
+
+	protected byte[] handleInternalAuthenticate(Mts7Exchange card, byte[] command) throws IOException, Mts7Exception {
 		// 4.1.4. INTERNAL AUTHENTICATE
 		// The INTERNAL AUTHENTICATE command is used to authenticate the PICC to the terminal using the
 		// cardholder private key.
@@ -75,28 +111,26 @@ public class Mts7ApduExchangesFactory {
 		// MUST also verify the Authentication Input is in compliance with PKCS#1 provisions or
 		// otherwise reject the operation.
 
-		byte[] internalAuthenticateCommand = createInternalAuthenticateCommand();
-		byte[] internalAuthenticateResponse = card.transceive(internalAuthenticateCommand); // File Control Information (FCI) Template
-		if (!isSuccess(internalAuthenticateResponse)) {
-			// TODO we might have sent an illegal command - handle encoding for RSA
-			throw new UnexpectedCardResponseException(internalAuthenticateCommand, internalAuthenticateResponse);
-		}
+		// a card whose maximum response length is less than an RSA signature (256 bytes) returns it in parts (MTS7 section 2.1)
+		return transceiveAll(card, command, null, GET_RESPONSE_SHORT_LENGTH_COMMAND);
 	}
 
-	protected void handleGetNextData(DefaultMts7Exchange card) throws IOException, UnexpectedCardResponseException {
-		// optimize for cards which support extended length
-		byte[] getNextDataCommand = GET_NEXT_DATA_COMMAND;
-		byte[] getResponseCommand = GET_RESPONSE_COMMAND;
+	/**
+	 * Get the first MTB (MTS7 sections 3.1.5 and 4.1.2), with an extended Le if the card supports it, which saves GET RESPONSE round trips.
+	 *
+	 * @param card the card
+	 * @return the complete response, with the status word
+	 * @throws IOException   if the card cannot be reached
+	 * @throws Mts7Exception if the card does not respond with success ({@linkplain UnexpectedCardResponseException}, a problem on the card side)
+	 */
 
-		byte[] getNextDataResponse = card.transceive(getNextDataCommand); // File Control Information (FCI) Template
+	protected byte[] handleGetNextData(Mts7Exchange card) throws IOException, Mts7Exception {
+		byte[] getNextDataResponse = transceive(card, GET_NEXT_DATA_COMMAND);
 
 		if (isWrongLength(getNextDataResponse)) {
 			// The card does not support extended length. Wrong length is a checking error, so the command was not executed (ISO 7816-4 section 5.6) and the
-			// current MTB is still the first; try again with short length.
-			getNextDataCommand = GET_NEXT_DATA_SHORT_LENGTH_COMMAND;
-			getResponseCommand = GET_RESPONSE_SHORT_LENGTH_COMMAND;
-
-			getNextDataResponse = card.transceive(getNextDataCommand);
+			// current MTB is still the first; try again with short length, also for GET RESPONSE.
+			return transceiveAll(card, GET_NEXT_DATA_SHORT_LENGTH_COMMAND, null, GET_RESPONSE_SHORT_LENGTH_COMMAND);
 		}
 
 		/**
@@ -104,42 +138,313 @@ public class Mts7ApduExchangesFactory {
 		 * can be retrieved using GET RESPONSE
 		 */
 
-		if (isContinue(getNextDataResponse)) {
-			byte[] previousResponse = getNextDataResponse;
-
-			for (int i = 0; i < MAX_GET_RESPONSE_COMMANDS; i++) {
-				byte[] getResponseResponse = card.transceive(getResponseCommand);
-
-				if (isContinue(getResponseResponse)) {
-					previousResponse = getResponseResponse;
-
-					continue;
-				}
-
-				if (!isSuccess(getResponseResponse)) {
-					throw new UnexpectedCardResponseException(getResponseCommand, getResponseResponse);
-				}
-				return;
-			}
-
-			// still more data
-			throw new UnexpectedCardResponseException(getResponseCommand, previousResponse);
-		}
-
-		if (!isSuccess(getNextDataResponse)) {
-			throw new UnexpectedCardResponseException(getNextDataCommand, getNextDataResponse);
-		}
-
+		return transceiveAll(card, GET_NEXT_DATA_COMMAND, getNextDataResponse, GET_RESPONSE_COMMAND);
 	}
 
-	protected void handleSelectApplication(byte[] selectApplicationResponse, DefaultMts7Exchange card) throws IOException, UnableToSelectApplicationException {
-		if (selectApplicationResponse == null) {
-			selectApplicationResponse = card.transceive(SELECT_BOB_COMMAND); // File Control Information (FCI) Template
-		} else {
+	/**
+	 * Select the application (MTS7 section 4.1.1).
+	 *
+	 * @param selectApplicationResponse the response, if select application has already been sent, otherwise null
+	 * @param card                      the card
+	 * @return the complete response, with the status word; or null if the card selected the application, but the rest of its response could not be retrieved
+	 *         (then the application-related data is to be retrieved with GET DATA)
+	 * @throws IOException   if the card cannot be reached
+	 * @throws Mts7Exception if the card does not select the application ({@linkplain UnableToSelectApplicationException}, a problem on the card side), or the
+	 *                       command could not be sent with lengths which the card accepts ({@linkplain InsufficientCardCommandsException}, a problem with the
+	 *                       reader)
+	 */
+
+	protected byte[] handleSelectApplication(byte[] selectApplicationResponse, DefaultMts7Exchange card) throws IOException, Mts7Exception {
+		if (selectApplicationResponse != null) {
+			checkResponse(SELECT_BOB_COMMAND, selectApplicationResponse);
 			card.add(SELECT_BOB_COMMAND, selectApplicationResponse);
 		}
-		if (!isSuccess(selectApplicationResponse)) {
-			throw new UnableToSelectApplicationException(SELECT_BOB_COMMAND, selectApplicationResponse);
+		try {
+			// File Management Data, if the card returns it, possibly in parts (MTS7 section 2.1)
+			return transceiveAll(card, SELECT_BOB_COMMAND, selectApplicationResponse, GET_RESPONSE_SHORT_LENGTH_COMMAND);
+		} catch (UnexpectedCardResponseException e) {
+			throw new UnableToSelectApplicationException(e.getCommand(), e.getResponse());
+		} catch (InsufficientCardCommandsException e) {
+			if ((e.getCommand()[1] & 0xFF) == 0xC0) {
+				// The card has selected the application (61xx), but the rest of its response could not be retrieved. Only the application-related data is
+				// needed from it, which can also be retrieved with GET DATA.
+				return null;
+			}
+			// the card did not execute select application, which everything else depends on
+			throw e;
+		}
+	}
+
+	/**
+	 * Get the application-related data (6E), unless it could not be retrieved because of a problem with the reader, which is then left to whoever checks the
+	 * card, as it is not needed to check it at door 2 or 3.
+	 *
+	 * @param card the card
+	 * @return the response, with the status word, or null if it could not be retrieved
+	 * @throws IOException   if the card cannot be reached
+	 * @throws Mts7Exception if the card does not respond with success (a problem on the card side)
+	 */
+
+	protected byte[] handleGetApplicationRelatedDataIfPossible(Mts7Exchange card) throws IOException, Mts7Exception {
+		try {
+			return handleGetApplicationRelatedData(card);
+		} catch (InsufficientCardCommandsException e) {
+			return null;
+		}
+	}
+
+	/**
+	 * Get the application-related data (6E), for a card whose select application response does not have it (MTS7 section 4.1.1).
+	 *
+	 * @param card the card
+	 * @return the response, with the status word
+	 * @throws IOException   if the card cannot be reached
+	 * @throws Mts7Exception if the card does not respond with success (a problem on the card side), or the response is shorter than a status word (a problem
+	 *                       with the reader)
+	 */
+
+	protected byte[] handleGetApplicationRelatedData(Mts7Exchange card) throws IOException, Mts7Exception {
+		return transceiveAll(card, GET_APPLICATION_RELATED_DATA_COMMAND, null, GET_RESPONSE_SHORT_LENGTH_COMMAND);
+	}
+
+	/**
+	 * Send a command, and retrieve all of the response: the command is sent again if the card asks for another Le, and the rest of the response is retrieved
+	 * with GET RESPONSE for as long as the card says that there is more (61xx), which every card supports for any command (MTS7 section 2.1).
+	 *
+	 * @param card               the card
+	 * @param command            the command
+	 * @param response           the response to the command, if it has already been sent, otherwise null
+	 * @param getResponseCommand GET RESPONSE, with the Le to use
+	 * @return the complete response: the payloads of all the parts, and the status word of the last part, which is success
+	 * @throws IOException                       if the card cannot be reached
+	 * @throws MalformedCardResponseException    if a response is shorter than a status word, which no card returns (a problem with the reader)
+	 * @throws UnexpectedCardResponseException   if the card does not respond with success, or keeps saying that there is more (a problem on the card side)
+	 * @throws InsufficientCardCommandsException if the card rejected the lengths of a command which it need not accept, and there are no other lengths to send
+	 *                                           it with (a problem with the reader)
+	 */
+
+	protected static byte[] transceiveAll(Mts7Exchange card, byte[] command, byte[] response, byte[] getResponseCommand)
+			throws IOException, MalformedCardResponseException, UnexpectedCardResponseException, InsufficientCardCommandsException {
+		if (response == null) {
+			response = transceive(card, command);
+		}
+		byte[] again = getCommandAgain(command, response);
+		if (again != null) {
+			command = again;
+			response = transceive(card, command);
+		}
+		if (!isContinue(response)) {
+			checkSuccess(command, response);
+			return response;
+		}
+
+		ByteArrayOutputStream bout = new ByteArrayOutputStream();
+		int count = 0;
+		do {
+			// save payload only
+			bout.write(response, 0, response.length - 2);
+
+			if (count++ >= MAX_GET_RESPONSE_COMMANDS) {
+				// still more data
+				throw new UnexpectedCardResponseException(command, response);
+			}
+
+			command = getResponseCommand;
+			response = transceive(card, command);
+			again = getCommandAgain(command, response);
+			if (again != null) {
+				command = again;
+				response = transceive(card, command);
+			}
+		} while (isContinue(response));
+
+		checkSuccess(command, response);
+		// i.e. including status code
+		bout.write(response, 0, response.length);
+		return bout.toByteArray();
+	}
+
+	/**
+	 * Check that the card responded with success.
+	 *
+	 * @param command  the command
+	 * @param response the complete response to it
+	 * @throws UnexpectedCardResponseException   if not (a problem on the card side)
+	 * @throws InsufficientCardCommandsException if the card rejected the lengths of a command which it need not accept (6700), and there are no other lengths
+	 *                                           to send it with (a problem with the reader)
+	 */
+
+	protected static void checkSuccess(byte[] command, byte[] response) throws UnexpectedCardResponseException, InsufficientCardCommandsException {
+		if (isSuccess(response)) {
+			return;
+		}
+		if (isWrongLength(response) && !hasExampleLengths(command)) {
+			throw new InsufficientCardCommandsException("Command rejected with wrong length (6700), and there are no other lengths to send it with", command,
+					response);
+		}
+		throw new UnexpectedCardResponseException(command, response);
+	}
+
+	/**
+	 * Whether a command has the lengths of an example in MTS7 which every card must accept, so that the card is to blame for rejecting them with wrong length
+	 * (6700): select application with a short Le of 00 (section 4.1.1) or without Le (appendix A), and internal authenticate with a short Le of 00 (section
+	 * 4.1.4). The examples of GET (NEXT) DATA and GET RESPONSE have an extended Le, which the card need not support (section 3.1.4), and there is no example of
+	 * GET DATA of the application-related data.
+	 *
+	 * @param command the command
+	 * @return true if the card must accept the lengths of the command
+	 */
+
+	protected static boolean hasExampleLengths(byte[] command) {
+		if (isExtendedLength(command)) {
+			return false;
+		}
+		CommandAPDU apdu = new CommandAPDU(command);
+		int ins = command[1] & 0xFF;
+		if (ins == 0xA4) {
+			return apdu.getNe() == 256 || apdu.getNe() == 0;
+		}
+		if (ins == 0x88) {
+			return apdu.getNe() == 256;
+		}
+		return false;
+	}
+
+	/**
+	 * The command to send again, if the card asks for another Le: the exact Le (6Cxx, ISO/IEC 7816-4 section 5.6), or a short Le if the card rejects an
+	 * extended length with wrong length (6700), as it need not support it (MTS7 section 3.1.4).
+	 *
+	 * @param command  the command
+	 * @param response the response to it
+	 * @return the command with another Le, or null if the card does not ask for it
+	 */
+
+	protected static byte[] getCommandAgain(byte[] command, byte[] response) {
+		if (response.length != 2) {
+			return null;
+		}
+		if ((response[0] & 0xFF) == 0x6C) {
+			// 00 is 256
+			return withNe(command, response[1] == 0 ? 256 : response[1] & 0xFF);
+		}
+		if (isWrongLength(response) && isExtendedLength(command)) {
+			return withNe(command, 256);
+		}
+		return null;
+	}
+
+	protected static byte[] withNe(byte[] command, int ne) {
+		CommandAPDU apdu = new CommandAPDU(command);
+		return new CommandAPDU(apdu.getCLA(), apdu.getINS(), apdu.getP1(), apdu.getP2(), apdu.getData(), ne).getBytes();
+	}
+
+	/**
+	 * An extended length has a zero byte where a short length has its Lc or Le (ISO/IEC 7816-4 section 5.1), except for a short Le of 00 at the end of the
+	 * command.
+	 *
+	 * @param command the command
+	 * @return true if the command has an extended length
+	 */
+
+	protected static boolean isExtendedLength(byte[] command) {
+		return command.length > 5 && command[4] == 0x00;
+	}
+
+	/**
+	 * Whether a select application response has the application-related data (6E), as such or in File Management Data (64). When in doubt, it has not, so that
+	 * the reader rather retrieves it once too often.
+	 *
+	 * @param selectApplicationResponse the response, with the status word
+	 * @return true if the application-related data is there
+	 */
+
+	protected static boolean hasApplicationRelatedData(byte[] selectApplicationResponse) {
+		return hasApplicationRelatedData(selectApplicationResponse, 0, selectApplicationResponse.length - 2, true);
+	}
+
+	private static boolean hasApplicationRelatedData(byte[] data, int offset, int end, boolean outer) {
+		int i = offset;
+		while (i < end) {
+			int tag = data[i++] & 0xFF;
+			if (tag == 0x00 || tag == 0xFF) {
+				// padding
+				continue;
+			}
+			if ((tag & 0x1F) == 0x1F) {
+				// a tag of more than one byte, which is neither of those looked for
+				int b;
+				do {
+					if (i >= end) {
+						return false;
+					}
+					b = data[i++] & 0xFF;
+				} while ((b & 0x80) != 0);
+				tag = -1;
+			}
+			if (i >= end) {
+				return false;
+			}
+			int first = data[i++] & 0xFF;
+			long length;
+			if (first < 0x80) {
+				length = first;
+			} else {
+				int count = first & 0x7F;
+				if (count == 0 || count > 4 || count > end - i) {
+					return false;
+				}
+				length = 0;
+				for (int k = 0; k < count; k++) {
+					length = (length << 8) | (data[i++] & 0xFF);
+				}
+			}
+			if (length > end - i) {
+				return false;
+			}
+			if (tag == 0x6E) {
+				return true;
+			}
+			if (outer && tag == 0x64 && hasApplicationRelatedData(data, i, i + (int) length, false)) {
+				return true;
+			}
+			i += (int) length;
+		}
+		return false;
+	}
+
+	/**
+	 * Send a command to the card.
+	 *
+	 * @param card    the card
+	 * @param command the command
+	 * @return the response, which has at least a status word
+	 * @throws IOException                     if the card cannot be reached
+	 * @throws MalformedCardResponseException  if there is no response (a problem with the reader)
+	 * @throws UnexpectedCardResponseException if the response is shorter than a status word (a problem on the card side)
+	 */
+
+	protected static byte[] transceive(Mts7Exchange card, byte[] command) throws IOException, MalformedCardResponseException, UnexpectedCardResponseException {
+		byte[] response = card.transceive(command);
+		checkResponse(command, response);
+		return response;
+	}
+
+	/**
+	 * Check that a response from the card has a status word. A response read from the card as it is (see {@linkplain Mts7Exchange#transceive(byte[])}) which is
+	 * shorter than that came from the card, which a card which is not valid can send.
+	 *
+	 * @param command  the command
+	 * @param response the response
+	 * @throws MalformedCardResponseException  if there is no response (a problem with the reader)
+	 * @throws UnexpectedCardResponseException if the response is shorter than a status word (a problem on the card side)
+	 */
+
+	protected static void checkResponse(byte[] command, byte[] response) throws MalformedCardResponseException, UnexpectedCardResponseException {
+		if (response == null) {
+			throw new MalformedCardResponseException("Response missing, without a status word");
+		}
+		if (response.length < 2) {
+			throw new UnexpectedCardResponseException(command, response);
 		}
 	}
 
@@ -157,7 +462,8 @@ public class Mts7ApduExchangesFactory {
 	}
 
 	protected static boolean isContinue(byte[] response) {
-		return response.length > 2 && (response[response.length - 2] & 0xFF) == 0x61;
+		// with or without data in this part of the response
+		return response.length >= 2 && (response[response.length - 2] & 0xFF) == 0x61;
 	}
 
 	protected static boolean isWrongLength(byte[] response) {

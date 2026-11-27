@@ -1,13 +1,17 @@
 package no.entur.abt.bob.mts7.core.pki;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
+import java.security.Provider;
 import java.security.PublicKey;
 import java.security.Signature;
 import java.security.spec.ECGenParameterSpec;
@@ -16,6 +20,11 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import com.nimbusds.jose.crypto.impl.ECDSA;
+
+import no.entur.abt.bob.mts7.api.VerifierMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.NoSuchAlgorithmMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.TrustChainInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.UnableToConstructIssuerKeyException;
 
 public class IssuerPublicKeyTest {
 
@@ -75,7 +84,7 @@ public class IssuerPublicKeyTest {
 
 	@Test
 	public void testEcSignature() throws Exception {
-		assertTrue(ecKey().verify(DATA, signEc(ecKeyPair.getPrivate(), DATA)));
+		assertDoesNotThrow(() -> ecKey().verify(DATA, signEc(ecKeyPair.getPrivate(), DATA)));
 	}
 
 	@Test
@@ -83,18 +92,18 @@ public class IssuerPublicKeyTest {
 		byte[] buffer = new byte[DATA.length + 10];
 		System.arraycopy(DATA, 0, buffer, 3, DATA.length);
 
-		assertTrue(ecKey().verify(buffer, 3, DATA.length, signEc(ecKeyPair.getPrivate(), DATA)));
-		assertFalse(ecKey().verify(buffer, 0, DATA.length, signEc(ecKeyPair.getPrivate(), DATA)));
+		assertDoesNotThrow(() -> ecKey().verify(buffer, 3, DATA.length, signEc(ecKeyPair.getPrivate(), DATA)));
+		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(buffer, 0, DATA.length, signEc(ecKeyPair.getPrivate(), DATA)));
 	}
 
 	@Test
 	public void testEcSignatureForOtherDataIsNotValid() throws Exception {
-		assertFalse(ecKey().verify(OTHER_DATA, signEc(ecKeyPair.getPrivate(), DATA)));
+		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(OTHER_DATA, signEc(ecKeyPair.getPrivate(), DATA)));
 	}
 
 	@Test
 	public void testEcSignatureFromOtherKeyIsNotValid() throws Exception {
-		assertFalse(ecKey().verify(DATA, signEc(otherEcKeyPair.getPrivate(), DATA)));
+		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(DATA, signEc(otherEcKeyPair.getPrivate(), DATA)));
 	}
 
 	@Test
@@ -104,30 +113,66 @@ public class IssuerPublicKeyTest {
 		signature.initSign(ecKeyPair.getPrivate());
 		signature.update(DATA);
 
-		assertFalse(ecKey().verify(DATA, signature.sign()));
+		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(DATA, signature.sign()));
 	}
 
 	@Test
 	public void testRsaSignature() throws Exception {
-		assertTrue(rsaKey().verify(DATA, signRsa(rsaKeyPair.getPrivate(), DATA)));
-		assertFalse(rsaKey().verify(OTHER_DATA, signRsa(rsaKeyPair.getPrivate(), DATA)));
+		assertDoesNotThrow(() -> rsaKey().verify(DATA, signRsa(rsaKeyPair.getPrivate(), DATA)));
+		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> rsaKey().verify(OTHER_DATA, signRsa(rsaKeyPair.getPrivate(), DATA)));
 	}
 
 	@Test
 	public void testRsaSignatureWithEcSignature() throws Exception {
-		assertFalse(rsaKey().verify(DATA, signEc(ecKeyPair.getPrivate(), DATA)));
-		assertFalse(ecKey().verify(DATA, signRsa(rsaKeyPair.getPrivate(), DATA)));
+		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> rsaKey().verify(DATA, signEc(ecKeyPair.getPrivate(), DATA)));
+		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(DATA, signRsa(rsaKeyPair.getPrivate(), DATA)));
 	}
 
 	@Test
 	public void testMalformedInputIsNotValid() throws Exception {
-		assertFalse(ecKey().verify(DATA, new byte[0]));
-		assertFalse(ecKey().verify(DATA, new byte[63]));
-		assertFalse(ecKey().verify(DATA, new byte[64]));
-		assertFalse(ecKey().verify(DATA, new byte[65]));
-		assertFalse(ecKey().verify(DATA, null));
-		assertFalse(ecKey().verify(DATA, 0, DATA.length + 1, signEc(ecKeyPair.getPrivate(), DATA)));
-		assertFalse(ecKey().verify(DATA, -1, 1, signEc(ecKeyPair.getPrivate(), DATA)));
+		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(DATA, new byte[0]));
+		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(DATA, new byte[63]));
+		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(DATA, new byte[64]));
+		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(DATA, new byte[65]));
+	}
+
+	@Test
+	public void testMisuseIsNotInvalidCard() throws Exception {
+		// a bug of the caller, which must not be reported as a problem on the card side
+		assertThrows(NullPointerException.class, () -> ecKey().verify(DATA, null));
+		assertThrows(NullPointerException.class, () -> ecKey().verify(null, signEc(ecKeyPair.getPrivate(), DATA)));
+		assertThrows(IllegalArgumentException.class, () -> ecKey().verify(DATA, 0, DATA.length + 1, signEc(ecKeyPair.getPrivate(), DATA)));
+		assertThrows(IllegalArgumentException.class, () -> ecKey().verify(DATA, -1, 1, signEc(ecKeyPair.getPrivate(), DATA)));
+	}
+
+	@Test
+	public void testJwsAlgorithm() throws Exception {
+		assertEquals("ES256", ecKey().getJwsAlgorithm());
+		assertEquals("RS256", rsaKey().getJwsAlgorithm());
+		assertNull(issuerKey("SHA384withECDSA", ecKeyPair.getPublic()).getJwsAlgorithm());
+	}
+
+	@Test
+	public void testUnavailableAlgorithmIsNotInvalidSignature() throws Exception {
+		// a problem with the verifier: the security provider does not have the algorithm
+		IssuerPublicKey key = new IssuerPublicKey(10, "10:test", ecKeyPair.getPublic(), "SHA256withECDSA", new Provider("Empty", "1.0", "Without algorithms") {
+			private static final long serialVersionUID = 1L;
+		});
+
+		byte[] signature = signEc(ecKeyPair.getPrivate(), DATA);
+		NoSuchAlgorithmMts7Exception e = assertThrows(NoSuchAlgorithmMts7Exception.class, () -> key.verify(DATA, signature));
+		assertInstanceOf(NoSuchAlgorithmException.class, e.getCause());
+		assertEquals("SHA256withECDSA", e.getAlgorithm());
+		assertInstanceOf(VerifierMts7Exception.class, e);
+	}
+
+	@Test
+	public void testKeyNotAcceptedIsNotInvalidSignature() throws Exception {
+		// a problem with the verifier: the issuer key does not fit the algorithm
+		IssuerPublicKey key = issuerKey("SHA256withECDSA", rsaKeyPair.getPublic());
+
+		byte[] signature = signEc(ecKeyPair.getPrivate(), DATA);
+		assertThrows(UnableToConstructIssuerKeyException.class, () -> key.verify(DATA, signature));
 	}
 
 }

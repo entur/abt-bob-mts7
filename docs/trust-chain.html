@@ -188,6 +188,7 @@ button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .notes-grid div { display: grid; gap: 6px; align-content: start; border-top: 1px solid var(--rule); padding-top: 14px; }
 .notes-grid h3 { font-size: 17px; }
 .notes-grid p { font-size: 15px; color: var(--ink-2); }
+.notes-grid .wide { grid-column: 1 / -1; }
 .fields { display: grid; gap: 12px; }
 .fields > p { max-width: 72ch; color: var(--ink-2); }
 .table-wrap { overflow-x: auto; }
@@ -382,7 +383,7 @@ td.box .swatch { margin-right: 8px; vertical-align: 1px; }
       <div class="walk-text" aria-live="polite">
         <p class="kicker" id="s-kicker">Start · card on the reader</p>
         <h3 id="s-title">The terminal starts with a root key it already trusts</h3>
-        <p id="s-body">A traveller taps a card on a validator. The terminal selects the BoB application (AID A0 00 00 07 81 01) and reads the card certificate with GET DATA. MTS7 lets anyone read it, so it proves nothing yet. The root is not on the card. The terminal brought it.</p>
+        <p id="s-body">A traveller taps a card on a validator. The terminal selects the BoB application (AID A0 00 00 07 81 01) and reads the card certificate with GET NEXT DATA. MTS7 lets anyone read it, so it proves nothing yet. The root is not on the card. The terminal brought it.</p>
       </div>
       <div class="walk-checks">
         <p class="checks-h" id="s-head">In hand</p>
@@ -413,7 +414,11 @@ td.box .swatch { margin-right: 8px; vertical-align: 1px; }
       </div>
       <div>
         <h3>No root key, no door 2</h3>
-        <p>A card whose root key the terminal does not have is rejected. With <code>trustUnknownRootKeys</code>, such a card only has to pass door 3, and its trust chain is reported as not verified. A card whose root key the terminal does have must still pass both doors.</p>
+        <p>A card whose root key the terminal does not have is rejected. It may be forged, or the terminal’s keys may be out of date: an <code>UnknownIssuerKeyPolicy</code> decides which is to blame. With <code>trustUnknownRootKeys</code>, such a card only has to pass door 3, and its trust chain is reported as not verified. A card whose root key the terminal does have must still pass both doors.</p>
+      </div>
+      <div class="wide">
+        <h3>Who is to blame</h3>
+        <p>A card which fails a door is the card’s problem (<code>InvalidCardMts7Exception</code>). A reader which does not ask as MTS7 specifies is the reader’s problem (<code>ReaderMts7Exception</code>), and issuer keys or a security provider which cannot be used are the verifier’s problem (<code>VerifierMts7Exception</code>). Every command is checked before the card’s answer to it, so the card is only blamed when it is at fault. See the <a href="https://github.com/entur/abt-bob-mts7/blob/main/docs/WHO_IS_TO_BLAME.md">table of who is to blame</a>.</p>
       </div>
     </div>
   </section>
@@ -438,20 +443,20 @@ td.box .swatch { margin-right: 8px; vertical-align: 1px; }
             <td class="box"><i class="swatch sw-card"></i>Card certificate</td>
             <td>The card: <code>GET NEXT DATA 7F21</code></td>
             <td>ID MTB with no ticket bundle. Issuer Signature Protected Header: <code>alg</code>, <code>iid</code>, <code>kid</code>, <code>miv</code>, <code>tpk</code> (card public key), optional <code>exp</code> and <code>nbf</code></td>
-            <td>Root private key, ES256 (door 2)</td>
+            <td>Root private key, ES256 or the fallback RS256, as named by <code>alg</code> (door 2)</td>
             <td><code>MobileTicketBundle</code>; <code>IccPublicKeyBuilder</code> checks the issuer signature, then turns <code>tpk</code> into the <code>IccPublicKey</code></td>
           </tr>
           <tr>
             <td class="box"><i class="swatch sw-card"></i>Live tap</td>
             <td>The card: <code>INTERNAL AUTHENTICATE</code> response</td>
-            <td>ECDSA signature (r‖s) over the 32-byte challenge</td>
+            <td>ECDSA signature (r‖s) over the 32-byte challenge, a SHA-256 hash</td>
             <td>Card private key (door 3)</td>
             <td><code>IccPublicKey.verify(..)</code>; the challenge is random bytes from <code>Mts7ApduExchangesFactory</code></td>
           </tr>
         </tbody>
       </table>
     </div>
-    <p class="foot">Based on Samtrafiken's BoB specifications <a href="https://bitbucket.org/samtrafiken/bob-mts-7-travel-card-application">MTS7 v1.1.0</a>, <a href="https://bitbucket.org/samtrafiken/bob-mts-1-mobile-ticket-format">MTS1</a> and <a href="https://bitbucket.org/samtrafiken/bob-mts-4-coordination-and-key-management">MTS4 v1.3.1</a>. ECDSA P-256 is shown. MTS7 also allows RSA 2048 on the card, and MTS1 keeps RS256 as the issuer's fallback algorithm. See <a href="https://github.com/entur/abt-bob-mts7/blob/main/docs/TRUST_CHAIN.md">TRUST_CHAIN.md</a> for which factory checks which door.</p>
+    <p class="foot">Based on Samtrafiken's BoB specifications <a href="https://bitbucket.org/samtrafiken/bob-mts-7-travel-card-application">MTS7 v1.1.0</a>, <a href="https://bitbucket.org/samtrafiken/bob-mts-1-mobile-ticket-format">MTS1</a> and <a href="https://bitbucket.org/samtrafiken/bob-mts-4-coordination-and-key-management">MTS4 v1.3.1</a>. ECDSA P-256 is shown. MTS7 also allows RSA 2048 on the card, and MTS1 keeps RS256 as the issuer's fallback algorithm. See <a href="https://github.com/entur/abt-bob-mts7/blob/main/docs/TRUST_CHAIN.md">TRUST_CHAIN.md</a> for which factory checks which door, and the <a href="https://github.com/entur/abt-bob-mts7/blob/main/docs/WHO_IS_TO_BLAME.md">who is to blame</a> for each problem.</p>
   </section>
 </div>
 
@@ -459,17 +464,17 @@ td.box .swatch { margin-right: 8px; vertical-align: 1px; }
 (() => {
   const STEPS = [
     { tone: '', kicker: 'Start · card on the reader', title: 'The terminal starts with a root key it already trusts',
-      body: 'A traveller taps a card on a validator. The terminal selects the BoB application (AID A0 00 00 07 81 01) and reads the card certificate with GET DATA. MTS7 lets anyone read it, so it proves nothing yet. The root is not on the card. The terminal brought it.',
+      body: 'A traveller taps a card on a validator. The terminal selects the BoB application (AID A0 00 00 07 81 01) and reads the card certificate with GET NEXT DATA. MTS7 lets anyone read it, so it proves nothing yet. The root is not on the card. The terminal brought it.',
       head: 'In hand', items: [['info', 'Trust list: issuer keys from the Participant Metadata Set'], ['info', 'From the card: one card certificate (ID MTB, tag 7F21)']] },
     { tone: 'root', kicker: 'Door 1 · into the root', title: 'The root is trusted because the terminal already has it',
       body: 'The terminal fetched the card issuer’s public keys ahead of time, from the Participant Metadata Set that the Administrative Body signs and publishes. The root never comes from the card, so a card cannot bring its own root.',
       head: 'Checked at this door', items: [['ok', 'Issuer key is in ParticipantPublicKeys, built from the participant metadata'], ['info', 'Picked up inside: Root public key']] },
     { tone: 'root', kicker: 'Door 2 · root OUT, card certificate IN', title: 'The root key proves the card certificate is intact',
-      body: 'The issuer sealed the card certificate with the root private key when the card was personalised. The header names the issuer (iid) and the key (kid), so the terminal picks the matching root public key and checks the ES256 signature. If it verifies, every byte is as the issuer wrote it, including the card public key inside.',
-      head: 'Checked at this door', items: [['ok', 'Issuer signature verifies with Root public key'], ['ok', 'Only then is tpk turned into the card public key (IccPublicKeyBuilder)'], ['info', 'Not checked by this library: bob_sc, exp, nbf, revocation']] },
+      body: 'The issuer sealed the card certificate with the root private key when the card was personalised. The header names the issuer (iid) and the key (kid), so the terminal picks the matching root public key. The header also names the algorithm (alg): ES256, or the fallback RS256, which must match the root key. If the signature verifies, every byte is as the issuer wrote it, including the card public key inside.',
+      head: 'Checked at this door', items: [['ok', 'alg is ES256 or RS256, and matches the root key'], ['ok', 'Issuer signature verifies with Root public key'], ['ok', 'Only then is tpk turned into the card public key (IccPublicKeyBuilder)'], ['info', 'Not checked by this library: bob_sc, exp, nbf, revocation']] },
     { tone: 'card', kicker: 'Door 3 · card certificate OUT, live tap IN', title: 'The chip proves it holds the card private key',
-      body: 'The terminal sends a fresh 32-byte challenge in INTERNAL AUTHENTICATE. This library uses random bytes; MTS7 suggests a SHA-256 hash of the time, the terminal ID and the card’s signature counter. The chip signs the challenge with the card private key. The terminal verifies the signature with the card public key from the card certificate.',
-      head: 'Checked at this door', items: [['ok', 'Signature verifies with Card public key (tpk)'], ['ok', 'The challenge is new for every read, so an old answer cannot be replayed'], ['info', 'Signature counter goes up by one on every tap']] },
+      body: 'The terminal sends a fresh 32-byte challenge in INTERNAL AUTHENTICATE, which MTS7 requires to be a SHA-256 hash. This library uses random bytes; MTS7 suggests a SHA-256 hash of the time, the terminal ID and the card’s signature counter. The chip signs the challenge with the card private key. The terminal verifies the signature with the card public key from the card certificate.',
+      head: 'Checked at this door', items: [['ok', 'Card public key is as MTS7 specifies: EC with P-256, or RSA with 2048 bits'], ['ok', 'Signature verifies with Card public key (tpk)'], ['ok', 'The challenge is new for every read, so an old answer cannot be replayed'], ['info', 'Signature counter goes up by one on every tap']] },
     { tone: 'card', kicker: 'Inside · chain complete', title: 'Intact certificate, genuine chip',
       body: 'The root key proved the card certificate is unaltered and came from the issuer. The card public key proved this chip holds the matching private key. The Mts7Card reports both, together with the thumbprint which identifies the card.',
       head: 'Result', items: [['ok', 'Integrity: isVerifiedTrustChain()'], ['ok', 'Authenticity: isVerifiedPrivateKeyPresent()'], ['info', 'Next: look up travel rights for the thumbprint (token ID)']] }
@@ -481,7 +486,7 @@ td.box .swatch { margin-right: 8px; vertical-align: 1px; }
         items: [['info', 'Trust list: issuer keys from the Participant Metadata Set'], ['bad', 'From the card: an edited card certificate']] },
       2: { tone: 'bad', title: 'One changed byte breaks the issuer’s seal',
         body: 'The issuer signature covers the whole signed header, including the card public key. That key was changed, so the signature no longer matches the content and the root public key does not verify it. MTS7 says the terminal must reject the card before it parses anything else.',
-        items: [['bad', 'Issuer signature does not verify with Root public key'], ['ok', 'Header still names the real issuer and key ID'], ['info', 'VerifyKeyPairMts7CardFactory skips this door, so it would accept this card']] }
+        items: [['bad', 'Issuer signature does not verify with Root public key'], ['ok', 'Header still names the real issuer and key ID'], ['info', 'Rejected as the card’s problem: TrustChainInvalidCardMts7Exception'], ['info', 'VerifyKeyPairMts7CardFactory skips this door, so it would accept this card']] }
     },
     cloned: {
       0: { title: 'Someone has copied a real card',
@@ -490,7 +495,7 @@ td.box .swatch { margin-right: 8px; vertical-align: 1px; }
       2: { body: 'The copy carries the issuer’s real signature, untouched, so this door opens. Integrity holds because nothing was changed. This door cannot tell whether you are holding the original card.' },
       3: { tone: 'bad', title: 'The copy cannot sign',
         body: 'The clone has the card certificate but not the card private key, which never left the original chip. It cannot produce a signature that the card public key verifies. Replaying a signature captured from the real card fails too, because the challenge is new for every read.',
-        items: [['bad', 'No signature that verifies with Card public key'], ['bad', 'An old signature does not match this read’s challenge'], ['info', 'MTS7: the terminal must treat the card as invalid']] }
+        items: [['bad', 'No signature that verifies with Card public key'], ['bad', 'An old signature does not match this read’s challenge'], ['info', 'Rejected as the card’s problem: KeyPairInvalidCardMts7Exception']] }
     }
   };
   const MODES = { genuine: { failAt: null, stopX: 0 }, edited: { failAt: 2, stopX: 396 }, cloned: { failAt: 3, stopX: 676 } };

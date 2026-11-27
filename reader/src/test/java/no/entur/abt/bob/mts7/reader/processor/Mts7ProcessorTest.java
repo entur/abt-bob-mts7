@@ -38,6 +38,7 @@ public class Mts7ProcessorTest {
 	private static class RecordingProcessor implements Mts7Processor {
 
 		byte[] selectApplication;
+		byte[] applicationRelatedData;
 		byte[] getData;
 		byte[] internalAuthenticateCommand;
 		byte[] internalAuthenticateResponse;
@@ -67,6 +68,11 @@ public class Mts7ProcessorTest {
 		@Override
 		public void onGetData(byte[] responsePayload) {
 			this.getData = responsePayload;
+		}
+
+		@Override
+		public void onApplicationRelatedData(byte[] responsePayload) {
+			this.applicationRelatedData = responsePayload;
 		}
 
 		@Override

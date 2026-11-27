@@ -2,24 +2,38 @@ package no.entur.abt.bob.mts7.reader.processor;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
+import java.io.IOException;
+import java.security.Provider;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
+
 import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
+import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.api.apdu.CommandAPDU;
 import no.entur.abt.bob.mts7.core.Mts7Card;
-import no.entur.abt.bob.mts7.core.UnableToVerifyKeyPairException;
-import no.entur.abt.bob.mts7.core.UnableToVerifyTrustChainException;
+import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
+import no.entur.abt.bob.mts7.core.UnknownIssuerKeyPolicy;
+import no.entur.abt.bob.mts7.core.exception.KeyPairInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.NoSuchAlgorithmMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.OutdatedIssuerKeysException;
+import no.entur.abt.bob.mts7.core.exception.TrustChainInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.UnableToConstructIssuerKeyException;
+import no.entur.abt.bob.mts7.core.exception.UnknownIssuerKeyInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.IssuerPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IssuerSignatureFactory;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
+import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
 import no.entur.abt.bob.mts7.reader.AbstractTest;
 import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
 
@@ -31,6 +45,8 @@ public class VerifyTrustChainMts7ProcessorTest extends AbstractTest {
 	private static final String SIGNATURE_RESPONSE = "DCC5F055C2B689A3D5FBAE8ABB9892FF6B0228D05AAA69BBA435324F1E9A6D900C2B6F8DC7D43DD2D9DF47847C7ADF786E99474102E2EA1E19EDF0177221FE349000";
 	// as from a cloned card, which does not have the private key
 	private static final String OTHER_SIGNATURE_RESPONSE = SIGNATURE_RESPONSE.replace("DCC5", "DCC6");
+	// the genuine card with alg HS256 instead of ES256, which is not in MTS1 (the issuer signature is then not valid either)
+	private static final String HS256_GET_NEXT_DATA_RESPONSE = GET_NEXT_DATA_RESPONSE.replace("616C67654553323536", "616C67654853323536");
 
 	private VerifyTrustChainMts7ProcessorFactory processorFactory;
 
@@ -96,16 +112,19 @@ public class VerifyTrustChainMts7ProcessorTest extends AbstractTest {
 
 		processor.run();
 
-		Mts7Card card;
-		try {
-			card = processor.waitForVerify(0);
-			fail("Expected card not to be trusted");
-		} catch (UnableToVerifyKeyPairException e) {
-			card = e.getResult();
-		} catch (UnableToVerifyTrustChainException e) {
-			card = e.getResult();
-		}
-		assertFalse(card.isVerifiedTrustChain());
+		assertThrows(InvalidCardMts7Exception.class, () -> processor.waitForVerify(0), "Expected card not to be trusted");
+	}
+
+	@Test
+	public void testUnknownRootKeyWithOutdatedKeysIsNotInvalidCard() throws Exception {
+		// the policy decides that our keys may be out of date: a problem with the verifier
+		VerifyTrustChainMts7ProcessorFactory factory = new VerifyTrustChainMts7ProcessorFactory(ParticipantPublicKeys.newBuilder().build(), null,
+				UnknownIssuerKeyPolicy.blameKeys(), executor);
+
+		ExecutionException e = assertThrows(ExecutionException.class,
+				() -> process(factory.create(), GET_NEXT_DATA_RESPONSE, SIGNATURE_RESPONSE).waitForVerify(0));
+		OutdatedIssuerKeysException cause = assertInstanceOf(OutdatedIssuerKeysException.class, e.getCause());
+		assertEquals(10, cause.getIssuerId());
 	}
 
 	@Test
@@ -113,9 +132,10 @@ public class VerifyTrustChainMts7ProcessorTest extends AbstractTest {
 		VerifyTrustChainMts7ProcessorFactory factory = new VerifyTrustChainMts7ProcessorFactory(ParticipantPublicKeys.newBuilder().build(), executor);
 
 		assertFalse(factory.isTrustUnknownRootKeys());
-		UnableToVerifyKeyPairException e = assertThrows(UnableToVerifyKeyPairException.class,
+		UnknownIssuerKeyInvalidCardMts7Exception e = assertThrows(UnknownIssuerKeyInvalidCardMts7Exception.class,
 				() -> process(factory.create(), GET_NEXT_DATA_RESPONSE, SIGNATURE_RESPONSE).waitForVerify(0));
-		assertFalse(e.getResult().isVerifiedTrustChain());
+		assertEquals(10, e.getIssuerId());
+		assertEquals("10:20230213", e.getKeyId());
 	}
 
 	@Test
@@ -136,7 +156,7 @@ public class VerifyTrustChainMts7ProcessorTest extends AbstractTest {
 		VerifyTrustChainMts7ProcessorFactory factory = new VerifyTrustChainMts7ProcessorFactory(ParticipantPublicKeys.newBuilder().build(), null, true,
 				executor);
 
-		assertThrows(UnableToVerifyKeyPairException.class, () -> process(factory.create(), GET_NEXT_DATA_RESPONSE, OTHER_SIGNATURE_RESPONSE).waitForVerify(0));
+		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> process(factory.create(), GET_NEXT_DATA_RESPONSE, OTHER_SIGNATURE_RESPONSE).waitForVerify(0));
 	}
 
 	@Test
@@ -158,36 +178,107 @@ public class VerifyTrustChainMts7ProcessorTest extends AbstractTest {
 			getNextDataResponse[i] = 0x42;
 		}
 
-		UnableToVerifyKeyPairException e = assertThrows(UnableToVerifyKeyPairException.class,
+		TrustChainInvalidCardMts7Exception e = assertThrows(TrustChainInvalidCardMts7Exception.class,
 				() -> process(factory.create(), ByteArrayHexStringConverter.toHexString(getNextDataResponse), SIGNATURE_RESPONSE).waitForVerify(0));
 
-		assertFalse(e.getResult().isVerifiedTrustChain());
+		// the key is known, so the issuer signature is not valid
+		assertFalse(e instanceof UnknownIssuerKeyInvalidCardMts7Exception);
 	}
 
 	@Test
-	public void testKnownUnsupportedRootKeyIsRejectedWithOption() throws Exception {
+	public void testKnownUnsupportedRootKeyIsNotInvalidCard() throws Exception {
+		// a problem with the verifier, also with the option: the key is known, so it is not an unknown key, and the card is not to blame
 		VerifyTrustChainMts7ProcessorFactory factory = new VerifyTrustChainMts7ProcessorFactory(unsupportedRootKey(), null, true, executor);
 
-		UnableToVerifyKeyPairException e = assertThrows(UnableToVerifyKeyPairException.class,
+		ExecutionException e = assertThrows(ExecutionException.class,
 				() -> process(factory.create(), GET_NEXT_DATA_RESPONSE, SIGNATURE_RESPONSE).waitForVerify(0));
 
-		assertFalse(e.getResult().isVerifiedTrustChain());
+		assertInstanceOf(UnableToConstructIssuerKeyException.class, e.getCause());
+		assertTrue(e.getCause().getMessage().contains("not supported"), e.getCause().getMessage());
+	}
+
+	@Test
+	public void testMalformedMobileTicketBundleIsInvalidCard() throws Exception {
+		InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class,
+				() -> process(processorFactory.create(), "0102039000", SIGNATURE_RESPONSE).waitForVerify(0));
+
+		assertFalse(e instanceof KeyPairInvalidCardMts7Exception);
+		assertFalse(e instanceof TrustChainInvalidCardMts7Exception);
+		assertInstanceOf(IOException.class, e.getCause());
+	}
+
+	@Test
+	public void testIssuerKeyWhichCannotBeCreatedIsNotInvalidCard() throws Exception {
+		// a problem with the verifier: the root key of the card is among the issuer keys, but it cannot be created
+		VerifyTrustChainMts7ProcessorFactory factory = new VerifyTrustChainMts7ProcessorFactory(rootKey(new IssuerSignatureFactory() {
+			@Override
+			public IssuerPublicKey createIssuerPublicKey(long pid, MtbJwkPublic jwkPublic) throws UnableToConstructIssuerKeyException {
+				throw new UnableToConstructIssuerKeyException("Broken");
+			}
+		}), executor);
+
+		ExecutionException e = assertThrows(ExecutionException.class,
+				() -> process(factory.create(), GET_NEXT_DATA_RESPONSE, SIGNATURE_RESPONSE).waitForVerify(0));
+
+		assertInstanceOf(UnableToConstructIssuerKeyException.class, e.getCause());
+	}
+
+	@Test
+	public void testAlgorithmNotInTheSpecificationIsBlamedOnTheCardBeforeTheIssuerKey() throws Exception {
+		// the issuer key of the card is known but cannot be used (the verifier), but the card is not as in the specification, so it is to blame
+		IssuerSignatureFactory broken = new IssuerSignatureFactory() {
+			@Override
+			public IssuerPublicKey createIssuerPublicKey(long pid, MtbJwkPublic jwkPublic) throws UnableToConstructIssuerKeyException {
+				throw new UnableToConstructIssuerKeyException("Broken");
+			}
+		};
+		for (ParticipantPublicKeys keys : new ParticipantPublicKeys[] { unsupportedRootKey(), rootKey(broken) }) {
+			VerifyTrustChainMts7ProcessorFactory factory = new VerifyTrustChainMts7ProcessorFactory(keys, executor);
+
+			InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class,
+					() -> process(factory.create(), HS256_GET_NEXT_DATA_RESPONSE, SIGNATURE_RESPONSE).waitForVerify(0));
+			assertEquals(InvalidCardMts7Exception.class, e.getClass());
+			assertEquals("Issuer signature algorithm HS256 is not ES256 or RS256", e.getMessage());
+
+			// as in the specification, so the problem is with the verifier
+			ExecutionException ours = assertThrows(ExecutionException.class,
+					() -> process(factory.create(), GET_NEXT_DATA_RESPONSE, SIGNATURE_RESPONSE).waitForVerify(0));
+			assertInstanceOf(UnableToConstructIssuerKeyException.class, ours.getCause());
+		}
+	}
+
+	@Test
+	public void testUnavailableSignatureAlgorithmIsNotInvalidCard() throws Exception {
+		// a problem with the verifier: the security provider does not have the signature algorithm of the card
+		Provider empty = new Provider("Empty", "1.0", "Without algorithms") {
+			private static final long serialVersionUID = 1L;
+		};
+		VerifyTrustChainMts7ProcessorFactory factory = new VerifyTrustChainMts7ProcessorFactory(participantPublicKeys, false, new IccPublicKeyFactory(empty),
+				new Mts7CardEnricher(), new CBORMapper(), new ThumbprintFactory(null), executor);
+
+		ExecutionException e = assertThrows(ExecutionException.class,
+				() -> process(factory.create(), GET_NEXT_DATA_RESPONSE, SIGNATURE_RESPONSE).waitForVerify(0));
+
+		assertInstanceOf(NoSuchAlgorithmMts7Exception.class, e.getCause());
 	}
 
 	// the root key of the card is among the issuer keys, but its type is not supported
 	private static ParticipantPublicKeys unsupportedRootKey() throws Exception {
-		IssuerSignatureFactory unsupported = new IssuerSignatureFactory() {
+		return rootKey(new IssuerSignatureFactory() {
 			@Override
 			public IssuerPublicKey createIssuerPublicKey(long pid, MtbJwkPublic jwkPublic) {
 				return null;
 			}
-		};
+		});
+	}
 
+	// the root key of the card is among the issuer keys, and is created by the factory
+	private static ParticipantPublicKeys rootKey(IssuerSignatureFactory factory) {
 		Map<String, ParticipantPublicKeys.IssuerKey> keys = new HashMap<>();
 		keys.put("10:20230213", new ParticipantPublicKeys.IssuerKey(new MtbJwkPublic().kty("EC").kid("10:20230213")));
 
 		Map<Long, ParticipantPublicKeys.Issuer> issuers = new HashMap<>();
-		issuers.put(10L, new ParticipantPublicKeys.Issuer("Ten", 10L, keys, unsupported));
+		issuers.put(10L, new ParticipantPublicKeys.Issuer("Ten", 10L, keys, factory));
 
 		return new ParticipantPublicKeys(issuers);
 	}

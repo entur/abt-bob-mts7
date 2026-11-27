@@ -108,6 +108,37 @@ public class MobileTicketBundleParserTest {
 		assertThrows(IOException.class, () -> parser.parse(encode(new byte[] { 1 })));
 	}
 
+	@Test
+	public void testRejectsNullElement() throws Exception {
+		// CBOR null instead of a byte string, as a signed element or as the signature
+		byte[] header = CBOR.writeValueAsBytes(header());
+		assertThrows(IOException.class, () -> parser.parse(encode(header, null, new byte[] { 1 })));
+		assertThrows(IOException.class, () -> parser.parse(encode(null, header, new byte[] { 1 })));
+		assertThrows(IOException.class, () -> parser.parse(encode(header, null)));
+	}
+
+	@Test
+	public void testSkipsElementWhichIsCborNull() throws Exception {
+		// a byte string with CBOR null in it is not an Issuer Signature Protected Header
+		byte[] cborNull = CBOR.writeValueAsBytes(null);
+
+		assertFalse(parser.parse(encode(cborNull, new byte[] { 1 })).hasIssuerSignatureProtectedHeader());
+
+		MobileTicketBundle bundle = parser.parse(encode(cborNull, CBOR.writeValueAsBytes(header()), new byte[] { 1 }));
+		assertEquals("10", bundle.getIssuerSignatureProtectedHeader().getIid());
+	}
+
+	@Test
+	public void testEmptyKidOrIidIsNoIssuerSignatureProtectedHeader() throws Exception {
+		Map<String, Object> emptyKid = header();
+		emptyKid.put("kid", "");
+		assertFalse(parser.parse(encode(CBOR.writeValueAsBytes(emptyKid), new byte[] { 1 })).hasIssuerSignatureProtectedHeader());
+
+		Map<String, Object> emptyIid = header();
+		emptyIid.put("iid", "");
+		assertFalse(parser.parse(encode(CBOR.writeValueAsBytes(emptyIid), new byte[] { 1 })).hasIssuerSignatureProtectedHeader());
+	}
+
 	private static Map<String, Object> header() {
 		Map<String, Object> tpk = new LinkedHashMap<>();
 		tpk.put("kty", "EC");
@@ -122,6 +153,65 @@ public class MobileTicketBundleParserTest {
 		header.put("miv", 6);
 		header.put("tpk", tpk);
 		return header;
+	}
+
+	// the representation of the Issuer Signed Ticket Bundle (MTS1 section 2.3)
+
+	@Test
+	public void testSignedDataInTheRecommendedRepresentation() throws Exception {
+		MobileTicketBundle bundle = parser.parse(hex(GET_NEXT_DATA));
+
+		assertArrayEquals(new MobileTicketBundleWriter().writeSignedData(bundle.getSignedElements()), bundle.getSignedData());
+	}
+
+	@Test
+	public void testSignedDataInOtherRepresentations() throws Exception {
+		// the signed elements are empty maps (A0), the signature is 03 or 04
+		// indefinite length array
+		assertSignedData("9F41A041A04103FF", "9F41A041A0FF");
+		// count with a one-byte argument
+		assertSignedData("980341A041A04103", "980241A041A0");
+		// count with a two-byte argument
+		assertSignedData("99000341A041A04103", "99000241A041A0");
+		// an element with a longer length than needed, which is signed as it is
+		assertSignedData("835801A041A04103", "825801A041A0");
+		// an indefinite length byte string, which is signed as it is
+		assertSignedData("835F42A161426101FF41A04104", "825F42A161426101FF41A0");
+	}
+
+	@Test
+	public void testElementsOfOtherRepresentations() throws Exception {
+		MobileTicketBundle bundle = parser.parse(encodeP(hex("835F42A161426101FF41A04104")));
+
+		// the chunks of the indefinite length byte string are joined
+		assertArrayEquals(hex("A1616101"), bundle.getSignedElements()[0]);
+		assertArrayEquals(hex("A0"), bundle.getSignedElements()[1]);
+		assertArrayEquals(new byte[] { 4 }, bundle.getSignature());
+	}
+
+	@Test
+	public void testRejectsMalformedIssuerSignedTicketBundle() throws Exception {
+		for (String p : new String[] { "", "A0", "41", "83410141", "9F41014102", "9C", "835A0000000141", "825F4101FF" }) {
+			assertThrows(IOException.class, () -> parser.parse(encodeP(hex(p))), p);
+		}
+	}
+
+	private void assertSignedData(String p, String signedData) throws Exception {
+		assertArrayEquals(hex(signedData), parser.parse(encodeP(hex(p))).getSignedData(), p);
+	}
+
+	private static byte[] hex(String hex) {
+		byte[] bytes = new byte[hex.length() / 2];
+		for (int i = 0; i < bytes.length; i++) {
+			bytes[i] = (byte) Integer.parseInt(hex.substring(2 * i, 2 * i + 2), 16);
+		}
+		return bytes;
+	}
+
+	private static byte[] encodeP(byte[] p) throws Exception {
+		Map<String, Object> outer = new LinkedHashMap<>();
+		outer.put("p", p);
+		return CBOR.writeValueAsBytes(outer);
 	}
 
 	private static byte[] encode(byte[]... elements) throws Exception {

@@ -1,7 +1,6 @@
 package no.entur.abt.bob.mts7.reader;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
@@ -17,6 +16,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeoutException;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,7 +28,7 @@ import no.entur.abt.bob.mts7.api.UnableToSelectApplicationException;
 import no.entur.abt.bob.mts7.api.apdu.CommandAPDU;
 import no.entur.abt.bob.mts7.core.Mts7Card;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
-import no.entur.abt.bob.mts7.core.UnableToVerifyKeyPairException;
+import no.entur.abt.bob.mts7.core.exception.MissingCardCommandsException;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
 import no.entur.abt.bob.mts7.reader.processor.Mts7Processor;
@@ -158,8 +158,7 @@ public class ProcessorLifecycleTest extends AbstractTest {
 			processor.start();
 
 			// no input, so this times out
-			UnableToVerifyKeyPairException e = assertThrows(UnableToVerifyKeyPairException.class, () -> processor.waitForVerify(100));
-			assertNotNull(e.getResult());
+			assertThrows(TimeoutException.class, () -> processor.waitForVerify(100));
 
 			// the processor must still be closable after the timeout
 			processor.close();
@@ -175,8 +174,7 @@ public class ProcessorLifecycleTest extends AbstractTest {
 			processor.start();
 			processor.close();
 
-			UnableToVerifyKeyPairException e = assertThrows(UnableToVerifyKeyPairException.class, () -> processor.waitForVerify(1000));
-			assertNotNull(e.getResult());
+			assertThrows(MissingCardCommandsException.class, () -> processor.waitForVerify(1000));
 		}
 	}
 
@@ -185,8 +183,7 @@ public class ProcessorLifecycleTest extends AbstractTest {
 		for (Mts7ProcessorFactory processorFactory : processorFactories()) {
 			Mts7Processor processor = processorFactory.create();
 			// never started
-			UnableToVerifyKeyPairException e = assertThrows(UnableToVerifyKeyPairException.class, () -> processor.waitForVerify(1));
-			assertNotNull(e.getResult());
+			assertThrows(IllegalStateException.class, () -> processor.waitForVerify(1));
 		}
 	}
 
@@ -219,8 +216,7 @@ public class ProcessorLifecycleTest extends AbstractTest {
 
 			// would wait forever for input if it had been started
 			assertTimeoutPreemptively(Duration.ofSeconds(5), () -> {
-				UnableToVerifyKeyPairException e = assertThrows(UnableToVerifyKeyPairException.class, () -> processor.waitForVerify(0));
-				assertNotNull(e.getResult());
+				assertThrows(MissingCardCommandsException.class, () -> processor.waitForVerify(0));
 			}, name);
 
 			assertNoProcessorThreadsLeft(name);
@@ -258,7 +254,7 @@ public class ProcessorLifecycleTest extends AbstractTest {
 	}
 
 	@Test
-	public void testCardAfterTimeoutIsNotChangedByTheProcessor() throws Exception {
+	public void testProcessingGoesOnAfterTimeout() throws Exception {
 		for (Mts7ProcessorFactory processorFactory : processorFactories()) {
 			String name = processorFactory.getClass().getSimpleName();
 
@@ -268,11 +264,7 @@ public class ProcessorLifecycleTest extends AbstractTest {
 			processor.onSelectApplicationResponseApdu(SELECT_APPLICATION_RESPONSE);
 
 			// still waiting for the rest
-			UnableToVerifyKeyPairException e = assertThrows(UnableToVerifyKeyPairException.class, () -> processor.waitForVerify(300));
-
-			Mts7Card timedOut = e.getResult();
-			assertNotNull(timedOut);
-			assertFalse(timedOut.isVerifiedPrivateKeyPresent(), name);
+			assertThrows(TimeoutException.class, () -> processor.waitForVerify(300), name);
 
 			// the card gets complete
 			processor.onGetDataResponseApdu(GET_NEXT_DATA_RESPONSE);
@@ -280,12 +272,10 @@ public class ProcessorLifecycleTest extends AbstractTest {
 			byte[] challenge = new byte[32];
 			processor.onInternalAuthenticateApdu(new CommandAPDU(0, 0, 0, 0, challenge).getBytes(), SIGNATURE_RESPONSE);
 
+			// the processing went on after the timeout
 			Mts7Card complete = processor.waitForVerify(0);
 			assertTrue(complete.isVerifiedPrivateKeyPresent(), name);
-
-			// the earlier card is a snapshot, so it is not changed by what happened after it was handed out
-			assertFalse(timedOut.isVerifiedPrivateKeyPresent(), name + ": card was changed after waitForVerify returned");
-			assertEquals("0000175F96B61D", ByteArrayHexStringConverter.toHexString(timedOut.getSerial()), name);
+			assertEquals("0000175F96B61D", ByteArrayHexStringConverter.toHexString(complete.getSerial()), name);
 
 			processor.close();
 			assertNoProcessorThreadsLeft(name);
@@ -316,6 +306,28 @@ public class ProcessorLifecycleTest extends AbstractTest {
 	}
 
 	@Test
+	public void testCloseWhileProcessingStillVerifies() throws Exception {
+		// closing means not waiting for more input; the card is verified with the input which arrived before
+		for (Mts7ProcessorFactory processorFactory : processorFactories()) {
+			String name = processorFactory.getClass().getSimpleName();
+
+			Mts7Processor processor = processorFactory.create();
+			processor.start();
+
+			processor.onSelectApplicationResponseApdu(SELECT_APPLICATION_RESPONSE);
+			processor.onGetDataResponseApdu(GET_NEXT_DATA_RESPONSE);
+			// the processing has run until it waits for internal authenticate
+			assertNotNull(processor.waitForAlgorithm(5000), name);
+
+			processor.onInternalAuthenticateApdu(new CommandAPDU(0, 0, 0, 0, new byte[32]).getBytes(), SIGNATURE_RESPONSE);
+			processor.close();
+
+			assertTrue(processor.waitForVerify(0).isVerifiedPrivateKeyPresent(), name);
+			assertNoProcessorThreadsLeft(name);
+		}
+	}
+
+	@Test
 	public void testProcessorGivesUpWhenTheCardIsNotRead() throws Exception {
 		for (Mts7Processor processor : impatientProcessors()) {
 			String name = processor.getClass().getSuperclass().getSimpleName();
@@ -324,8 +336,7 @@ public class ProcessorLifecycleTest extends AbstractTest {
 
 			// nobody closes it, and there is no input, but it must not wait forever
 			assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
-				UnableToVerifyKeyPairException e = assertThrows(UnableToVerifyKeyPairException.class, () -> processor.waitForVerify(0));
-				assertNotNull(e.getResult());
+				assertThrows(MissingCardCommandsException.class, () -> processor.waitForVerify(0));
 			}, name);
 
 			assertNoProcessorThreadsLeft(name);

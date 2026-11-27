@@ -28,7 +28,6 @@ public class MobileTicketBundleParser {
 
 	protected final ObjectReader mobileTicketBundleReader;
 	protected final ObjectReader majorVersionReader;
-	protected final ObjectReader issuerSignedTicketBundleReader;
 	protected final ObjectReader protectedHeaderReader;
 
 	public MobileTicketBundleParser() {
@@ -40,7 +39,6 @@ public class MobileTicketBundleParser {
 
 		this.mobileTicketBundleReader = cborMapper.readerFor(EncodedMobileTicketBundle.class);
 		this.majorVersionReader = cborMapper.readerFor(String.class);
-		this.issuerSignedTicketBundleReader = cborMapper.readerFor(byte[][].class);
 		this.protectedHeaderReader = cborMapper.readerFor(IssuerSignatureProtectedHeader.class);
 	}
 
@@ -60,30 +58,32 @@ public class MobileTicketBundleParser {
 			majorVersion = majorVersionReader.readValue(encoded.v);
 		}
 
-		byte[][] elements = issuerSignedTicketBundleReader.readValue(encoded.p);
-		if (elements == null || elements.length < 2) {
-			throw new IOException("Expected at least one signed element and the signature in the Issuer Signed Ticket Bundle");
-		}
+		// decoded by hand, so that the signed data is in the representation of the bundle (MTS1 section 2.3)
+		IssuerSignedTicketBundleDecoder decoder = new IssuerSignedTicketBundleDecoder(encoded.p);
+		decoder.decode();
+		byte[][] elements = decoder.getElements();
 
 		byte[][] signedElements = new byte[elements.length - 1][];
 		System.arraycopy(elements, 0, signedElements, 0, signedElements.length);
-
 		byte[] signature = elements[elements.length - 1];
-
-		return new MobileTicketBundle(majorVersion, signedElements, signature, parseIssuerSignatureProtectedHeader(signedElements));
+		return new MobileTicketBundle(majorVersion, signedElements, decoder.getSignedData(), signature, parseIssuerSignatureProtectedHeader(signedElements));
 	}
 
 	/**
 	 * Find the Issuer Signature Protected Header among the signed elements.
 	 *
 	 * @param signedElements CBOR encoded elements
-	 * @return the first element which is an Issuer Signature Protected Header, or null if none
+	 * @return the first element which is an Issuer Signature Protected Header (with an issuer id and a key id), or null if none
 	 * @throws IOException if an element could not be parsed
 	 */
 
 	protected IssuerSignatureProtectedHeader parseIssuerSignatureProtectedHeader(byte[][] signedElements) throws IOException {
 		for (byte[] element : signedElements) {
 			IssuerSignatureProtectedHeader header = protectedHeaderReader.readValue(element);
+			if (header == null) {
+				// the element is CBOR null
+				continue;
+			}
 
 			// To be able to distinguish between the Issuer Signature and the Device Signature (see section 2.5) header, the Issuer Signature Protected
 			// Header MUST NOT contain a did parameter.
@@ -91,13 +91,18 @@ public class MobileTicketBundleParser {
 				continue;
 			}
 
-			if (header.getKid() == null || header.getIid() == null) {
+			// an empty value is as good as none
+			if (isEmpty(header.getKid()) || isEmpty(header.getIid())) {
 				continue;
 			}
 
 			return header;
 		}
 		return null;
+	}
+
+	private static boolean isEmpty(String value) {
+		return value == null || value.isEmpty();
 	}
 
 }

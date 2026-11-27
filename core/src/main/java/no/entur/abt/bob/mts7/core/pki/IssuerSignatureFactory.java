@@ -16,7 +16,7 @@ import com.nimbusds.jose.jwk.JWK;
 import com.nimbusds.jose.jwk.KeyConverter;
 
 import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
-import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
+import no.entur.abt.bob.mts7.core.exception.UnableToConstructIssuerKeyException;
 
 /**
  * Create issuer keys from participant metadata. Instances are thread safe (and so can be shared), unless a subclass is not.

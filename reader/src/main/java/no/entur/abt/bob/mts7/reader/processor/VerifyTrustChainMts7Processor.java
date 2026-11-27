@@ -1,6 +1,7 @@
 package no.entur.abt.bob.mts7.reader.processor;
 
-import java.security.SignatureException;
+import java.io.IOException;
+import java.util.Objects;
 import java.util.concurrent.Executor;
 
 import org.slf4j.Logger;
@@ -8,16 +9,17 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
-import no.entur.abt.bob.mts7.core.Mts7Card;
+import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
-import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
-import no.entur.abt.bob.mts7.core.UnableToConstructThumbprintKeyException;
-import no.entur.abt.bob.mts7.core.UnableToVerifyKeyPairException;
-import no.entur.abt.bob.mts7.core.UnableToVerifyTrustChainException;
+import no.entur.abt.bob.mts7.core.UnknownIssuerKeyPolicy;
+import no.entur.abt.bob.mts7.core.exception.OutdatedIssuerKeysException;
+import no.entur.abt.bob.mts7.core.exception.UnableToConstructIssuerKeyException;
+import no.entur.abt.bob.mts7.core.exception.UnknownIssuerKeyInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyBuilder;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.IssuerPublicKey;
+import no.entur.abt.bob.mts7.core.pki.Mts1Algorithms;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
 import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
 import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
@@ -41,15 +43,13 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 
 	protected final ParticipantPublicKeys participantPublicKeys;
 	protected final boolean trustUnknownRootKeys;
+	protected final UnknownIssuerKeyPolicy unknownIssuerKeyPolicy;
 	protected final IccPublicKeyFactory iccSignatureFactory;
 	protected final CBORMapper cborMapper;
 	protected final MobileTicketBundleParser mobileTicketBundleParser;
 	protected final Mts7CardEnricher enricher;
 
 	protected final ThumbprintFactory thumbprintFactory;
-
-	// set by the processing thread, read by the thread which waits for the result
-	private volatile boolean trustedUnknownRootKey;
 
 	public VerifyTrustChainMts7Processor(ParticipantPublicKeys participantPublicKeys, IccPublicKeyFactory factory, Mts7CardEnricher enricher,
 			CBORMapper cborMapper, ThumbprintFactory thumbprintFactory, Executor executor) {
@@ -58,10 +58,17 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 
 	public VerifyTrustChainMts7Processor(ParticipantPublicKeys participantPublicKeys, boolean trustUnknownRootKeys, IccPublicKeyFactory factory,
 			Mts7CardEnricher enricher, CBORMapper cborMapper, ThumbprintFactory thumbprintFactory, Executor executor) {
+		this(participantPublicKeys, trustUnknownRootKeys, UnknownIssuerKeyPolicy.blameCard(), factory, enricher, cborMapper, thumbprintFactory, executor);
+	}
+
+	public VerifyTrustChainMts7Processor(ParticipantPublicKeys participantPublicKeys, boolean trustUnknownRootKeys,
+			UnknownIssuerKeyPolicy unknownIssuerKeyPolicy, IccPublicKeyFactory factory, Mts7CardEnricher enricher, CBORMapper cborMapper,
+			ThumbprintFactory thumbprintFactory, Executor executor) {
 		super(executor);
 
 		this.participantPublicKeys = participantPublicKeys;
 		this.trustUnknownRootKeys = trustUnknownRootKeys;
+		this.unknownIssuerKeyPolicy = Objects.requireNonNull(unknownIssuerKeyPolicy, "unknownIssuerKeyPolicy");
 		this.iccSignatureFactory = factory;
 
 		this.cborMapper = cborMapper;
@@ -70,97 +77,79 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 		this.thumbprintFactory = thumbprintFactory;
 	}
 
-	public Mts7Card waitForVerify(long timeout) throws InterruptedException, UnableToVerifyKeyPairException, UnableToVerifyTrustChainException {
-		Mts7Card card = awaitResult(timeout);
-
-		if (!card.isVerifiedPrivateKeyPresent()) {
-			throw new UnableToVerifyKeyPairException(card);
-		}
-
-		if (!card.isVerifiedTrustChain() && !trustedUnknownRootKey) {
-			throw new UnableToVerifyTrustChainException(card);
-		}
-
-		return card;
-	}
-
 	@Override
 	protected void process() throws Exception {
-		IccPublicKeyBuilder iccPublicKeyBuilder = new IccPublicKeyBuilder(iccSignatureFactory);
-
-		if (!awaitInput(() -> selectApplicationResponsePayload != null)) {
-			return;
-		}
-
-		byte[] selectApplicationResponse = selectApplicationResponsePayload;
-		updateResult(card -> enricher.enrichSelectApplicationResponsePayload(card, selectApplicationResponse));
-
-		LOGGER.info("Processed 'select application' response");
+		// The card is checked as far as it can be before a problem with the reader is reported, so that a card which is not valid is to blame for that,
+		// whatever else it did: the application-related data is read last.
 
 		if (!awaitInput(() -> getDataResponsePayload != null)) {
 			return;
 		}
 
-		MobileTicketBundle mobileTicketBundle = mobileTicketBundleParser.parse(getDataResponsePayload);
-
-		for (byte[] value : mobileTicketBundle.getSignedElements()) {
-			iccPublicKeyBuilder.withSignedData(value, 0, value.length);
+		MobileTicketBundle mobileTicketBundle;
+		try {
+			mobileTicketBundle = mobileTicketBundleParser.parse(getDataResponsePayload);
+		} catch (IOException e) {
+			throw new InvalidCardMts7Exception("Unable to parse the Mobile Ticket Bundle", e);
 		}
-
-		iccPublicKeyBuilder.withSignature(mobileTicketBundle.getSignature());
-
-		IccPublicKey iccPublicKey = null;
 
 		IssuerSignatureProtectedHeader header = mobileTicketBundle.getIssuerSignatureProtectedHeader();
-		if (header != null) {
-			// note here what kind of algorithm we are using
-			// EC and RSA do not encode the input to the internal authenticate function
-			// in the same way.
-
-			setIccKeyAlgorithm(header.getAlg());
-
-			long iid = Long.parseLong(header.getIid());
-
-			IssuerPublicKey issuerPublicKey = participantPublicKeys.getIssuerPublicKey(iid, header.getKid());
-
-			if (issuerPublicKey == null) {
-				LOGGER.info("Unable to find issuer public key");
-				// a key which is known, but cannot be used, is not an unknown key
-				trustedUnknownRootKey = trustUnknownRootKeys && !participantPublicKeys.hasIssuerPublicKey(iid, header.getKid());
-			} else {
-				iccPublicKeyBuilder.withIssuerPublicKey(issuerPublicKey);
-			}
-
-			iccPublicKeyBuilder.withIssuerSignatureProtectedHeader(header);
-
-			try {
-				byte[] thumbprint = thumbprintFactory.create(header);
-				updateResult(card -> card.setThumbprint(thumbprint));
-			} catch (UnableToConstructThumbprintKeyException e) {
-				LOGGER.info("Unable to construct thumbprint", e);
-			}
+		if (header == null) {
+			throw new InvalidCardMts7Exception("Missing Issuer Signature Protected Header");
 		}
 
+		// MTS1 requires alg, the algorithm of the issuer signature, and has two. Checked before anything else in the header, so that a card which is
+		// not as in the specification is to blame, whatever happens with the issuer key in the verifier.
+		if (!Mts1Algorithms.isIssuerSignatureAlgorithm(header.getAlg())) {
+			throw new InvalidCardMts7Exception(
+					"Issuer signature algorithm " + header.getAlg() + " is not " + Mts1Algorithms.ES256 + " or " + Mts1Algorithms.RS256);
+		}
+
+		// note here what kind of algorithm the card uses: EC and RSA do not encode the input to the internal authenticate function in the same way. It
+		// follows from the type of the public key of the card, not from alg in the header, which is the algorithm of the issuer signature.
+
+		setIccKeyAlgorithm(Mts1Algorithms.getTokenAlgorithm(header.getTpk()));
+
+		long iid;
 		try {
-			if (iccPublicKeyBuilder.canBuild()) {
-				iccPublicKey = iccPublicKeyBuilder.build();
-
-				LOGGER.info("Verified ICC trust chain");
-
-				updateResult(card -> card.setVerifiedTrustChain(true));
-			} else if (trustedUnknownRootKey) {
-				// The issuer key is unknown, so the issuer signature of the card certificate cannot be checked. Take the public key of the card from the
-				// certificate as it is, and only check that the card has the private key for it, as VerifyKeyPairMts7Processor does. This does not say
-				// who issued the card, so the trust chain stays not verified.
-				iccPublicKey = iccSignatureFactory.create(header);
-			} else {
-				LOGGER.info("Unable to verify ICC trust chain");
-			}
-		} catch (SignatureException e) {
-			LOGGER.info("Issuer signature is not valid", e);
-		} catch (UnableToConstructIccKeyException e) {
-			LOGGER.info("Unable to create ICC public key", e);
+			iid = Long.parseLong(header.getIid());
+		} catch (NumberFormatException e) {
+			throw new InvalidCardMts7Exception("Invalid issuer id " + header.getIid(), e);
 		}
+
+		IccPublicKey iccPublicKey;
+
+		IssuerPublicKey issuerPublicKey = participantPublicKeys.getIssuerPublicKey(iid, header.getKid());
+		if (issuerPublicKey != null) {
+			IccPublicKeyBuilder iccPublicKeyBuilder = new IccPublicKeyBuilder(iccSignatureFactory);
+			iccPublicKeyBuilder.withEncodedSignedData(mobileTicketBundle.getSignedData());
+			iccPublicKeyBuilder.withSignature(mobileTicketBundle.getSignature());
+			iccPublicKeyBuilder.withIssuerSignatureProtectedHeader(header);
+			iccPublicKeyBuilder.withIssuerPublicKey(issuerPublicKey);
+
+			iccPublicKey = iccPublicKeyBuilder.build();
+
+			LOGGER.info("Verified ICC trust chain");
+
+			updateResult(card -> card.setVerifiedTrustChain(true));
+		} else if (participantPublicKeys.hasIssuerPublicKey(iid, header.getKid())) {
+			// a key which is known, but which we cannot use, is not an unknown key, and not the fault of the card
+			throw new UnableToConstructIssuerKeyException("Issuer public key " + header.getKid() + " of participant " + iid + " is not supported");
+		} else if (trustUnknownRootKeys) {
+			// The issuer key is unknown, so the issuer signature of the card certificate cannot be checked. Take the public key of the card from the
+			// certificate as it is, and only check that the card has the private key for it, as VerifyKeyPairMts7Processor does. This does not say
+			// who issued the card, so the trust chain stays not verified.
+			iccPublicKey = iccSignatureFactory.create(header);
+		} else if (unknownIssuerKeyPolicy.isCardToBlame(iid, header.getKid(), participantPublicKeys)) {
+			throw new UnknownIssuerKeyInvalidCardMts7Exception(iid, header.getKid());
+		} else {
+			// our keys may be out of date
+			throw new OutdatedIssuerKeysException(iid, header.getKid());
+		}
+
+		// from the same token public key as the public key of the card, which could be created, so a problem here is expected to be with the verifier
+		byte[] thumbprint = thumbprintFactory.create(header);
+		updateResult(card -> card.setThumbprint(thumbprint));
 
 		LOGGER.info("Processed 'get (next) data' response");
 
@@ -174,14 +163,20 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 		byte[] commandPayload = input.command;
 		byte[] responsePayload = input.response;
 
+		checkChallenge(commandPayload);
+
 		// process signature - the only time-critical part of the logic here
-		boolean verified = iccPublicKey != null && iccPublicKey.verify(commandPayload, responsePayload);
-		if (verified) {
-			LOGGER.info("Verified ICC private key");
-		} else {
-			LOGGER.info("Unable to verify ICC private key");
+		iccPublicKey.verify(commandPayload, responsePayload);
+		LOGGER.info("Verified ICC private key");
+
+		if (!enrich(enricher)) {
+			return;
 		}
-		updateResult(card -> card.setVerifiedPrivateKeyPresent(verified));
+
+		LOGGER.info("Processed 'select application' response");
+
+		// last, as the card has passed all of the checks
+		updateResult(card -> card.setVerifiedPrivateKeyPresent(true));
 
 		LOGGER.info("Processed 'internal authenticate' response");
 	}

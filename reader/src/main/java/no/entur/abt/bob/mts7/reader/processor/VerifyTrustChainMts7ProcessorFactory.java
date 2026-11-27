@@ -8,6 +8,7 @@ import java.util.concurrent.Executor;
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
+import no.entur.abt.bob.mts7.core.UnknownIssuerKeyPolicy;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
 import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
@@ -36,6 +37,7 @@ public class VerifyTrustChainMts7ProcessorFactory implements Mts7ProcessorFactor
 
 	protected final ParticipantPublicKeys participantPublicKeys;
 	protected final boolean trustUnknownRootKeys;
+	private final UnknownIssuerKeyPolicy unknownIssuerKeyPolicy;
 	protected final IccPublicKeyFactory factory;
 
 	protected final Mts7CardEnricher enricher;
@@ -86,6 +88,22 @@ public class VerifyTrustChainMts7ProcessorFactory implements Mts7ProcessorFactor
 	}
 
 	/**
+	 * Constructor.
+	 *
+	 * @param participantPublicKeys  issuer keys, shared with other factories and threads
+	 * @param provider               security provider (for signatures and digests), or null for the default
+	 * @param unknownIssuerKeyPolicy who is to blame for a card whose issuer key is not among the issuer keys
+	 * @param executor               executor for the processors
+	 * @throws NoSuchAlgorithmException if the digest algorithm is not available
+	 */
+
+	public VerifyTrustChainMts7ProcessorFactory(ParticipantPublicKeys participantPublicKeys, Provider provider, UnknownIssuerKeyPolicy unknownIssuerKeyPolicy,
+			Executor executor) throws NoSuchAlgorithmException {
+		this(participantPublicKeys, false, unknownIssuerKeyPolicy, new IccPublicKeyFactory(provider), new Mts7CardEnricher(), new CBORMapper(),
+				new ThumbprintFactory(provider), executor);
+	}
+
+	/**
 	 * Constructor for sharing the helpers with other factories. All of the helpers must be thread safe.
 	 *
 	 * @param participantPublicKeys issuer keys, shared with other factories and threads
@@ -115,8 +133,28 @@ public class VerifyTrustChainMts7ProcessorFactory implements Mts7ProcessorFactor
 
 	public VerifyTrustChainMts7ProcessorFactory(ParticipantPublicKeys participantPublicKeys, boolean trustUnknownRootKeys, IccPublicKeyFactory factory,
 			Mts7CardEnricher enricher, CBORMapper cborMapper, ThumbprintFactory thumbprintFactory, Executor executor) {
+		this(participantPublicKeys, trustUnknownRootKeys, UnknownIssuerKeyPolicy.blameCard(), factory, enricher, cborMapper, thumbprintFactory, executor);
+	}
+
+	/**
+	 * Constructor for sharing the helpers with other factories. All of the helpers must be thread safe.
+	 *
+	 * @param participantPublicKeys  issuer keys, shared with other factories and threads
+	 * @param trustUnknownRootKeys   whether to accept a card whose root key is not among the issuer keys, if it proves that it has the private key
+	 * @param unknownIssuerKeyPolicy who is to blame for a card whose issuer key is not among the issuer keys (unless trustUnknownRootKeys)
+	 * @param factory                factory for the public key of the card
+	 * @param enricher               card enricher
+	 * @param cborMapper             CBOR mapper
+	 * @param thumbprintFactory      thumbprint factory
+	 * @param executor               executor for the processors
+	 */
+
+	public VerifyTrustChainMts7ProcessorFactory(ParticipantPublicKeys participantPublicKeys, boolean trustUnknownRootKeys,
+			UnknownIssuerKeyPolicy unknownIssuerKeyPolicy, IccPublicKeyFactory factory, Mts7CardEnricher enricher, CBORMapper cborMapper,
+			ThumbprintFactory thumbprintFactory, Executor executor) {
 		this.participantPublicKeys = participantPublicKeys;
 		this.trustUnknownRootKeys = trustUnknownRootKeys;
+		this.unknownIssuerKeyPolicy = Objects.requireNonNull(unknownIssuerKeyPolicy, "unknownIssuerKeyPolicy");
 		this.factory = factory;
 		this.enricher = enricher;
 		this.cborMapper = cborMapper;
@@ -133,8 +171,17 @@ public class VerifyTrustChainMts7ProcessorFactory implements Mts7ProcessorFactor
 		return trustUnknownRootKeys;
 	}
 
+	/**
+	 * @return who is to blame for a card whose issuer key is not among the issuer keys
+	 */
+
+	public UnknownIssuerKeyPolicy getUnknownIssuerKeyPolicy() {
+		return unknownIssuerKeyPolicy;
+	}
+
 	public VerifyTrustChainMts7Processor create() {
-		return new VerifyTrustChainMts7Processor(participantPublicKeys, trustUnknownRootKeys, factory, enricher, cborMapper, thumbprintFactory, executor);
+		return new VerifyTrustChainMts7Processor(participantPublicKeys, trustUnknownRootKeys, unknownIssuerKeyPolicy, factory, enricher, cborMapper,
+				thumbprintFactory, executor);
 	}
 
 }

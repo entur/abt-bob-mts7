@@ -25,14 +25,16 @@ import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
 import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
+import no.entur.abt.bob.mts7.api.InsufficientCardCommandsException;
+import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.LenientMts7CardFactory;
 import no.entur.abt.bob.mts7.core.Mts7ApduPayloads;
 import no.entur.abt.bob.mts7.core.Mts7Card;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
-import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
-import no.entur.abt.bob.mts7.core.UnableToVerifyKeyPairException;
 import no.entur.abt.bob.mts7.core.VerifyKeyPairMts7CardFactory;
 import no.entur.abt.bob.mts7.core.VerifyMts7CardFactory;
+import no.entur.abt.bob.mts7.core.exception.KeyPairInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.UnableToConstructIssuerKeyException;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.IssuerPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IssuerSignatureFactory;
@@ -211,7 +213,7 @@ public class Mts7WarmupTest {
 	public void testFailureIsReportedAndTheOthersAreStillWarmedUp() throws Exception {
 		LenientMts7CardFactory failing = new LenientMts7CardFactory() {
 			@Override
-			public Mts7Card create(Mts7ApduPayloads card) throws UnableToVerifyKeyPairException {
+			public Mts7Card create(Mts7ApduPayloads card) throws KeyPairInvalidCardMts7Exception {
 				throw new IllegalArgumentException("Broken");
 			}
 		};
@@ -237,7 +239,7 @@ public class Mts7WarmupTest {
 		// as when a class is not available on an older version of Android
 		LenientMts7CardFactory failing = new LenientMts7CardFactory() {
 			@Override
-			public Mts7Card create(Mts7ApduPayloads card) throws UnableToVerifyKeyPairException {
+			public Mts7Card create(Mts7ApduPayloads card) throws KeyPairInvalidCardMts7Exception {
 				throw new NoClassDefFoundError("java/util/Base64");
 			}
 		};
@@ -254,7 +256,7 @@ public class Mts7WarmupTest {
 	public void testNotVerifiedIsReported() throws Exception {
 		LenientMts7CardFactory notVerifying = new LenientMts7CardFactory() {
 			@Override
-			public Mts7Card create(Mts7ApduPayloads card) throws UnableToVerifyKeyPairException {
+			public Mts7Card create(Mts7ApduPayloads card) throws KeyPairInvalidCardMts7Exception {
 				return new Mts7Card();
 			}
 		};
@@ -285,7 +287,7 @@ public class Mts7WarmupTest {
 
 		LenientMts7CardFactory failing = new LenientMts7CardFactory() {
 			@Override
-			public Mts7Card create(Mts7ApduPayloads card) throws UnableToVerifyKeyPairException {
+			public Mts7Card create(Mts7ApduPayloads card) throws KeyPairInvalidCardMts7Exception {
 				throw new IllegalArgumentException("Broken");
 			}
 		};
@@ -353,9 +355,10 @@ public class Mts7WarmupTest {
 		private final AtomicInteger calls = new AtomicInteger();
 
 		@Override
-		public void enrichSelectApplicationResponsePayload(Mts7Card card, byte[] selectApplicationResponsePayload) {
+		public void enrich(Mts7Card card, byte[] selectApplicationResponsePayload, byte[] applicationRelatedDataPayload)
+				throws InvalidCardMts7Exception, InsufficientCardCommandsException {
 			calls.incrementAndGet();
-			super.enrichSelectApplicationResponsePayload(card, selectApplicationResponsePayload);
+			super.enrich(card, selectApplicationResponsePayload, applicationRelatedDataPayload);
 		}
 	}
 

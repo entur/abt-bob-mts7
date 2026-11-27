@@ -8,6 +8,12 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
+import no.entur.abt.bob.mts7.api.InsufficientCardCommandsException;
+import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.api.VerifierMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.KeyPairInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.NonCompliantIccKeyInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.UnableToConstructThumbprintKeyException;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
@@ -68,11 +74,16 @@ public class LenientMts7CardFactory {
 		this.thumbprintFactory = thumbprintFactory;
 	}
 
-	public Mts7Card create(Mts7ApduPayloads card) throws UnableToVerifyKeyPairException {
+	public Mts7Card create(Mts7ApduPayloads card) throws KeyPairInvalidCardMts7Exception {
 		Mts7Card result = new Mts7Card();
 		try {
-			if (card.hasSelectApplicationOutput()) {
-				enricher.enrichSelectApplicationResponsePayload(result, card.getSelectApplicationOutput());
+			if (card.hasSelectApplicationOutput() || card.hasApplicationRelatedDataOutput()) {
+				try {
+					enricher.enrich(result, card.getSelectApplicationOutput(), card.getApplicationRelatedDataOutput());
+				} catch (InvalidCardMts7Exception | InsufficientCardCommandsException e) {
+					// lenient: carry on with the rest of the card
+					LOGGER.info("Unable to enrich the card with the select application response", e);
+				}
 			}
 
 			IccPublicKey iccPublicKey = null;
@@ -85,25 +96,30 @@ public class LenientMts7CardFactory {
 				if (header != null) {
 					try {
 						iccPublicKey = iccPublicKeyFactory.create(header);
-					} catch (UnableToConstructIccKeyException e) {
+					} catch (InvalidCardMts7Exception | VerifierMts7Exception e) {
 						LOGGER.info("Unable to create ICC public key", e);
 					}
 
 					try {
 						result.setThumbprint(thumbprintFactory.create(header));
-					} catch (UnableToConstructThumbprintKeyException e) {
+					} catch (NonCompliantIccKeyInvalidCardMts7Exception | UnableToConstructThumbprintKeyException e) {
 						LOGGER.info("Unable to construct thumbprint", e);
 					}
 				}
 			}
 
-			if (iccPublicKey != null && card.hasInternalAuthenticateOutput()
-					&& iccPublicKey.verify(card.getInternalAuthenticateInput(), card.getInternalAuthenticateOutput())) {
-				result.setVerifiedPrivateKeyPresent(true);
+			boolean verified = false;
+			if (iccPublicKey != null && card.hasInternalAuthenticateOutput()) {
+				try {
+					iccPublicKey.verify(card.getInternalAuthenticateInput(), card.getInternalAuthenticateOutput());
+					verified = true;
+				} catch (InvalidCardMts7Exception e) {
+					LOGGER.info("Unable to verify ICC private key", e);
+				}
 			} else {
 				LOGGER.info("Unable to verify ICC private key");
-				result.setVerifiedPrivateKeyPresent(false);
 			}
+			result.setVerifiedPrivateKeyPresent(verified);
 		} catch (Exception e) {
 			LOGGER.info("Problem processing files", e);
 		}

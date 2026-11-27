@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Test;
 
@@ -23,7 +24,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
-import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
+import no.entur.abt.bob.mts7.core.exception.UnableToConstructIssuerKeyException;
 
 public class ParticipantPublicKeysTest {
 
@@ -169,6 +170,176 @@ public class ParticipantPublicKeysTest {
 
 		// and the answer is remembered, so that it does not have to be worked out again for every card
 		assertEquals(1, factory.calls);
+	}
+
+	/**
+	 * Factory which counts the keys it creates.
+	 */
+
+	private static class CountingKeyFactory extends IssuerSignatureFactory {
+
+		final AtomicInteger calls = new AtomicInteger();
+
+		CountingKeyFactory() throws Exception {
+			super();
+		}
+
+		@Override
+		public IssuerPublicKey createIssuerPublicKey(long pid, MtbJwkPublic jwkPublic) throws UnableToConstructIssuerKeyException {
+			calls.incrementAndGet();
+			return super.createIssuerPublicKey(pid, jwkPublic);
+		}
+	}
+
+	private static ParticipantPublicKeys participantPublicKeys(List<ParticipantMetadata> participants, IssuerSignatureFactory factory) {
+		Map<Long, ParticipantPublicKeys.Issuer> issuers = new HashMap<>();
+		for (ParticipantMetadata participant : participants) {
+			Map<String, ParticipantPublicKeys.IssuerKey> keys = new HashMap<>();
+			for (MtbJwkPublic jwk : participant.getMtbPublicKeys()) {
+				keys.put(jwk.getKid(), new ParticipantPublicKeys.IssuerKey(jwk));
+			}
+			issuers.put(participant.getPid(), new ParticipantPublicKeys.Issuer(participant.getOrganisationName(), participant.getPid(), keys, factory));
+		}
+		return new ParticipantPublicKeys(issuers);
+	}
+
+	@Test
+	public void testCreateIssuerPublicKeys() throws Exception {
+		List<ParticipantMetadata> participantMetadata = readParticipantMetadata();
+		int keys = participantMetadata.stream().mapToInt(participant -> participant.getMtbPublicKeys().size()).sum();
+
+		CountingKeyFactory factory = new CountingKeyFactory();
+		ParticipantPublicKeys participantPublicKeys = participantPublicKeys(participantMetadata, factory);
+
+		assertEquals(0, participantPublicKeys.createKeys());
+		assertEquals(keys, factory.calls.get());
+
+		// all of the keys were created, so none is created when it is used
+		for (ParticipantPublicKeys.Issuer issuer : participantPublicKeys.getIssuers()) {
+			for (String kid : issuer.getKeyIds()) {
+				assertNotNull(participantPublicKeys.getIssuerPublicKey(issuer.getPid(), kid));
+			}
+			assertEquals(List.of(), issuer.getUnsupportedKeys());
+		}
+		assertEquals(keys, factory.calls.get());
+
+		// and not again
+		assertEquals(0, participantPublicKeys.createKeys());
+		assertEquals(keys, factory.calls.get());
+	}
+
+	@Test
+	public void testIssuers() throws Exception {
+		List<ParticipantMetadata> participantMetadata = readParticipantMetadata();
+		ParticipantPublicKeys participantPublicKeys = ParticipantPublicKeys.newBuilder().withParticipants(participantMetadata).build();
+
+		List<ParticipantPublicKeys.Issuer> issuers = participantPublicKeys.getIssuers();
+
+		assertEquals(participantMetadata.size(), issuers.size());
+		for (int i = 1; i < issuers.size(); i++) {
+			assertTrue(issuers.get(i - 1).getPid() < issuers.get(i).getPid(), "ordered by participant id");
+		}
+		for (ParticipantPublicKeys.Issuer issuer : issuers) {
+			assertSame(issuer, participantPublicKeys.getIssuer(issuer.getPid()));
+		}
+
+		// a copy
+		issuers.clear();
+		assertEquals(participantMetadata.size(), participantPublicKeys.getIssuers().size());
+	}
+
+	@Test
+	public void testUnsupportedKeys() throws Exception {
+		Map<String, ParticipantPublicKeys.IssuerKey> keys = new HashMap<>();
+		keys.put("99:unsupported", new ParticipantPublicKeys.IssuerKey(new MtbJwkPublic().kty("EC").kid("99:unsupported")));
+		keys.put("99:also unsupported", new ParticipantPublicKeys.IssuerKey(new MtbJwkPublic().kty("EC").kid("99:also unsupported")));
+
+		Map<Long, ParticipantPublicKeys.Issuer> issuers = new HashMap<>();
+		issuers.put(99L, new ParticipantPublicKeys.Issuer("Unsupported", 99L, keys, new UnsupportedKeyFactory()));
+		ParticipantPublicKeys participantPublicKeys = new ParticipantPublicKeys(issuers);
+
+		ParticipantPublicKeys.Issuer issuer = participantPublicKeys.getIssuer(99);
+
+		// not known until the keys are created
+		assertEquals(List.of(), issuer.getUnsupportedKeys());
+
+		// both are invalid
+		assertEquals(2, participantPublicKeys.createKeys());
+
+		List<String> unsupported = new ArrayList<>();
+		for (ParticipantPublicKeys.IssuerKey key : issuer.getUnsupportedKeys()) {
+			unsupported.add(key.getKeyId());
+		}
+		assertEquals(List.of("99:also unsupported", "99:unsupported"), unsupported);
+	}
+
+	@Test
+	public void testKeysWhichCannotBeCreated() throws Exception {
+		List<ParticipantMetadata> participantMetadata = new ArrayList<>(readParticipantMetadata());
+
+		// not a point on the curve
+		MtbJwkPublic invalid = new MtbJwkPublic().kty("EC").kid("99:invalid").crv("P-256").x("AAAA").y("AAAA");
+		participantMetadata.add(new ParticipantMetadata().pid(99L).organisationName("Invalid").addMtbPublicKeysItem(invalid));
+
+		ParticipantPublicKeys participantPublicKeys = ParticipantPublicKeys.newBuilder().withParticipants(participantMetadata).build();
+
+		assertEquals(1, participantPublicKeys.createKeys());
+
+		// which one
+		List<UnableToConstructIssuerKeyException> failures = participantPublicKeys.getIssuer(99).createKeys();
+		assertEquals(1, failures.size());
+		assertEquals("Unable to create key 99:invalid for participant 99", failures.get(0).getMessage());
+		assertTrue(failures.get(0).getCause() instanceof UnableToConstructIssuerKeyException);
+		// a key which cannot be created is not a key whose type is not supported
+		assertEquals(List.of(), participantPublicKeys.getIssuer(99).getUnsupportedKeys());
+	}
+
+	/**
+	 * Factory which cannot create any key, as for key material which is not valid.
+	 */
+
+	private static class FailingKeyFactory extends IssuerSignatureFactory {
+
+		final AtomicInteger calls = new AtomicInteger();
+
+		FailingKeyFactory() throws Exception {
+			super();
+		}
+
+		@Override
+		public IssuerPublicKey createIssuerPublicKey(long pid, MtbJwkPublic jwkPublic) throws UnableToConstructIssuerKeyException {
+			calls.incrementAndGet();
+			throw new UnableToConstructIssuerKeyException("Broken");
+		}
+	}
+
+	@Test
+	public void testFailureIsRemembered() throws Exception {
+		FailingKeyFactory factory = new FailingKeyFactory();
+
+		Map<String, ParticipantPublicKeys.IssuerKey> keys = new HashMap<>();
+		keys.put("99:broken", new ParticipantPublicKeys.IssuerKey(new MtbJwkPublic().kty("EC").kid("99:broken")));
+		Map<Long, ParticipantPublicKeys.Issuer> issuers = new HashMap<>();
+		issuers.put(99L, new ParticipantPublicKeys.Issuer("Broken", 99L, keys, factory));
+		ParticipantPublicKeys participantPublicKeys = new ParticipantPublicKeys(issuers);
+
+		UnableToConstructIssuerKeyException first = assertThrows(UnableToConstructIssuerKeyException.class,
+				() -> participantPublicKeys.getIssuerPublicKey(99, "99:broken"));
+		UnableToConstructIssuerKeyException second = assertThrows(UnableToConstructIssuerKeyException.class,
+				() -> participantPublicKeys.getIssuerPublicKey(99, "99:broken"));
+
+		// tried once, and reported every time, with the same cause
+		assertEquals(1, factory.calls.get());
+		assertNotSame(first, second);
+		assertSame(first.getCause(), second.getCause());
+		assertEquals("Unable to create key 99:broken for participant 99", first.getMessage());
+		assertEquals("Broken", first.getCause().getMessage());
+		assertTrue(keys.get("99:broken").hasFailure());
+
+		// invalid, but not a key whose type is not supported
+		assertEquals(1, participantPublicKeys.createKeys());
+		assertEquals(1, factory.calls.get());
+		assertEquals(List.of(), participantPublicKeys.getIssuer(99).getUnsupportedKeys());
 	}
 
 }

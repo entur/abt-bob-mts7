@@ -1,9 +1,8 @@
 package no.entur.abt.bob.mts7.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -30,6 +29,9 @@ import com.nimbusds.jose.crypto.impl.ECDSA;
 
 import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
+import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.TrustChainInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.UnknownIssuerKeyInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
 import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
 
@@ -141,8 +143,16 @@ public class VerifyMts7CardFactoryIssuerSignatureTest {
 	}
 
 	private byte[] header(String issuerId, String issuerKid, KeyPair tokenKeyPair) throws Exception {
+		return header("ES256", issuerId, issuerKid, tokenKeyPair);
+	}
+
+	/**
+	 * @param alg the algorithm of the issuer signature
+	 */
+
+	private byte[] header(String alg, String issuerId, String issuerKid, KeyPair tokenKeyPair) throws Exception {
 		Map<String, Object> header = new LinkedHashMap<>();
-		header.put("alg", "ES256");
+		header.put("alg", alg);
 		header.put("iid", issuerId);
 		header.put("kid", issuerKid);
 		header.put("miv", 6);
@@ -223,18 +233,8 @@ public class VerifyMts7CardFactoryIssuerSignatureTest {
 	private void assertRejected(ParticipantPublicKeys issuers, Mts7ApduPayloads payloads) throws Exception {
 		VerifyMts7CardFactory factory = new VerifyMts7CardFactory(issuers);
 
-		Mts7Card result;
-		try {
-			result = factory.create(payloads);
-		} catch (UnableToVerifyKeyPairException e) {
-			result = e.getResult();
-		} catch (UnableToVerifyTrustChainException e) {
-			result = e.getResult();
-		}
-		if (result.isVerifiedTrustChain() && result.isVerifiedPrivateKeyPresent()) {
-			fail("Card was trusted");
-		}
-		assertFalse(result.isVerifiedTrustChain(), "Trust chain must not be verified");
+		// without trustUnknownRootKeys, a card is only returned if its trust chain is verified
+		assertThrows(InvalidCardMts7Exception.class, () -> factory.create(payloads), "Card was trusted");
 	}
 
 	// genuine card
@@ -331,9 +331,44 @@ public class VerifyMts7CardFactoryIssuerSignatureTest {
 		byte[] getData = bundle(header, genuineSecondElement, signEc(issuerKeyPair.getPrivate(), signedData(header, genuineSecondElement)));
 
 		assertRejected(ecIssuer(77, "77:test", issuerKeyPair), payloads(getData, internalAuthenticate(tokenKeyPair)));
+
+		UnknownIssuerKeyInvalidCardMts7Exception e = assertThrows(UnknownIssuerKeyInvalidCardMts7Exception.class,
+				() -> new VerifyMts7CardFactory(ecIssuer(77, "77:test", issuerKeyPair)).create(payloads(getData, internalAuthenticate(tokenKeyPair))));
+		assertEquals(77, e.getIssuerId());
+		assertEquals("77:unknown", e.getKeyId());
 	}
 
 	// cards which are correctly signed by an issuer we know
+
+	@Test
+	public void testCardWithIndefiniteLengthBundleIsTrusted() throws Exception {
+		// MTS1 section 2.3: the issuer signs the array in the representation in which it assembles the bundle, which the verifier must detect
+		KeyPair tokenKeyPair = generateEc();
+		KeyPair issuerKeyPair = generateEc();
+
+		byte[] header = cbor.writeValueAsBytes(header("77", "77:test", tokenKeyPair));
+		byte[] second = cbor.writeValueAsBytes(genuineSecondElement);
+
+		ByteArrayOutputStream signed = new ByteArrayOutputStream();
+		signed.write(0x9F);
+		signed.write(header);
+		signed.write(second);
+		signed.write(0xFF);
+		byte[] signature = cbor.writeValueAsBytes(signEc(issuerKeyPair.getPrivate(), signed.toByteArray()));
+
+		ByteArrayOutputStream p = new ByteArrayOutputStream();
+		p.write(0x9F);
+		p.write(header);
+		p.write(second);
+		p.write(signature);
+		p.write(0xFF);
+
+		Map<String, Object> outer = new LinkedHashMap<>();
+		outer.put("v", new byte[] { 0x61, 0x31 });
+		outer.put("p", p.toByteArray());
+
+		assertTrusted(ecIssuer(77, "77:test", issuerKeyPair), payloads(cbor.writeValueAsBytes(outer), internalAuthenticate(tokenKeyPair)));
+	}
 
 	@Test
 	public void testCardSignedByEcIssuerIsTrusted() throws Exception {
@@ -351,7 +386,8 @@ public class VerifyMts7CardFactoryIssuerSignatureTest {
 		KeyPair tokenKeyPair = generateEc();
 		KeyPair issuerKeyPair = generateRsa();
 
-		byte[] header = header("78", "78:test", tokenKeyPair);
+		// the card has an EC key, but the issuer signature is RS256
+		byte[] header = header("RS256", "78", "78:test", tokenKeyPair);
 		byte[] getData = bundle(header, genuineSecondElement, signRsa(issuerKeyPair.getPrivate(), signedData(header, genuineSecondElement)));
 
 		assertTrusted(rsaIssuer(78, "78:test", issuerKeyPair), payloads(getData, internalAuthenticate(tokenKeyPair)));
@@ -363,10 +399,39 @@ public class VerifyMts7CardFactoryIssuerSignatureTest {
 		KeyPair issuerKeyPair = generateRsa();
 		KeyPair attackerIssuerKeyPair = generateRsa();
 
-		byte[] header = header("78", "78:test", tokenKeyPair);
+		byte[] header = header("RS256", "78", "78:test", tokenKeyPair);
 		byte[] getData = bundle(header, genuineSecondElement, signRsa(attackerIssuerKeyPair.getPrivate(), signedData(header, genuineSecondElement)));
 
 		assertRejected(rsaIssuer(78, "78:test", issuerKeyPair), payloads(getData, internalAuthenticate(tokenKeyPair)));
+	}
+
+	@Test
+	public void testCardWithAlgorithmWhichDoesNotMatchTheIssuerKeyIsRejected() throws Exception {
+		// signed by the RSA issuer key, but the card says ES256
+		KeyPair tokenKeyPair = generateEc();
+		KeyPair issuerKeyPair = generateRsa();
+
+		byte[] header = header("ES256", "78", "78:test", tokenKeyPair);
+		byte[] getData = bundle(header, genuineSecondElement, signRsa(issuerKeyPair.getPrivate(), signedData(header, genuineSecondElement)));
+
+		TrustChainInvalidCardMts7Exception e = assertThrows(TrustChainInvalidCardMts7Exception.class,
+				() -> new VerifyMts7CardFactory(rsaIssuer(78, "78:test", issuerKeyPair)).create(payloads(getData, internalAuthenticate(tokenKeyPair))));
+		assertEquals("Issuer signature algorithm ES256 does not match issuer public key 78:test of participant 78 (RS256)", e.getMessage());
+	}
+
+	@Test
+	public void testCardWithAlgorithmNotInTheSpecificationIsRejected() throws Exception {
+		KeyPair tokenKeyPair = generateEc();
+		KeyPair issuerKeyPair = generateEc();
+
+		byte[] header = header("HS256", "77", "77:test", tokenKeyPair);
+		byte[] getData = bundle(header, genuineSecondElement, signEc(issuerKeyPair.getPrivate(), signedData(header, genuineSecondElement)));
+
+		// malformed, as MTS1 does not have the algorithm: not a trust chain failure
+		InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class,
+				() -> new VerifyMts7CardFactory(ecIssuer(77, "77:test", issuerKeyPair)).create(payloads(getData, internalAuthenticate(tokenKeyPair))));
+		assertEquals(InvalidCardMts7Exception.class, e.getClass());
+		assertEquals("Issuer signature algorithm HS256 is not ES256 or RS256", e.getMessage());
 	}
 
 	@Test

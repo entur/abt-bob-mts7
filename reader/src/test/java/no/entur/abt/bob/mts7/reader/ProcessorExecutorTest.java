@@ -1,6 +1,7 @@
 package no.entur.abt.bob.mts7.reader;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -10,6 +11,7 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -21,7 +23,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import no.entur.abt.bob.mts7.core.Mts7Card;
-import no.entur.abt.bob.mts7.core.UnableToVerifyKeyPairException;
 import no.entur.abt.bob.mts7.reader.processor.Mts7Processor;
 import no.entur.abt.bob.mts7.reader.processor.Mts7ProcessorFactory;
 import no.entur.abt.bob.mts7.reader.processor.VerifyKeyPairMts7ProcessorFactory;
@@ -198,7 +199,9 @@ public class ProcessorExecutorTest extends AbstractTest {
 		assertThrows(RejectedExecutionException.class, processor::start);
 
 		assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
-			assertThrows(UnableToVerifyKeyPairException.class, () -> processor.waitForVerify(0));
+			// a problem with the verifier, not on the card side
+			ExecutionException e = assertThrows(ExecutionException.class, () -> processor.waitForVerify(0));
+			assertInstanceOf(RejectedExecutionException.class, e.getCause());
 		});
 	}
 

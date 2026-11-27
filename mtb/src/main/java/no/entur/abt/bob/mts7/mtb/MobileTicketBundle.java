@@ -22,13 +22,33 @@ public class MobileTicketBundle {
 
 	private final byte[][] signedElements;
 
+	// the input to the signing function, in the representation of the bundle; created on demand if not given
+	private volatile byte[] signedData;
+
 	private final byte[] signature;
 
 	private final IssuerSignatureProtectedHeader issuerSignatureProtectedHeader;
 
 	public MobileTicketBundle(String majorVersion, byte[][] signedElements, byte[] signature, IssuerSignatureProtectedHeader issuerSignatureProtectedHeader) {
+		this(majorVersion, signedElements, null, signature, issuerSignatureProtectedHeader);
+	}
+
+	/**
+	 * Constructor.
+	 *
+	 * @param majorVersion                   the major version (v), or null
+	 * @param signedElements                 the CBOR encoded elements which are signed by the issuer
+	 * @param signedData                     the input to the signing function as encoded in the bundle (see {@linkplain #getSignedData()}), or null for the
+	 *                                       recommended representation
+	 * @param signature                      the issuer signature over the signed data
+	 * @param issuerSignatureProtectedHeader the decoded Issuer Signature Protected Header
+	 */
+
+	public MobileTicketBundle(String majorVersion, byte[][] signedElements, byte[] signedData, byte[] signature,
+			IssuerSignatureProtectedHeader issuerSignatureProtectedHeader) {
 		this.majorVersion = majorVersion;
 		this.signedElements = signedElements;
+		this.signedData = signedData;
 		this.signature = signature;
 		this.issuerSignatureProtectedHeader = issuerSignatureProtectedHeader;
 	}
@@ -59,6 +79,23 @@ public class MobileTicketBundle {
 
 	public byte[][] getSignedElements() {
 		return signedElements;
+	}
+
+	/**
+	 * The input to the issuer signing function: the Issuer Signed Ticket Bundle without the signature. A parsed bundle has it in the representation in which it
+	 * was encoded, as MTS1 (section 2.3) requires the issuer to use the same representation when signing as when assembling the bundle; otherwise it is in the
+	 * recommended representation.
+	 *
+	 * @return the CBOR encoded signed data
+	 */
+
+	public byte[] getSignedData() {
+		byte[] data = signedData;
+		if (data == null) {
+			data = new MobileTicketBundleWriter().writeSignedData(signedElements);
+			signedData = data;
+		}
+		return data;
 	}
 
 	/**

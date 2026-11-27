@@ -19,9 +19,9 @@ import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.mts7.core.LenientMts7CardFactory;
 import no.entur.abt.bob.mts7.core.Mts7ApduPayloads;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
-import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
 import no.entur.abt.bob.mts7.core.VerifyKeyPairMts7CardFactory;
 import no.entur.abt.bob.mts7.core.VerifyMts7CardFactory;
+import no.entur.abt.bob.mts7.core.exception.UnableToConstructIssuerKeyException;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.IssuerSignatureFactory;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
@@ -372,14 +372,9 @@ public class Mts7Warmup implements Runnable {
 				// unknown
 				continue;
 			}
-			for (String kid : issuer.getKeyIds()) {
-				try {
-					if (issuer.getKey(kid) == null) {
-						failures.add(new UnableToConstructIssuerKeyException("Unsupported type of key " + kid + " for participant " + pid));
-					}
-				} catch (UnableToConstructIssuerKeyException e) {
-					failures.add(new UnableToConstructIssuerKeyException("Unable to create key " + kid + " for participant " + pid, e));
-				}
+			failures.addAll(issuer.createKeys());
+			for (ParticipantPublicKeys.IssuerKey key : issuer.getUnsupportedKeys()) {
+				failures.add(new UnableToConstructIssuerKeyException("Unsupported type of key " + key.getKeyId() + " for participant " + pid));
 			}
 		}
 		return failures;

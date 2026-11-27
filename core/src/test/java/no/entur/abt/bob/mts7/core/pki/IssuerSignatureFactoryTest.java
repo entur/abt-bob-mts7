@@ -1,5 +1,6 @@
 package no.entur.abt.bob.mts7.core.pki;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -66,7 +67,7 @@ public class IssuerSignatureFactoryTest {
 		signature.initSign(keyPair.getPrivate());
 		signature.update(DATA);
 
-		assertTrue(issuerPublicKey.verify(DATA, ECDSA.transcodeSignatureToConcat(signature.sign(), 64)));
+		assertDoesNotThrow(() -> issuerPublicKey.verify(DATA, ECDSA.transcodeSignatureToConcat(signature.sign(), 64)));
 	}
 
 	@Test
@@ -90,7 +91,7 @@ public class IssuerSignatureFactoryTest {
 		signature.initSign(keyPair.getPrivate());
 		signature.update(DATA);
 
-		assertTrue(issuerPublicKey.verify(DATA, signature.sign()));
+		assertDoesNotThrow(() -> issuerPublicKey.verify(DATA, signature.sign()));
 	}
 
 	@Test

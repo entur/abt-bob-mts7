@@ -1,10 +1,12 @@
 package no.entur.abt.bob.mts7.reader;
 
 import java.io.Closeable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 
+import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.api.ReaderMts7Exception;
 import no.entur.abt.bob.mts7.core.Mts7Card;
-import no.entur.abt.bob.mts7.core.UnableToVerifyKeyPairException;
-import no.entur.abt.bob.mts7.core.UnableToVerifyTrustChainException;
 import no.entur.abt.bob.mts7.reader.processor.Mts7Processor;
 import no.entur.abt.bob.mts7.simple.api.Mts7ApduExchanges;
 
@@ -31,7 +33,20 @@ public class InFlightMts7Card implements Closeable {
 		return mts7ApduExchanges;
 	}
 
-	public Mts7Card getMts7Card(long timeout) throws InterruptedException, UnableToVerifyKeyPairException, UnableToVerifyTrustChainException {
+	/**
+	 * Get the card, as verified while it was read.
+	 *
+	 * @param timeout time to wait in milliseconds, or zero to wait until the processing is finished
+	 * @return the verified card
+	 * @throws InterruptedException     if interrupted while waiting
+	 * @throws InvalidCardMts7Exception if the card is not valid, or could not be verified (a problem on the card side)
+	 * @throws ReaderMts7Exception      if the card was not completely read, as it was closed or not read in time, or the input was not as MTS7 specifies (a
+	 *                                  problem with the reader)
+	 * @throws TimeoutException         if the processing did not finish within the timeout
+	 * @throws ExecutionException       if the processing failed because of a problem with the verifier, which is the cause
+	 */
+
+	public Mts7Card getMts7Card(long timeout) throws InterruptedException, InvalidCardMts7Exception, ReaderMts7Exception, TimeoutException, ExecutionException {
 		return processor.waitForVerify(timeout);
 	}
 

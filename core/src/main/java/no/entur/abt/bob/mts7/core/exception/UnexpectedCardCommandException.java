@@ -1,8 +1,12 @@
-package no.entur.abt.bob.mts7.core;
+package no.entur.abt.bob.mts7.core.exception;
 
-import no.entur.abt.bob.mts7.api.Mts7Exception;
+import no.entur.abt.bob.mts7.api.ReaderMts7Exception;
 
-public class UnexpectedCardCommandException extends Mts7Exception {
+/**
+ * A command in the exchanges with the card is not one which a reader following MTS7 sends at that point (a problem with the reader).
+ */
+
+public class UnexpectedCardCommandException extends ReaderMts7Exception {
 
 	private static final long serialVersionUID = 1L;
 
@@ -14,7 +18,7 @@ public class UnexpectedCardCommandException extends Mts7Exception {
 	}
 
 	public UnexpectedCardCommandException(byte[] command, byte[] response) {
-		super();
+		super("Unexpected command in the exchanges with the card");
 		this.command = command;
 		this.response = response;
 	}

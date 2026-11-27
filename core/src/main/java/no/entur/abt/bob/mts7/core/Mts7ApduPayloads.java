@@ -2,6 +2,8 @@ package no.entur.abt.bob.mts7.core;
 
 import java.util.Arrays;
 
+import no.entur.abt.bob.mts7.api.ReaderMts7Exception;
+
 /**
  * 
  * DTO for holding the interesting payloads from the exchanged APDUs.
@@ -13,10 +15,34 @@ public class Mts7ApduPayloads {
 	private byte[] tagId;
 
 	private byte[] selectApplicationOutput;
+	private byte[] applicationRelatedDataOutput;
 	private byte[] getDataOutput;
 
 	private byte[] internalAuthenticateInput;
 	private byte[] internalAuthenticateOutput;
+
+	// not part of equals and hashCode
+	private ReaderMts7Exception readerProblem;
+
+	/**
+	 * A problem with the reader, because of which a response is missing which is not needed to check the card at door 2 (the select application response, the
+	 * application-related data and the signature). It is reported only once the card has been checked as far as it can be, so that a card which is not valid is
+	 * to blame for that, whatever else it did.
+	 *
+	 * @return the problem, or null if none
+	 */
+
+	public ReaderMts7Exception getReaderProblem() {
+		return readerProblem;
+	}
+
+	public boolean hasReaderProblem() {
+		return readerProblem != null;
+	}
+
+	public void setReaderProblem(ReaderMts7Exception readerProblem) {
+		this.readerProblem = readerProblem;
+	}
 
 	public byte[] getGetDataOutput() {
 		return getDataOutput;
@@ -58,6 +84,22 @@ public class Mts7ApduPayloads {
 		return selectApplicationOutput != null;
 	}
 
+	/**
+	 * @return the response to GET DATA of the application-related data (6E), for a card whose select application response does not have it, or null
+	 */
+
+	public byte[] getApplicationRelatedDataOutput() {
+		return applicationRelatedDataOutput;
+	}
+
+	public void setApplicationRelatedDataOutput(byte[] applicationRelatedDataOutput) {
+		this.applicationRelatedDataOutput = applicationRelatedDataOutput;
+	}
+
+	public boolean hasApplicationRelatedDataOutput() {
+		return applicationRelatedDataOutput != null;
+	}
+
 	public byte[] getInternalAuthenticateOutput() {
 		return internalAuthenticateOutput;
 	}
@@ -74,6 +116,7 @@ public class Mts7ApduPayloads {
 	public int hashCode() {
 		final int prime = 31;
 		int result = 1;
+		result = prime * result + Arrays.hashCode(applicationRelatedDataOutput);
 		result = prime * result + Arrays.hashCode(getDataOutput);
 		result = prime * result + Arrays.hashCode(internalAuthenticateInput);
 		result = prime * result + Arrays.hashCode(internalAuthenticateOutput);
@@ -93,7 +136,8 @@ public class Mts7ApduPayloads {
 		Mts7ApduPayloads other = (Mts7ApduPayloads) obj;
 		return Arrays.equals(getDataOutput, other.getDataOutput) && Arrays.equals(internalAuthenticateInput, other.internalAuthenticateInput)
 				&& Arrays.equals(internalAuthenticateOutput, other.internalAuthenticateOutput)
-				&& Arrays.equals(selectApplicationOutput, other.selectApplicationOutput) && Arrays.equals(tagId, other.tagId);
+				&& Arrays.equals(selectApplicationOutput, other.selectApplicationOutput)
+				&& Arrays.equals(applicationRelatedDataOutput, other.applicationRelatedDataOutput) && Arrays.equals(tagId, other.tagId);
 	}
 
 }

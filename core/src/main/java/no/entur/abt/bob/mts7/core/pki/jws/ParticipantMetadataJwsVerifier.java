@@ -19,7 +19,7 @@ import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.KeyConverter;
 import com.nimbusds.jose.proc.JWSVerifierFactory;
 
-import no.entur.abt.bob.mts7.core.UnableToVerifyParticipantMetadataException;
+import no.entur.abt.bob.mts7.core.exception.UnableToVerifyParticipantMetadataException;
 
 /**
  * Verify participant metadata wrapped in a JWS (general JSON serialization).
