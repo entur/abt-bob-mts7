@@ -3,6 +3,8 @@ package no.entur.abt.bob.mts7.reader;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -16,8 +18,10 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import no.entur.abt.bob.mts7.api.InsufficientCardCommandsException;
-import no.entur.abt.bob.mts7.api.MalformedCardResponseException;
+import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.api.Mts7Exception;
 import no.entur.abt.bob.mts7.api.UnexpectedCardResponseException;
+import no.entur.abt.bob.mts7.core.KeyPairInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.LenientMts7ApduPayloadsFactory;
 import no.entur.abt.bob.mts7.core.Mts7ApduPayloads;
 import no.entur.abt.bob.mts7.core.Mts7ApduPayloadsFactory;
@@ -313,7 +317,7 @@ public class ApduLengthTest extends AbstractExecutorTest {
 	}
 
 	/**
-	 * A reader whose responses are shorter than a status word, which no card returns.
+	 * A card whose response is shorter than a status word.
 	 */
 
 	private static class ShortResponseCard extends SimulatedCard {
@@ -333,9 +337,10 @@ public class ApduLengthTest extends AbstractExecutorTest {
 	}
 
 	@Test
-	public void testResponseWithoutStatusWordIsReaderProblem() throws Exception {
-		assertThrows(MalformedCardResponseException.class, () -> read(new DefaultMts7Card(new ShortResponseCard()), random()));
-		assertThrows(MalformedCardResponseException.class, () -> readWithProcessor(new DefaultMts7Card(new ShortResponseCard()), random()));
+	public void testResponseWithoutStatusWordIsCardProblem() throws Exception {
+		// read from the card as it is, so it came from the card, which a card which is not valid can send
+		assertThrows(UnexpectedCardResponseException.class, () -> read(new DefaultMts7Card(new ShortResponseCard()), random()));
+		assertThrows(UnexpectedCardResponseException.class, () -> readWithProcessor(new DefaultMts7Card(new ShortResponseCard()), random()));
 	}
 
 	/**
@@ -436,5 +441,121 @@ public class ApduLengthTest extends AbstractExecutorTest {
 				processor.close();
 			}
 		}
+	}
+
+	// a card which is not valid is to blame for that, whatever else it did
+
+	/**
+	 * A card without the application-related data in its select application response, which rejects GET DATA of it with wrong length, which it need not accept,
+	 * as MTS7 has no example of it.
+	 */
+
+	private static class WrongLengthApplicationRelatedDataCard extends SimulatedCard {
+
+		public WrongLengthApplicationRelatedDataCard(byte[] selectApplicationResponse, byte[] internalAuthenticateResponse) {
+			super(selectApplicationResponse, true, 1024, mtb(participant10), internalAuthenticateResponse);
+		}
+
+		@Override
+		public byte[] transceive(byte[] command) throws IOException {
+			if (Arrays.equals(command, Mts7ApduExchangesFactory.GET_APPLICATION_RELATED_DATA_COMMAND)) {
+				getCommands().add(command);
+				return SimulatedCard.WRONG_LENGTH;
+			}
+			return super.transceive(command);
+		}
+	}
+
+	private static byte[] clonedSignature() {
+		byte[] response = lastResponse(participant10).clone();
+		response[0] ^= 0x01;
+		return response;
+	}
+
+	private Mts7Exception verifyWithProcessor(no.entur.abt.bob.mts7.utils.nfc.Card card) throws Exception {
+		Mts7Processor processor = new VerifyKeyPairMts7ProcessorFactory(executor).create();
+		processor.start();
+		try {
+			new ProcessorMts7ApduExchangesFactory(MockRandomFactory.newInstance(participant10.getRandomValue())).create(new DefaultMts7Card(card), processor,
+					null);
+			processor.waitForVerify(0);
+			return null;
+		} catch (Mts7Exception e) {
+			return e;
+		} finally {
+			processor.close();
+		}
+	}
+
+	@Test
+	public void testCardIsToBlameBeforeTheApplicationRelatedData() throws Exception {
+		byte[] empty = ByteArrayHexStringConverter.hexStringToByteArray("9000");
+
+		// the reader reads on, and the missing application-related data is only a problem with the reader if the card is valid
+		WrongLengthApplicationRelatedDataCard genuine = new WrongLengthApplicationRelatedDataCard(empty, lastResponse(participant10));
+		Mts7ApduExchanges exchanges = read(new DefaultMts7Card(genuine), MockRandomFactory.newInstance(participant10.getRandomValue()));
+		Mts7ApduPayloads payloads = new Mts7ApduPayloadsFactory().createCard(exchanges);
+		assertThrows(InsufficientCardCommandsException.class, () -> new VerifyKeyPairMts7CardFactory().create(payloads));
+		assertInstanceOf(InsufficientCardCommandsException.class,
+				verifyWithProcessor(new WrongLengthApplicationRelatedDataCard(empty, lastResponse(participant10))));
+
+		// a cloned card is to blame
+		WrongLengthApplicationRelatedDataCard cloned = new WrongLengthApplicationRelatedDataCard(empty, clonedSignature());
+		Mts7ApduExchanges clonedExchanges = read(new DefaultMts7Card(cloned), MockRandomFactory.newInstance(participant10.getRandomValue()));
+		Mts7ApduPayloads clonedPayloads = new Mts7ApduPayloadsFactory().createCard(clonedExchanges);
+		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> new VerifyKeyPairMts7CardFactory().create(clonedPayloads));
+		assertInstanceOf(KeyPairInvalidCardMts7Exception.class, verifyWithProcessor(new WrongLengthApplicationRelatedDataCard(empty, clonedSignature())));
+	}
+
+	@Test
+	public void testPaddingBeforeTheApplicationRelatedData() throws Exception {
+		// 'FF' is padding (ISO/IEC 7816-4 section 5.2.2), so the reader does not retrieve the application-related data with GET DATA
+		byte[] recorded = getResponse(participant10, 0);
+		byte[] padded = new byte[recorded.length + 1];
+		padded[0] = (byte) 0xFF;
+		System.arraycopy(recorded, 0, padded, 1, recorded.length);
+
+		WrongLengthApplicationRelatedDataCard card = new WrongLengthApplicationRelatedDataCard(padded, lastResponse(participant10));
+		Mts7ApduExchanges exchanges = read(new DefaultMts7Card(card), MockRandomFactory.newInstance(participant10.getRandomValue()));
+		// select application, get next data and internal authenticate
+		assertEquals(3, card.getCommands().size());
+
+		Mts7Card verified = new VerifyKeyPairMts7CardFactory().create(new Mts7ApduPayloadsFactory().createCard(exchanges));
+		assertTrue(verified.isVerifiedPrivateKeyPresent());
+		assertEquals(10, verified.getParticipantIdentifier());
+		assertNull(verifyWithProcessor(new WrongLengthApplicationRelatedDataCard(padded, lastResponse(participant10))));
+	}
+
+	/**
+	 * A card with a malformed MTB, which stops responding at internal authenticate.
+	 */
+
+	private static class SilentCard extends SimulatedCard {
+
+		public SilentCard(byte[] mtb) {
+			super(participant10, true, 1024, mtb);
+		}
+
+		@Override
+		public byte[] transceive(byte[] command) throws IOException {
+			if ((command[1] & 0xFF) == 0x88) {
+				getCommands().add(command);
+				throw new IOException("Tag was lost");
+			}
+			return super.transceive(command);
+		}
+	}
+
+	@Test
+	public void testCardWhichStopsRespondingIsToBlameForWhatWasRead() throws Exception {
+		InFlightMts7CardFactory factory = new InFlightMts7CardFactory(new VerifyKeyPairMts7ProcessorFactory(executor), random());
+
+		// not a Mobile Ticket Bundle
+		InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class,
+				() -> factory.create(new DefaultMts7Card(new SilentCard(new byte[] { (byte) 0xA0 })), null));
+		assertInstanceOf(IOException.class, e.getSuppressed()[0]);
+
+		// a valid MTB, so nothing shows that the card is not valid
+		assertThrows(IOException.class, () -> factory.create(new DefaultMts7Card(new SilentCard(mtb(participant10))), null));
 	}
 }

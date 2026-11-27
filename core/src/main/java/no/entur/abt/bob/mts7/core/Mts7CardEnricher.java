@@ -6,7 +6,6 @@ import no.entur.abt.bob.mts7.api.InsufficientCardCommandsException;
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.api.MalformedCardResponseException;
 import no.entur.abt.bob.mts7.api.ReaderMts7Exception;
-import no.entur.tlv.parser.LenientTlvPullParser;
 
 /**
  * Enrich a card with its application-related data (6E), from the select application response or from GET DATA of it: the application identifier (version,
@@ -64,9 +63,9 @@ public class Mts7CardEnricher {
 		boolean malformedSelect = false;
 		if (selectApplicationResponsePayload != null) {
 			try {
-				fromSelect = parseTemplates(card, newParser(selectApplicationResponsePayload));
+				fromSelect = parseTemplates(card, selectApplicationResponsePayload);
 			} catch (RuntimeException e) {
-				// the parsing is lenient, so this is not expected
+				// not expected
 				selectFailure = e;
 			}
 			malformedSelect = selectFailure != null || !isWellFormed(selectApplicationResponsePayload);
@@ -135,18 +134,114 @@ public class Mts7CardEnricher {
 
 	protected int parse(Mts7Card card, byte[] payload, String what) throws InvalidCardMts7Exception {
 		try {
-			return parseTemplates(card, newParser(payload));
+			return parseTemplates(card, payload);
 		} catch (RuntimeException e) {
-			// the parsing is lenient, so this is not expected; whatever is wrong with the response, it came from the card
+			// not expected; whatever is wrong with the response, it came from the card
 			throw new InvalidCardMts7Exception("Malformed " + what, e);
 		}
 	}
 
-	private static LenientTlvPullParser newParser(byte[] payload) {
-		// the parser is stateful, and cheap to create
-		LenientTlvPullParser pullParser = new LenientTlvPullParser();
-		pullParser.setBuffer(payload);
-		return pullParser;
+	/**
+	 * Reads BER-TLV data objects one at a time, skipping padding ('00' or 'FF') before, between and after them (ISO/IEC 7816-4 section 5.2.2), as a reader
+	 * does. It stops at the first data object which is malformed.
+	 */
+
+	protected static final class DataObjectReader {
+
+		private static final int MAXIMUM_TAG_BYTES = 3;
+
+		private final byte[] data;
+		private final int end;
+		private int position;
+
+		private int tag;
+		private int valueOffset;
+		private int valueLength;
+		private boolean malformed;
+
+		public DataObjectReader(byte[] data, int offset, int end) {
+			this.data = data;
+			this.position = offset;
+			this.end = end;
+		}
+
+		/**
+		 * @return true if there is another data object, false at the end or at a data object which is malformed (see {@linkplain #isMalformed()})
+		 */
+
+		public boolean next() {
+			while (position < end && (data[position] == 0x00 || data[position] == (byte) 0xFF)) {
+				position++;
+			}
+			if (position >= end) {
+				return false;
+			}
+			int i = position;
+			int t = data[i++] & 0xFF;
+			if ((t & 0x1F) == 0x1F) {
+				// subsequent tag bytes, the last one with b8 = 0
+				int count = 0;
+				int b;
+				do {
+					if (i >= end || ++count > MAXIMUM_TAG_BYTES) {
+						return malformed();
+					}
+					b = data[i++] & 0xFF;
+					t = (t << 8) | b;
+				} while ((b & 0x80) != 0);
+			}
+			if (i >= end) {
+				return malformed();
+			}
+			int first = data[i++] & 0xFF;
+			long length;
+			if (first < 0x80) {
+				length = first;
+			} else {
+				int count = first & 0x7F;
+				if (count == 0 || count > 4 || count > end - i) {
+					return malformed();
+				}
+				length = 0;
+				for (int k = 0; k < count; k++) {
+					length = (length << 8) | (data[i++] & 0xFF);
+				}
+			}
+			if (length > end - i) {
+				return malformed();
+			}
+			tag = t;
+			valueOffset = i;
+			valueLength = (int) length;
+			position = i + valueLength;
+			return true;
+		}
+
+		private boolean malformed() {
+			malformed = true;
+			position = end;
+			return false;
+		}
+
+		public int getTag() {
+			return tag;
+		}
+
+		public int getValueOffset() {
+			return valueOffset;
+		}
+
+		public int getValueLength() {
+			return valueLength;
+		}
+
+		public int getValueEnd() {
+			return valueOffset + valueLength;
+		}
+
+		public boolean isMalformed() {
+			return malformed;
+		}
 	}
 
 	/**
@@ -158,45 +253,11 @@ public class Mts7CardEnricher {
 	 */
 
 	static boolean isWellFormed(byte[] data) {
-		int i = 0;
-		while (i < data.length) {
-			int b = data[i++] & 0xFF;
-			if (b == 0x00 || b == 0xFF) {
-				// padding
-				continue;
-			}
-			if ((b & 0x1F) == 0x1F) {
-				// subsequent tag bytes, the last one with b8 = 0
-				do {
-					if (i >= data.length) {
-						return false;
-					}
-					b = data[i++] & 0xFF;
-				} while ((b & 0x80) != 0);
-			}
-			if (i >= data.length) {
-				return false;
-			}
-			int first = data[i++] & 0xFF;
-			long length;
-			if (first < 0x80) {
-				length = first;
-			} else {
-				int count = first & 0x7F;
-				if (count == 0 || count > 4 || count > data.length - i) {
-					return false;
-				}
-				length = 0;
-				for (int k = 0; k < count; k++) {
-					length = (length << 8) | (data[i++] & 0xFF);
-				}
-			}
-			if (length > data.length - i) {
-				return false;
-			}
-			i += (int) length;
+		DataObjectReader reader = new DataObjectReader(data, 0, data.length);
+		while (reader.next()) {
+			// check them all
 		}
-		return true;
+		return !reader.isMalformed();
 	}
 
 	/**
@@ -205,88 +266,63 @@ public class Mts7CardEnricher {
 	 * @return whether, and how, the application-related data was found
 	 */
 
-	protected int parseTemplates(Mts7Card card, LenientTlvPullParser pullParser) {
+	protected int parseTemplates(Mts7Card card, byte[] data) {
 		int status = NOT_FOUND;
-		do {
-			int tag = pullParser.nextTag();
-			if (tag == -1) {
-				break;
+		DataObjectReader reader = new DataObjectReader(data, 0, data.length);
+		while (reader.next()) {
+			if (reader.getTag() == FILE_MANAGEMENT_TEMPLATE) {
+				status = Math.max(status, parseFileManagementTemplate(card, data, reader.getValueOffset(), reader.getValueEnd()));
+			} else if (reader.getTag() == APPLICATION_RELATED_DATA) {
+				status = Math.max(status, parseApplicationRelatedData(card, data, reader.getValueOffset(), reader.getValueEnd()) ? VALID : INVALID);
 			}
-			if (tag == FILE_MANAGEMENT_TEMPLATE) {
-				status = Math.max(status, parseFileManagementTemplate(card, pullParser.parseTagLengthValuePayload()));
-			} else if (tag == APPLICATION_RELATED_DATA) {
-				status = Math.max(status, parseApplicationRelatedData(card, pullParser.parseTagLengthValuePayload()) ? VALID : INVALID);
-			}
-		} while (true);
+		}
 		return status;
 	}
 
-	private int parseFileManagementTemplate(Mts7Card card, LenientTlvPullParser payloadParser) {
+	private int parseFileManagementTemplate(Mts7Card card, byte[] data, int offset, int end) {
 		int status = NOT_FOUND;
-		do {
-			int tag = payloadParser.nextTag();
-			if (tag == -1) {
-				break;
+		DataObjectReader reader = new DataObjectReader(data, offset, end);
+		while (reader.next()) {
+			if (reader.getTag() == APPLICATION_RELATED_DATA) {
+				status = Math.max(status, parseApplicationRelatedData(card, data, reader.getValueOffset(), reader.getValueEnd()) ? VALID : INVALID);
 			}
-			if (tag == APPLICATION_RELATED_DATA) {
-				status = Math.max(status, parseApplicationRelatedData(card, payloadParser.parseTagLengthValuePayload()) ? VALID : INVALID);
-			}
-		} while (true);
+		}
 		return status;
 	}
 
 	/**
+	 * Parse the value of the application-related data (6E).
+	 *
+	 * @param card   the card
+	 * @param data   the data
+	 * @param offset the start of the value
+	 * @param end    the end of the value
 	 * @return whether a valid application identifier was found
 	 */
 
-	public boolean parseFileManagementData(Mts7Card card, LenientTlvPullParser payloadParser) {
+	protected boolean parseApplicationRelatedData(Mts7Card card, byte[] data, int offset, int end) {
 		boolean applicationIdentifier = false;
-		do {
-			int tag = payloadParser.nextTag();
-			if (tag == -1) {
-				break;
-			}
-
-			if (tag == APPLICATION_RELATED_DATA) {
-				applicationIdentifier |= parseApplicationRelatedData(card, payloadParser.parseTagLengthValuePayload());
-			}
-		} while (true);
-		return applicationIdentifier;
-	}
-
-	/**
-	 * @return whether a valid application identifier was found
-	 */
-
-	protected boolean parseApplicationRelatedData(Mts7Card card, LenientTlvPullParser payloadParser) {
-		boolean applicationIdentifier = false;
-		do {
-			int tag = payloadParser.nextTag();
-			if (tag == -1) {
-				break;
-			}
-			switch (tag) {
+		DataObjectReader reader = new DataObjectReader(data, offset, end);
+		while (reader.next()) {
+			int value = reader.getValueOffset();
+			switch (reader.getTag()) {
 			case APPLICATION_IDENTIFIER: {
-				byte[] payload = payloadParser.getPayload();
-
-				if (payload.length < APPLICATION_IDENTIFIER_LENGTH) {
+				if (reader.getValueLength() < APPLICATION_IDENTIFIER_LENGTH) {
 					// too short to contain the version, participant identifier and serial; ignore it
 					break;
 				}
 
 				// Version – This version, one byte; 0x01
-				int version = payload[6] & 0xFF;
+				int version = data[value + 6] & 0xFF;
 
 				// PID – Participant Identifier, two bytes, big endian byte order
-				int pid = ((payload[7] & 0xFF) << 8) + (payload[8] & 0xFF);
+				int pid = ((data[value + 7] & 0xFF) << 8) + (data[value + 8] & 0xFF);
 
-				// Serial – Serial number of the PICC, 7 bytes. 7 bytes. It set by the issuer and SHOULD be discontinuous to
-				// preclude guessing. . The serial number MAY be printed on the token and used as a reference for
-				// the token. In the conversion between the byte and integer format, big endian byte order SHALL be
-				// used.
+				// Serial – Serial number of the PICC, 7 bytes. It set by the issuer and SHOULD be discontinuous to preclude guessing. The serial number MAY be
+				// printed on the token and used as a reference for the token. In the conversion between the byte and integer format, big endian byte order
+				// SHALL be used.
 
-				byte[] serial = new byte[7];
-				System.arraycopy(payload, 9, serial, 0, 7);
+				byte[] serial = Arrays.copyOfRange(data, value + 9, value + 16);
 
 				card.setVersion(version);
 				card.setParticipantIdentifier(pid);
@@ -296,80 +332,55 @@ public class Mts7CardEnricher {
 				break;
 			}
 			case SECURITY_SUPPORT_DATA: {
-				parseSecuritySupportData(card, payloadParser.parseTagLengthValuePayload());
+				parseSecuritySupportData(card, data, value, reader.getValueEnd());
 				break;
 			}
 			case LIFECYCLE_STATUS_BYTE: {
-				if (payloadParser.getBufferPayloadLength() < 1) {
-					// there is no status byte; the byte at the offset belongs to something else
+				if (reader.getValueLength() < 1) {
+					// there is no status byte
 					break;
 				}
-				int code = payloadParser.getBuffer()[payloadParser.getBufferPayloadOffset()] & 0xFF;
-
-				card.setLifeCycleStatus(LifecycleStatus.parse(code));
-
+				card.setLifeCycleStatus(LifecycleStatus.parse(data[value] & 0xFF));
 				break;
 			}
 			case EXTENDED_LENGTH_INFORMATION: {
-				parseExtendedLengthInformation(card, payloadParser.parseTagLengthValuePayload());
-
+				parseExtendedLengthInformation(card, data, value, reader.getValueEnd());
 				break;
 			}
+			default:
 			}
-
-		} while (true);
+		}
 		return applicationIdentifier;
 	}
 
-	private void parseSecuritySupportData(Mts7Card card, LenientTlvPullParser payloadParser) {
-		do {
-			int tag = payloadParser.nextTag();
-			if (tag == -1) {
-				break;
+	private void parseSecuritySupportData(Mts7Card card, byte[] data, int offset, int end) {
+		DataObjectReader reader = new DataObjectReader(data, offset, end);
+		while (reader.next()) {
+			if (reader.getTag() == DIGITAL_SIGNATURE_COUNTER) {
+				card.setSignatureCounter(readNumber(data, reader.getValueOffset(), reader.getValueLength()));
 			}
-			switch (tag) {
-			case DIGITAL_SIGNATURE_COUNTER: {
-				int value = readNumberPayload(payloadParser);
-
-				card.setSignatureCounter(value);
-				break;
-			}
-			}
-		} while (true);
+		}
 	}
 
-	private void parseExtendedLengthInformation(Mts7Card card, LenientTlvPullParser payloadParser) {
-		do {
-			int tag = payloadParser.nextTag();
-			if (tag == -1) {
-				break;
-			}
-			switch (tag) {
-			case MAXIMUM_APDU_LENGTH: {
-				int value = readNumberPayload(payloadParser);
+	private void parseExtendedLengthInformation(Mts7Card card, byte[] data, int offset, int end) {
+		DataObjectReader reader = new DataObjectReader(data, offset, end);
+		while (reader.next()) {
+			if (reader.getTag() == MAXIMUM_APDU_LENGTH) {
+				int value = readNumber(data, reader.getValueOffset(), reader.getValueLength());
 
 				if (card.hasMaximumCommandApduLength()) {
 					card.setMaximumResponseApduLength(value);
 				} else {
 					card.setMaximumCommandApduLength(value);
 				}
-				break;
 			}
-			}
-		} while (true);
+		}
 	}
 
-	private int readNumberPayload(LenientTlvPullParser payloadParser) {
-		byte[] buffer = payloadParser.getBuffer();
-
-		int length = payloadParser.getBufferPayloadLength();
-
+	private static int readNumber(byte[] data, int offset, int length) {
 		int value = 0;
-		for (int i = length - 1; i >= 0; i--) {
-			int v = buffer[payloadParser.getBufferPayloadOffset() + i] & 0xFF;
-			int shift = length - 1 - i;
-
-			value += (v << (8 * shift));
+		for (int i = 0; i < length; i++) {
+			value = (value << 8) | (data[offset + i] & 0xFF);
 		}
 		return value;
 	}

@@ -56,12 +56,29 @@ public class Mts7ApduExchangesFactory {
 		this(new SecureRandom());
 	}
 
+	/**
+	 * Read the card: select application, the application-related data if the select application response does not have it, the first MTB, and internal
+	 * authenticate.
+	 * <p>
+	 * A problem with the reader which does not stop the card from being checked is left to whoever checks it from the exchanges, so that a card which is not
+	 * valid is to blame for that, whatever else it did: if the rest of the select application response or the application-related data could not be retrieved,
+	 * the card is read on.
+	 *
+	 * @param mts7Exchange              the card
+	 * @param selectApplicationResponse the response to select application, if it has already been sent, otherwise null
+	 * @return the exchanges
+	 * @throws IOException   if the card cannot be reached
+	 * @throws Mts7Exception if the card does not respond with success ({@linkplain no.entur.abt.bob.mts7.api.InvalidCardMts7Exception}, a problem on the card
+	 *                       side), or the response could not be retrieved ({@linkplain no.entur.abt.bob.mts7.api.ReaderMts7Exception}, a problem with the
+	 *                       reader)
+	 */
+
 	public Mts7ApduExchanges createCard(Mts7Exchange mts7Exchange, byte[] selectApplicationResponse) throws IOException, Mts7Exception {
 		DefaultMts7Exchange card = new DefaultMts7Exchange(mts7Exchange);
 
 		byte[] selectApplication = handleSelectApplication(selectApplicationResponse, card);
-		if (!hasApplicationRelatedData(selectApplication)) {
-			handleGetApplicationRelatedData(card);
+		if (selectApplication == null || !hasApplicationRelatedData(selectApplication)) {
+			handleGetApplicationRelatedDataIfPossible(card);
 		}
 
 		handleGetNextData(card);
@@ -124,9 +141,22 @@ public class Mts7ApduExchangesFactory {
 		return transceiveAll(card, GET_NEXT_DATA_COMMAND, getNextDataResponse, GET_RESPONSE_COMMAND);
 	}
 
+	/**
+	 * Select the application (MTS7 section 4.1.1).
+	 *
+	 * @param selectApplicationResponse the response, if select application has already been sent, otherwise null
+	 * @param card                      the card
+	 * @return the complete response, with the status word; or null if the card selected the application, but the rest of its response could not be retrieved
+	 *         (then the application-related data is to be retrieved with GET DATA)
+	 * @throws IOException   if the card cannot be reached
+	 * @throws Mts7Exception if the card does not select the application ({@linkplain UnableToSelectApplicationException}, a problem on the card side), or the
+	 *                       command could not be sent with lengths which the card accepts ({@linkplain InsufficientCardCommandsException}, a problem with the
+	 *                       reader)
+	 */
+
 	protected byte[] handleSelectApplication(byte[] selectApplicationResponse, DefaultMts7Exchange card) throws IOException, Mts7Exception {
 		if (selectApplicationResponse != null) {
-			checkResponse(selectApplicationResponse);
+			checkResponse(SELECT_BOB_COMMAND, selectApplicationResponse);
 			card.add(SELECT_BOB_COMMAND, selectApplicationResponse);
 		}
 		try {
@@ -134,6 +164,32 @@ public class Mts7ApduExchangesFactory {
 			return transceiveAll(card, SELECT_BOB_COMMAND, selectApplicationResponse, GET_RESPONSE_SHORT_LENGTH_COMMAND);
 		} catch (UnexpectedCardResponseException e) {
 			throw new UnableToSelectApplicationException(e.getCommand(), e.getResponse());
+		} catch (InsufficientCardCommandsException e) {
+			if ((e.getCommand()[1] & 0xFF) == 0xC0) {
+				// The card has selected the application (61xx), but the rest of its response could not be retrieved. Only the application-related data is
+				// needed from it, which can also be retrieved with GET DATA.
+				return null;
+			}
+			// the card did not execute select application, which everything else depends on
+			throw e;
+		}
+	}
+
+	/**
+	 * Get the application-related data (6E), unless it could not be retrieved because of a problem with the reader, which is then left to whoever checks the
+	 * card, as it is not needed to check it at door 2 or 3.
+	 *
+	 * @param card the card
+	 * @return the response, with the status word, or null if it could not be retrieved
+	 * @throws IOException   if the card cannot be reached
+	 * @throws Mts7Exception if the card does not respond with success (a problem on the card side)
+	 */
+
+	protected byte[] handleGetApplicationRelatedDataIfPossible(Mts7Exchange card) throws IOException, Mts7Exception {
+		try {
+			return handleGetApplicationRelatedData(card);
+		} catch (InsufficientCardCommandsException e) {
+			return null;
 		}
 	}
 
@@ -362,20 +418,33 @@ public class Mts7ApduExchangesFactory {
 	 * @param card    the card
 	 * @param command the command
 	 * @return the response, which has at least a status word
-	 * @throws IOException                    if the card cannot be reached
-	 * @throws MalformedCardResponseException if the response is shorter than a status word, which no card returns (a problem with the reader)
+	 * @throws IOException                     if the card cannot be reached
+	 * @throws MalformedCardResponseException  if there is no response (a problem with the reader)
+	 * @throws UnexpectedCardResponseException if the response is shorter than a status word (a problem on the card side)
 	 */
 
-	protected static byte[] transceive(Mts7Exchange card, byte[] command) throws IOException, MalformedCardResponseException {
+	protected static byte[] transceive(Mts7Exchange card, byte[] command) throws IOException, MalformedCardResponseException, UnexpectedCardResponseException {
 		byte[] response = card.transceive(command);
-		checkResponse(response);
+		checkResponse(command, response);
 		return response;
 	}
 
-	protected static void checkResponse(byte[] response) throws MalformedCardResponseException {
-		if (response == null || response.length < 2) {
-			throw new MalformedCardResponseException(
-					"Response " + (response == null ? "missing" : "of " + response.length + " bytes") + ", without a status word");
+	/**
+	 * Check that a response from the card has a status word. A response read from the card as it is (see {@linkplain Mts7Exchange#transceive(byte[])}) which is
+	 * shorter than that came from the card, which a card which is not valid can send.
+	 *
+	 * @param command  the command
+	 * @param response the response
+	 * @throws MalformedCardResponseException  if there is no response (a problem with the reader)
+	 * @throws UnexpectedCardResponseException if the response is shorter than a status word (a problem on the card side)
+	 */
+
+	protected static void checkResponse(byte[] command, byte[] response) throws MalformedCardResponseException, UnexpectedCardResponseException {
+		if (response == null) {
+			throw new MalformedCardResponseException("Response missing, without a status word");
+		}
+		if (response.length < 2) {
+			throw new UnexpectedCardResponseException(command, response);
 		}
 	}
 

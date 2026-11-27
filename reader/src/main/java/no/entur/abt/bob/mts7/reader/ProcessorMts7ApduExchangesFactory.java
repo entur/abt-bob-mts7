@@ -46,11 +46,20 @@ public class ProcessorMts7ApduExchangesFactory extends Mts7ApduExchangesFactory 
 	protected void handleSelectApplication(DefaultMts7Exchange mts7Exchange, Mts7Processor processor, byte[] selectApplicationResponse)
 			throws IOException, Mts7Exception {
 		byte[] response = handleSelectApplication(selectApplicationResponse, mts7Exchange);
-		processor.onSelectApplicationResponseApdu(response);
+		if (response != null) {
+			processor.onSelectApplicationResponseApdu(response);
+		} else {
+			// the rest of the response could not be retrieved, so it is as if it does not have the application-related data
+			processor.onSelectApplication(new byte[0]);
+		}
 
-		if (!hasApplicationRelatedData(response)) {
+		if (response == null || !hasApplicationRelatedData(response)) {
 			// the card need not return it in the select application response (MTS7 section 4.1.1)
-			processor.onApplicationRelatedDataResponseApdu(handleGetApplicationRelatedData(mts7Exchange));
+			byte[] applicationRelatedData = handleGetApplicationRelatedDataIfPossible(mts7Exchange);
+			if (applicationRelatedData != null) {
+				processor.onApplicationRelatedDataResponseApdu(applicationRelatedData);
+			}
+			// otherwise the processor reports that it is missing, once it has checked the card
 		}
 	}
 

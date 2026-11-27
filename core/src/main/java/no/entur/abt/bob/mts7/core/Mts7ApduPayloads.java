@@ -2,6 +2,8 @@ package no.entur.abt.bob.mts7.core;
 
 import java.util.Arrays;
 
+import no.entur.abt.bob.mts7.api.ReaderMts7Exception;
+
 /**
  * 
  * DTO for holding the interesting payloads from the exchanged APDUs.
@@ -18,6 +20,29 @@ public class Mts7ApduPayloads {
 
 	private byte[] internalAuthenticateInput;
 	private byte[] internalAuthenticateOutput;
+
+	// not part of equals and hashCode
+	private ReaderMts7Exception readerProblem;
+
+	/**
+	 * A problem with the reader, because of which a response is missing which is not needed to check the card at door 2 (the select application response, the
+	 * application-related data and the signature). It is reported only once the card has been checked as far as it can be, so that a card which is not valid is
+	 * to blame for that, whatever else it did.
+	 *
+	 * @return the problem, or null if none
+	 */
+
+	public ReaderMts7Exception getReaderProblem() {
+		return readerProblem;
+	}
+
+	public boolean hasReaderProblem() {
+		return readerProblem != null;
+	}
+
+	public void setReaderProblem(ReaderMts7Exception readerProblem) {
+		this.readerProblem = readerProblem;
+	}
 
 	public byte[] getGetDataOutput() {
 		return getDataOutput;

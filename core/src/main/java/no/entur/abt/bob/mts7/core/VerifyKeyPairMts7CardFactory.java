@@ -90,18 +90,13 @@ public class VerifyKeyPairMts7CardFactory {
 	public Mts7Card create(Mts7ApduPayloads card) throws InvalidCardMts7Exception, ReaderMts7Exception, InfrastructureMts7Exception {
 		Mts7Card result = new Mts7Card();
 
-		// what is missing was not read, which is not the fault of the card
-		if (!card.hasSelectApplicationOutput() || !card.hasGetDataOutput() || !card.hasInternalAuthenticateOutput()) {
-			throw new MissingCardCommandsException("Missing response from the card");
-		}
-		byte[] challenge = card.getInternalAuthenticateInput();
-		if (challenge == null || challenge.length != Mts7ApduPayloadsFactory.CHALLENGE_LENGTH) {
-			// a SHA-256 hash (MTS7 section 4.1.4)
-			throw new MalformedCardCommandException("Challenge for internal authenticate of " + (challenge == null ? 0 : challenge.length) + " bytes, not "
-					+ Mts7ApduPayloadsFactory.CHALLENGE_LENGTH);
-		}
+		// The card is checked as far as it can be before a problem with the reader is reported, so that a card which is not valid is to blame for that,
+		// whatever else it did: door 3 needs the MTB and the signature, and the application-related data is read last.
 
-		enricher.enrich(result, card.getSelectApplicationOutput(), card.getApplicationRelatedDataOutput());
+		// what is missing was not read, which is not the fault of the card
+		if (!card.hasGetDataOutput()) {
+			throw VerifyMts7CardFactory.missing(card);
+		}
 
 		MobileTicketBundle mobileTicketBundle;
 		try {
@@ -128,7 +123,11 @@ public class VerifyKeyPairMts7CardFactory {
 		// from the same token public key as the public key of the card, which could be created, so a problem here is expected to be on our side
 		result.setThumbprint(thumbprintFactory.create(header));
 
-		iccPublicKey.verify(card.getInternalAuthenticateInput(), card.getInternalAuthenticateOutput());
+		VerifyMts7CardFactory.verifyPrivateKey(card, iccPublicKey);
+
+		VerifyMts7CardFactory.enrich(enricher, result, card);
+
+		// last, as the card has passed all of the checks
 		result.setVerifiedPrivateKeyPresent(true);
 
 		return result;

@@ -2,6 +2,7 @@ package no.entur.abt.bob.mts7.core;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -500,10 +501,13 @@ public class Mts7ApduPayloadsFactoryTest {
 
 		assertEquals(expectedPayloads(), payloads);
 
-		// the reader did not retrieve the rest
-		InsufficientCardCommandsException e = assertThrows(InsufficientCardCommandsException.class, () -> factory.createCard(
-				exchanges(SELECT_BOB_COMMAND, parts[0], GET_NEXT_DATA_COMMAND, GET_DATA_RESPONSE, INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE)));
-		assertArrayEquals(SELECT_BOB_COMMAND, e.getCommand());
+		// the reader did not retrieve the rest, which is reported once the card has been checked
+		Mts7ApduPayloads incomplete = factory.createCard(
+				exchanges(SELECT_BOB_COMMAND, parts[0], GET_NEXT_DATA_COMMAND, GET_DATA_RESPONSE, INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE));
+		assertFalse(incomplete.hasSelectApplicationOutput());
+		assertArrayEquals(SELECT_BOB_COMMAND, assertInstanceOf(InsufficientCardCommandsException.class, incomplete.getReaderProblem()).getCommand());
+		assertArrayEquals(fromResponseApdu(GET_DATA_RESPONSE), incomplete.getGetDataOutput());
+		assertArrayEquals(fromResponseApdu(SIGNATURE_RESPONSE), incomplete.getInternalAuthenticateOutput());
 	}
 
 	@Test
@@ -514,10 +518,12 @@ public class Mts7ApduPayloadsFactoryTest {
 
 		assertEquals(expectedPayloads(), payloads);
 
-		// the reader did not retrieve the rest
-		InsufficientCardCommandsException e = assertThrows(InsufficientCardCommandsException.class, () -> factory.createCard(
-				exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE, GET_NEXT_DATA_COMMAND, GET_DATA_RESPONSE, INTERNAL_AUTHENTICATE_COMMAND, parts[0])));
-		assertArrayEquals(INTERNAL_AUTHENTICATE_COMMAND, e.getCommand());
+		// the reader did not retrieve the rest, which is reported once the card has been checked at door 2
+		Mts7ApduPayloads incomplete = factory.createCard(
+				exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE, GET_NEXT_DATA_COMMAND, GET_DATA_RESPONSE, INTERNAL_AUTHENTICATE_COMMAND, parts[0]));
+		assertFalse(incomplete.hasInternalAuthenticateOutput());
+		assertArrayEquals(INTERNAL_AUTHENTICATE_COMMAND, assertInstanceOf(InsufficientCardCommandsException.class, incomplete.getReaderProblem()).getCommand());
+		assertArrayEquals(fromResponseApdu(GET_DATA_RESPONSE), incomplete.getGetDataOutput());
 
 		// the card fails to return the rest
 		UnexpectedCardResponseException failed = assertThrows(UnexpectedCardResponseException.class,
@@ -538,10 +544,10 @@ public class Mts7ApduPayloadsFactoryTest {
 				INTERNAL_AUTHENTICATE_COMMAND, parts[0], GET_RESPONSE_COMMAND, wrongLength, GET_RESPONSE_SHORT_COMMAND, parts[1]));
 		assertEquals(expectedPayloads(), payloads);
 
-		// not sent again
-		InsufficientCardCommandsException e = assertThrows(InsufficientCardCommandsException.class, () -> factory.createCard(exchanges(SELECT_BOB_COMMAND,
-				SELECT_APPLICATION_RESPONSE, GET_NEXT_DATA_COMMAND, GET_DATA_RESPONSE, extendedInternalAuthenticate, wrongLength)));
-		assertArrayEquals(extendedInternalAuthenticate, e.getCommand());
+		// not sent again: internal authenticate is reported once the card has been checked at door 2, get response at once, as the MTB is missing
+		Mts7ApduPayloads incomplete = factory.createCard(exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE, GET_NEXT_DATA_COMMAND, GET_DATA_RESPONSE,
+				extendedInternalAuthenticate, wrongLength));
+		assertArrayEquals(extendedInternalAuthenticate, assertInstanceOf(InsufficientCardCommandsException.class, incomplete.getReaderProblem()).getCommand());
 		assertThrows(InsufficientCardCommandsException.class, () -> factory.createCard(exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE,
 				GET_NEXT_DATA_COMMAND, firstPart(), GET_RESPONSE_COMMAND, wrongLength, INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE)));
 
@@ -589,10 +595,17 @@ public class Mts7ApduPayloadsFactoryTest {
 				GET_NEXT_DATA_COMMAND, new byte[] { 0x6C, 0x00 }, GET_DATA_COMMAND, GET_DATA_RESPONSE, INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE));
 		assertEquals(expectedPayloads(), payloads);
 
-		// not sent again
-		InsufficientCardCommandsException e = assertThrows(InsufficientCardCommandsException.class, () -> factory.createCard(
-				exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE, GET_NEXT_DATA_COMMAND, GET_DATA_RESPONSE, INTERNAL_AUTHENTICATE_COMMAND, wrongLe)));
-		assertArrayEquals(wrongLe, e.getResponse());
+		// not sent again: internal authenticate is reported once the card has been checked at door 2, select application at once, as the card did not
+		// execute it
+		Mts7ApduPayloads incomplete = factory.createCard(
+				exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE, GET_NEXT_DATA_COMMAND, GET_DATA_RESPONSE, INTERNAL_AUTHENTICATE_COMMAND, wrongLe));
+		assertArrayEquals(wrongLe, assertInstanceOf(InsufficientCardCommandsException.class, incomplete.getReaderProblem()).getResponse());
+
+		// a card which asks for another Le, although it was sent the one which it asked for, is to blame
+		assertThrows(UnexpectedCardResponseException.class, () -> factory.createCard(exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE,
+				GET_NEXT_DATA_COMMAND, GET_DATA_RESPONSE, INTERNAL_AUTHENTICATE_COMMAND, wrongLe, exactLe, wrongLe)));
+		assertThrows(UnexpectedCardResponseException.class, () -> factory.createCard(exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE,
+				GET_NEXT_DATA_COMMAND, GET_DATA_RESPONSE, INTERNAL_AUTHENTICATE_COMMAND, wrongLe, exactLe, new byte[] { 0x67, 0x00 })));
 		assertThrows(InsufficientCardCommandsException.class, () -> factory.createCard(exchanges(SELECT_BOB_COMMAND, new byte[] { 0x6C, 0x2B },
 				GET_NEXT_DATA_COMMAND, GET_DATA_RESPONSE, INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE)));
 	}
@@ -630,6 +643,26 @@ public class Mts7ApduPayloadsFactoryTest {
 		// but not with another Le than the card asked for
 		assertThrows(MalformedCardCommandException.class, () -> factory.createCard(exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE, GET_DATA_COMMAND,
 				GET_DATA_RESPONSE, INTERNAL_AUTHENTICATE_COMMAND, new byte[] { 0x6C, 0x48 }, shortLe, NOT_SATISFIED)));
+	}
+
+	@Test
+	public void testCardWhichKeepsSayingThereIsMoreIsCardProblem() throws Exception {
+		// as many GET RESPONSE commands as the readers in this library send, after which the card is to blame
+		java.util.List<byte[]> commandsAndResponses = new java.util.ArrayList<>(
+				Arrays.asList(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE, GET_NEXT_DATA_COMMAND, new byte[] { 0x61, 0x00 }));
+		for (int i = 0; i < Mts7ApduPayloadsFactory.MAXIMUM_GET_RESPONSE_COMMANDS - 1; i++) {
+			commandsAndResponses.add(GET_RESPONSE_COMMAND);
+			commandsAndResponses.add(new byte[] { 0x61, 0x00 });
+		}
+		commandsAndResponses.add(INTERNAL_AUTHENTICATE_COMMAND);
+		commandsAndResponses.add(SIGNATURE_RESPONSE);
+
+		// one less, and the reader stopped too early
+		assertThrows(InsufficientCardCommandsException.class, () -> factory.createCard(exchanges(commandsAndResponses.toArray(new byte[0][]))));
+
+		commandsAndResponses.add(commandsAndResponses.size() - 2, GET_RESPONSE_COMMAND);
+		commandsAndResponses.add(commandsAndResponses.size() - 2, new byte[] { 0x61, 0x00 });
+		assertThrows(UnexpectedCardResponseException.class, () -> factory.createCard(exchanges(commandsAndResponses.toArray(new byte[0][]))));
 	}
 
 	public byte[] fromResponseApdu(byte[] response) {

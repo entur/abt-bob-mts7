@@ -74,7 +74,7 @@ public class LenientMts7CardFactory {
 	public Mts7Card create(Mts7ApduPayloads card) throws KeyPairInvalidCardMts7Exception {
 		Mts7Card result = new Mts7Card();
 		try {
-			if (card.hasSelectApplicationOutput()) {
+			if (card.hasSelectApplicationOutput() || card.hasApplicationRelatedDataOutput()) {
 				try {
 					enricher.enrich(result, card.getSelectApplicationOutput(), card.getApplicationRelatedDataOutput());
 				} catch (InvalidCardMts7Exception | InsufficientCardCommandsException e) {

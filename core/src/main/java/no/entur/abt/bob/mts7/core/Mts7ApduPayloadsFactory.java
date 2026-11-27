@@ -40,12 +40,21 @@ public class Mts7ApduPayloadsFactory {
 	public static final int MAXIMUM_SIGNATURE_LENGTH = 256;
 
 	/**
+	 * The maximum number of GET RESPONSE commands for a single command, as in the readers in this library. A card which still says that there is more is to
+	 * blame.
+	 */
+
+	public static final int MAXIMUM_GET_RESPONSE_COMMANDS = 256;
+
+	/**
 	 * Sort out the payloads of the exchanges with a card, as a reader following MTS7 sends them: select application first, then get (next) data, and internal
 	 * authenticate last. Each command may be followed by get response for as long as the card says there is more (MTS7 section 2.1), and by the same command
 	 * again if the card asks for another Le.
 	 *
 	 * @param mts7ApduExchanges the exchanges with the card
-	 * @return the payloads
+	 * @return the payloads. A response which is not needed to check the card at door 2 may be missing because of a problem with the reader (the select
+	 *         application response, the application-related data or the signature), which is then kept in the payloads, to be reported once the card has been
+	 *         checked as far as it can be (see {@linkplain Mts7ApduPayloads#getReaderProblem()})
 	 * @throws ReaderMts7Exception      if the exchanges are not as a reader following MTS7 sends them (a problem with the reader): commands are missing
 	 *                                  ({@linkplain MissingCardCommandsException}), too few to retrieve all of a response
 	 *                                  ({@linkplain InsufficientCardCommandsException}), unexpected ({@linkplain UnexpectedCardCommandException}), or malformed
@@ -82,19 +91,27 @@ public class Mts7ApduPayloadsFactory {
 			// another application (MTS7 section 3.1.1)
 			throw new UnexpectedCardCommandException(select, first.getHead().getResponse());
 		}
-		checkChain(first);
+		InsufficientCardCommandsException selectProblem = checkChain(first);
+		if (selectProblem != null && !isContinue(first.getLast().getResponse())) {
+			// the card did not execute select application, which everything else depends on
+			throw selectProblem;
+		}
 
-		if (!isSuccess(first.getLast().getResponse())) {
+		if (selectProblem != null) {
+			// The card has selected the application, but the rest of its response is missing. Only the application-related data is needed from it, which
+			// the reader may also have retrieved with GET DATA.
+			deferReaderProblem(payloads, selectProblem);
+		} else if (!isSuccess(first.getLast().getResponse())) {
 			if (applicationIdentifier.length != APPLICATION_IDENTIFIER.length) {
 				// only the RID and the application are submitted (MTS7 section 4.1.1), and the card need not have an application by a longer name
 				throw new MalformedCardCommandException("Select application of an application identifier of " + applicationIdentifier.length + " bytes, not "
 						+ APPLICATION_IDENTIFIER.length + ", which the card rejected with status word " + toStatusWord(first.getLast().getResponse()));
 			}
 			throw new UnexpectedCardResponseException(first.getLast().getCommand(), first.getLast().getResponse());
+		} else {
+			// may be empty (MTS7 section 4.1.1), then the application-related data is retrieved with GET DATA
+			payloads.setSelectApplicationOutput(first.getResponsePayload());
 		}
-
-		// may be empty (MTS7 section 4.1.1), then the application-related data is retrieved with GET DATA
-		payloads.setSelectApplicationOutput(first.getResponsePayload());
 
 		// last must be internal authenticate
 		Chain last = chains.get(chains.size() - 1);
@@ -112,20 +129,23 @@ public class Mts7ApduPayloadsFactory {
 		if (internalAuthenticate.getNe() == 0) {
 			throw new MalformedCardCommandException("Internal authenticate without Le, so it does not ask for the signature");
 		}
-		checkChain(last);
+		InsufficientCardCommandsException internalAuthenticateProblem = checkChain(last);
 
-		if (!isSuccess(last.getLast().getResponse())) {
-			if (internalAuthenticate.getNe() < MAXIMUM_SIGNATURE_LENGTH && !last.isAskedFor(internalAuthenticate.getNe())) {
+		payloads.setInternalAuthenticateInput(challenge);
+		if (internalAuthenticateProblem != null) {
+			// the signature is missing, but the card can still be checked at door 2
+			deferReaderProblem(payloads, internalAuthenticateProblem);
+		} else if (!isSuccess(last.getLast().getResponse())) {
+			if (internalAuthenticate.getNe() < MAXIMUM_SIGNATURE_LENGTH && !last.isHeadSentAsAskedFor()) {
 				// the card may not be able to return its signature within Le, unless it asked for that Le
 				throw new MalformedCardCommandException(
 						"Internal authenticate with Le for " + internalAuthenticate.getNe() + " bytes, less than the " + MAXIMUM_SIGNATURE_LENGTH
 								+ " of a signature by RSA, which the card rejected with status word " + toStatusWord(last.getLast().getResponse()));
 			}
 			throw new UnexpectedCardResponseException(last.getLast().getCommand(), last.getLast().getResponse());
+		} else {
+			payloads.setInternalAuthenticateOutput(last.getResponsePayload());
 		}
-
-		payloads.setInternalAuthenticateInput(challenge);
-		payloads.setInternalAuthenticateOutput(last.getResponsePayload());
 
 		// The rest must be GET (NEXT) DATA of the MTBs (7F21) or GET DATA of the application-related data (6E), possibly with an unsuccessful internal
 		// authenticate in between.
@@ -145,7 +165,16 @@ public class Mts7ApduPayloadsFactory {
 				throw new UnexpectedCardCommandException(command, chain.getHead().getResponse());
 			}
 			checkGetCommand(command);
-			checkChain(chain);
+			InsufficientCardCommandsException problem = checkChain(chain);
+			if (problem != null) {
+				if (mobileTicketBundle) {
+					// without the MTB, there is nothing to check the card with
+					throw problem;
+				}
+				// the application-related data is not needed to check the card
+				deferReaderProblem(payloads, problem);
+				continue;
+			}
 
 			// the last exchange of the chain (i.e. not whatever happens to follow it) must be success
 			byte[] response = chain.getLast().getResponse();
@@ -206,16 +235,33 @@ public class Mts7ApduPayloadsFactory {
 		}
 
 		/**
-		 * @param ne the Ne of the head
-		 * @return whether the head was sent again with the exact Le which the card asked for (6Cxx)
+		 * @param index the index of an exchange in the chain
+		 * @return whether its command was sent again with the exact Le which the card asked for (6Cxx) in the response before it
 		 */
 
-		public boolean isAskedFor(int ne) {
-			if (head == 0) {
+		public boolean isSentAsAskedFor(int index) {
+			if (index == 0) {
 				return false;
 			}
-			byte[] response = exchanges.get(head - 1).getResponse();
-			return (response[0] & 0xFF) == 0x6C && ((response[1] & 0xFF) == 0 ? 256 : response[1] & 0xFF) == ne;
+			byte[] response = exchanges.get(index - 1).getResponse();
+			if (response.length != 2 || (response[0] & 0xFF) != 0x6C) {
+				return false;
+			}
+			int asked = (response[1] & 0xFF) == 0 ? 256 : response[1] & 0xFF;
+			try {
+				return new CommandAPDU(exchanges.get(index).getCommand()).getNe() == asked;
+			} catch (RuntimeException e) {
+				// a malformed command, which is the fault of the reader anyway
+				return false;
+			}
+		}
+
+		/**
+		 * @return whether the command which the response is to was sent again with the exact Le which the card asked for (6Cxx)
+		 */
+
+		public boolean isHeadSentAsAskedFor() {
+			return isSentAsAskedFor(head);
 		}
 
 		public Mts7ApduExchange getLast() {
@@ -271,28 +317,53 @@ public class Mts7ApduPayloadsFactory {
 	}
 
 	/**
-	 * Check that the reader retrieved all of the response which the chain is for: the GET RESPONSE commands are as MTS7 specifies them, the last response does
-	 * not say that there is more, and the card does not ask for the last command again.
+	 * Check a chain: its GET RESPONSE commands are as MTS7 specifies them, and the reader retrieved all of the response.
 	 *
 	 * @param chain the chain
-	 * @throws ReaderMts7Exception if not (a problem with the reader)
+	 * @return the problem with the reader if it did not retrieve all of the response: no GET RESPONSE after 61xx, or the command not sent again with other
+	 *         lengths when the card asked for it; null if it did
+	 * @throws MalformedCardCommandException   if a GET RESPONSE command is not as MTS7 specifies it (a problem with the reader)
+	 * @throws UnexpectedCardResponseException if the card still says that there is more after {@value #MAXIMUM_GET_RESPONSE_COMMANDS} GET RESPONSE commands, or
+	 *                                         asks for other lengths although it was sent the Le which it asked for (a problem on the card side)
 	 */
 
-	protected static void checkChain(Chain chain) throws ReaderMts7Exception {
+	protected static InsufficientCardCommandsException checkChain(Chain chain) throws MalformedCardCommandException, UnexpectedCardResponseException {
+		int getResponseCommands = 0;
 		for (Mts7ApduExchange exchange : chain.getExchanges()) {
 			if (isResponseCommand(exchange.getCommand())) {
 				checkGetCommand(exchange.getCommand());
+				getResponseCommands++;
 			}
 		}
 		Mts7ApduExchange last = chain.getLast();
 		if (isContinue(last.getResponse())) {
+			if (getResponseCommands >= MAXIMUM_GET_RESPONSE_COMMANDS) {
+				// a card which keeps saying that there is more must not keep the reader busy forever, as the readers in this library also stop
+				throw new UnexpectedCardResponseException(last.getCommand(), last.getResponse());
+			}
 			// the card has more, but the reader did not retrieve it
-			throw new InsufficientCardCommandsException(last.getCommand(), last.getResponse());
+			return new InsufficientCardCommandsException(last.getCommand(), last.getResponse());
 		}
 		if (isAgain(last.getCommand(), last.getResponse())) {
-			throw new InsufficientCardCommandsException(
+			if (chain.isSentAsAskedFor(chain.getExchanges().size() - 1)) {
+				// the card asks again, although it was sent the Le which it asked for
+				throw new UnexpectedCardResponseException(last.getCommand(), last.getResponse());
+			}
+			return new InsufficientCardCommandsException(
 					"Command not sent again with other lengths, which the card asked for with status word " + toStatusWord(last.getResponse()),
 					last.getCommand(), last.getResponse());
+		}
+		return null;
+	}
+
+	/**
+	 * Keep a problem with the reader to report once the card has been checked as far as it can be (see {@linkplain Mts7ApduPayloads#getReaderProblem()}). The
+	 * first one is kept.
+	 */
+
+	protected static void deferReaderProblem(Mts7ApduPayloads payloads, ReaderMts7Exception problem) {
+		if (!payloads.hasReaderProblem()) {
+			payloads.setReaderProblem(problem);
 		}
 	}
 

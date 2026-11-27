@@ -79,11 +79,8 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 
 	@Override
 	protected void process() throws Exception {
-		if (!enrich(enricher)) {
-			return;
-		}
-
-		LOGGER.info("Processed 'select application' response");
+		// The card is checked as far as it can be before a problem with the reader is reported, so that a card which is not valid is to blame for that,
+		// whatever else it did: the application-related data is read last.
 
 		if (!awaitInput(() -> getDataResponsePayload != null)) {
 			return;
@@ -171,6 +168,12 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 		// process signature - the only time-critical part of the logic here
 		iccPublicKey.verify(commandPayload, responsePayload);
 		LOGGER.info("Verified ICC private key");
+
+		if (!enrich(enricher)) {
+			return;
+		}
+
+		LOGGER.info("Processed 'select application' response");
 
 		// last, as the card has passed all of the checks
 		updateResult(card -> card.setVerifiedPrivateKeyPresent(true));

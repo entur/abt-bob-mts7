@@ -14,7 +14,6 @@ import no.entur.abt.bob.mts7.api.InsufficientCardCommandsException;
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.api.MalformedCardResponseException;
 import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
-import no.entur.tlv.parser.LenientTlvPullParser;
 
 public class Mts7CardEnricherTest {
 
@@ -219,11 +218,26 @@ public class Mts7CardEnricherTest {
 	}
 
 	@Test
+	public void testPadding() throws Exception {
+		// '00' or 'FF' before, between and after data objects (ISO/IEC 7816-4 section 5.2.2), as a reader which looks for the application-related data in
+		// the select application response skips them; otherwise a card could make it look as if the reader did not retrieve it
+		String applicationIdentifier = "4F10" + AID;
+		for (String data : new String[] { "FF6E12" + applicationIdentifier, "006E12" + applicationIdentifier, "FFFF6E12" + applicationIdentifier + "FF",
+				"6416FF6E12" + applicationIdentifier + "FF", "6E14FF" + applicationIdentifier + "00", "64166E13FF" + applicationIdentifier + "FF" }) {
+			Mts7Card card = new Mts7Card();
+			new Mts7CardEnricher().enrich(card, ByteArrayHexStringConverter.hexStringToByteArray(data), null);
+
+			assertEquals("0000175F96B61D", ByteArrayHexStringConverter.toHexString(card.getSerial()), data);
+			assertEquals(0x000A, card.getParticipantIdentifier(), data);
+		}
+	}
+
+	@Test
 	public void testRuntimeExceptionIsInvalidCard() throws Exception {
 		// whatever goes wrong while parsing the response, it is a problem on the card side
 		Mts7CardEnricher enricher = new Mts7CardEnricher() {
 			@Override
-			protected boolean parseApplicationRelatedData(Mts7Card card, LenientTlvPullParser payloadParser) {
+			protected boolean parseApplicationRelatedData(Mts7Card card, byte[] data, int offset, int end) {
 				throw new ArrayIndexOutOfBoundsException(-1);
 			}
 		};

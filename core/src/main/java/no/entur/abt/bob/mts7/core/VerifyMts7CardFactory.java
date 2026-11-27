@@ -8,6 +8,7 @@ import java.util.Objects;
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
 import no.entur.abt.bob.mts7.api.InfrastructureMts7Exception;
+import no.entur.abt.bob.mts7.api.InsufficientCardCommandsException;
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.api.ReaderMts7Exception;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
@@ -195,7 +196,8 @@ public class VerifyMts7CardFactory {
 	}
 
 	/**
-	 * Verify the trust chain of the card, and that the card has the private key for the public key in its certificate.
+	 * Verify the trust chain of the card, and that the card has the private key for the public key in its certificate. The card is checked as far as it can be
+	 * before a problem with the reader is reported, so that a card which is not valid is to blame for that, whatever else it did.
 	 *
 	 * @param card the payloads read from the card
 	 * @return the verified card
@@ -224,18 +226,13 @@ public class VerifyMts7CardFactory {
 	public Mts7Card create(Mts7ApduPayloads card) throws InvalidCardMts7Exception, ReaderMts7Exception, InfrastructureMts7Exception {
 		Mts7Card result = new Mts7Card();
 
-		// what is missing was not read, which is not the fault of the card
-		if (!card.hasSelectApplicationOutput() || !card.hasGetDataOutput() || !card.hasInternalAuthenticateOutput()) {
-			throw new MissingCardCommandsException("Missing response from the card");
-		}
-		byte[] challenge = card.getInternalAuthenticateInput();
-		if (challenge == null || challenge.length != Mts7ApduPayloadsFactory.CHALLENGE_LENGTH) {
-			// a SHA-256 hash (MTS7 section 4.1.4)
-			throw new MalformedCardCommandException("Challenge for internal authenticate of " + (challenge == null ? 0 : challenge.length) + " bytes, not "
-					+ Mts7ApduPayloadsFactory.CHALLENGE_LENGTH);
-		}
+		// The card is checked as far as it can be before a problem with the reader is reported, so that a card which is not valid is to blame for that,
+		// whatever else it did: door 2 needs the MTB, door 3 also the signature, and the application-related data is read last.
 
-		enricher.enrich(result, card.getSelectApplicationOutput(), card.getApplicationRelatedDataOutput());
+		// what is missing was not read, which is not the fault of the card
+		if (!card.hasGetDataOutput()) {
+			throw missing(card);
+		}
 
 		MobileTicketBundle mobileTicketBundle;
 		try {
@@ -293,10 +290,56 @@ public class VerifyMts7CardFactory {
 		// from the same token public key as the public key of the card, which could be created, so a problem here is expected to be on our side
 		result.setThumbprint(thumbprintFactory.create(header));
 
-		iccPublicKey.verify(card.getInternalAuthenticateInput(), card.getInternalAuthenticateOutput());
+		verifyPrivateKey(card, iccPublicKey);
+
+		enrich(enricher, result, card);
+
+		// last, as the card has passed all of the checks
 		result.setVerifiedPrivateKeyPresent(true);
 
 		return result;
+	}
+
+	/**
+	 * @return the problem with the reader because of which a response is missing, or {@linkplain MissingCardCommandsException} if it is not known
+	 */
+
+	static ReaderMts7Exception missing(Mts7ApduPayloads card) {
+		if (card.hasReaderProblem()) {
+			return card.getReaderProblem();
+		}
+		return new MissingCardCommandsException("Missing response from the card");
+	}
+
+	/**
+	 * Door 3: check that the card has the private key, from its signature of the challenge.
+	 */
+
+	static void verifyPrivateKey(Mts7ApduPayloads card, IccPublicKey iccPublicKey)
+			throws InvalidCardMts7Exception, ReaderMts7Exception, InfrastructureMts7Exception {
+		if (!card.hasInternalAuthenticateOutput()) {
+			throw missing(card);
+		}
+		byte[] challenge = card.getInternalAuthenticateInput();
+		if (challenge == null || challenge.length != Mts7ApduPayloadsFactory.CHALLENGE_LENGTH) {
+			// a SHA-256 hash (MTS7 section 4.1.4)
+			throw new MalformedCardCommandException("Challenge for internal authenticate of " + (challenge == null ? 0 : challenge.length) + " bytes, not "
+					+ Mts7ApduPayloadsFactory.CHALLENGE_LENGTH);
+		}
+		iccPublicKey.verify(challenge, card.getInternalAuthenticateOutput());
+	}
+
+	/**
+	 * Enrich the card with its application-related data, from the select application response or from GET DATA of it.
+	 */
+
+	static void enrich(Mts7CardEnricher enricher, Mts7Card result, Mts7ApduPayloads card) throws InvalidCardMts7Exception, ReaderMts7Exception {
+		try {
+			enricher.enrich(result, card.getSelectApplicationOutput(), card.getApplicationRelatedDataOutput());
+		} catch (InsufficientCardCommandsException e) {
+			// why it is missing, if known
+			throw card.hasReaderProblem() ? card.getReaderProblem() : e;
+		}
 	}
 
 }
