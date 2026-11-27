@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
+import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
@@ -90,13 +91,13 @@ public class LenientMts7CardFactory {
 				if (header != null) {
 					try {
 						iccPublicKey = iccPublicKeyFactory.create(header);
-					} catch (UnableToConstructIccKeyException | NoSuchAlgorithmMts7Exception e) {
+					} catch (IccKeyInvalidCardMts7Exception | NoSuchAlgorithmMts7Exception e) {
 						LOGGER.info("Unable to create ICC public key", e);
 					}
 
 					try {
 						result.setThumbprint(thumbprintFactory.create(header));
-					} catch (UnableToConstructIccKeyException | UnableToConstructThumbprintKeyException e) {
+					} catch (IccKeyInvalidCardMts7Exception | UnableToConstructThumbprintKeyException e) {
 						LOGGER.info("Unable to construct thumbprint", e);
 					}
 				}

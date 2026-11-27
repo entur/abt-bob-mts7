@@ -3,6 +3,8 @@ package no.entur.abt.bob.mts7.core;
 import java.security.NoSuchAlgorithmException;
 import java.security.Provider;
 
+import no.entur.abt.bob.mts7.api.InfrastructureMts7Exception;
+
 /**
  * An algorithm is not available from the security provider (a problem on our side). The cause is the {@linkplain NoSuchAlgorithmException}.
  */

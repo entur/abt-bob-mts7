@@ -1,12 +1,11 @@
-package no.entur.abt.bob.mts7.core;
-
-import no.entur.abt.bob.mts7.api.Mts7Exception;
+package no.entur.abt.bob.mts7.api;
 
 /**
  * A problem on our side, not the card's: what verifies the card cannot do its job, for example because an issuer key cannot be created, or the security
  * provider does not have an algorithm. The card may well be valid, so this is not to be reported as an invalid card.
  * <p>
- * Problems on the card side are reported with {@linkplain InvalidCardMts7Exception}.
+ * The other sides are {@linkplain InvalidCardMts7Exception}, for problems on the card side, and {@linkplain ReaderMts7Exception}, for exchanges with the card
+ * which a reader following MTS7 would not send.
  */
 
 public class InfrastructureMts7Exception extends Mts7Exception {

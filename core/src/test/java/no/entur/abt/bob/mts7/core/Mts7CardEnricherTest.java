@@ -3,12 +3,12 @@ package no.entur.abt.bob.mts7.core;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
+import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
 import no.entur.tlv.parser.LenientTlvPullParser;
 
@@ -63,14 +63,14 @@ public class Mts7CardEnricherTest {
 		assertNull(parseLifecycleStatus("FF"));
 	}
 
-	// the card as far as it was enriched, which is also the result of the exception if the response is rejected
+	// the card as far as it was enriched, also if the response is rejected
 	private Mts7Card enrichPayload(String hex) {
 		Mts7Card card = new Mts7Card();
 
 		try {
 			new Mts7CardEnricher().enrichSelectApplicationResponsePayload(card, ByteArrayHexStringConverter.hexStringToByteArray(hex));
 		} catch (InvalidCardMts7Exception e) {
-			assertSame(card, e.getResult());
+			// rejected: the card as far as it was enriched
 		}
 
 		return card;
@@ -152,7 +152,6 @@ public class Mts7CardEnricherTest {
 					response);
 
 			assertTrue(e.getMessage().contains("application identifier"), e.getMessage());
-			assertSame(card, e.getResult());
 			assertNull(card.getSerial());
 		}
 	}

@@ -1,12 +1,13 @@
 package no.entur.abt.bob.mts7.core.pki;
 
-import java.security.SignatureException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.IccKeyInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
-import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
+import no.entur.abt.bob.mts7.core.TrustChainInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
 import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
 import no.entur.abt.bob.mts7.mtb.MobileTicketBundleWriter;
@@ -95,20 +96,22 @@ public class IccPublicKeyBuilder {
 	 * issuer key. A card which is not as in the specification is to blame, whatever happens on our side when verifying.
 	 *
 	 * @return the ICC public key
-	 * @throws SignatureException                  if the issuer signature is not valid, or its algorithm is missing, not as in MTS1, or does not match the
-	 *                                             issuer key (a problem on the card side)
-	 * @throws UnableToConstructIccKeyException    if the ICC public key could not be created from the certificate of the card (a problem on the card side)
+	 * @throws TrustChainInvalidCardMts7Exception  if the issuer signature is not valid, or its algorithm does not match the issuer key (a problem on the card
+	 *                                             side)
+	 * @throws IccKeyInvalidCardMts7Exception      if the ICC public key could not be created from the certificate of the card (a problem on the card side)
+	 * @throws InvalidCardMts7Exception            if the algorithm of the issuer signature is missing or not as in MTS1 (a problem on the card side). This is
+	 *                                             also the superclass of the above.
 	 * @throws NoSuchAlgorithmMts7Exception        if a signature algorithm is not available from the security provider (a problem on our side)
 	 * @throws UnableToConstructIssuerKeyException if the issuer key is not accepted by the security provider (a problem on our side)
 	 */
 
-	public IccPublicKey build() throws SignatureException, UnableToConstructIccKeyException, NoSuchAlgorithmMts7Exception, UnableToConstructIssuerKeyException {
+	public IccPublicKey build() throws InvalidCardMts7Exception, NoSuchAlgorithmMts7Exception, UnableToConstructIssuerKeyException {
 		checkAlgorithm();
 
 		byte[] data = getSignedData();
 
 		if (!issuerPublicKey.verify(data, signature)) {
-			throw new SignatureException("Issuer signature is not valid");
+			throw new TrustChainInvalidCardMts7Exception("Issuer signature is not valid");
 		}
 
 		return iccSignatureFactory.create(issuerSignatureProtectedHeader);
@@ -117,17 +120,18 @@ public class IccPublicKeyBuilder {
 	/**
 	 * Check the algorithm of the issuer signature in the header of the card, before anything which could fail on our side.
 	 *
-	 * @throws SignatureException if the algorithm is missing, not as in MTS1, or does not match the issuer key (a problem on the card side)
+	 * @throws InvalidCardMts7Exception           if the algorithm is missing or not as in MTS1 (a problem on the card side)
+	 * @throws TrustChainInvalidCardMts7Exception if the algorithm does not match the issuer key (a problem on the card side)
 	 */
 
-	protected void checkAlgorithm() throws SignatureException {
+	protected void checkAlgorithm() throws InvalidCardMts7Exception {
 		String alg = issuerSignatureProtectedHeader.getAlg();
 		if (!Mts1Algorithms.isIssuerSignatureAlgorithm(alg)) {
-			throw new SignatureException("Issuer signature algorithm " + alg + " is not " + Mts1Algorithms.ES256 + " or " + Mts1Algorithms.RS256);
+			throw new InvalidCardMts7Exception("Issuer signature algorithm " + alg + " is not " + Mts1Algorithms.ES256 + " or " + Mts1Algorithms.RS256);
 		}
 		String expected = issuerPublicKey.getJwsAlgorithm();
 		if (expected != null && !expected.equals(alg)) {
-			throw new SignatureException("Issuer signature algorithm " + alg + " does not match issuer public key " + issuerPublicKey.getKid()
+			throw new TrustChainInvalidCardMts7Exception("Issuer signature algorithm " + alg + " does not match issuer public key " + issuerPublicKey.getKid()
 					+ " of participant " + issuerPublicKey.getPid() + " (" + expected + ")");
 		}
 	}

@@ -115,7 +115,7 @@ Implementation using 'thin' client:
  * Create `Mts7ApduExchanges` from `Mts7ApduExchangesFactory.createCard(..)`. Pass the response to *select application* if your platform has already selected the application, or null to have the library do it.
  * Post the exchanges (`getTagId()` and `getExchanges()`) to the backend.
 
-`createCard(..)` throws `IOException` if the card cannot be reached (for example if it is moved away from the reader) and a `Mts7Exception` if the card answers something unexpected (`UnableToSelectApplicationException` if the application cannot be selected, `UnexpectedCardResponseException` for other status codes).
+`createCard(..)` throws `IOException` if the card cannot be reached (for example if it is moved away from the reader) and an `InvalidCardMts7Exception` if the card answers something unexpected (`UnableToSelectApplicationException` if the application cannot be selected, `UnexpectedCardResponseException` for other status words).
 
 <details>
   <summary>Code example (backend stands for your own code)</summary>
@@ -162,11 +162,11 @@ Implementation:
 
 `getMts7Card(..)` tells problems on the card side from problems on our side:
 
- * `InvalidCardMts7Exception` if the card cannot be trusted (a problem on the card side). The exception has the card as far as it was read, in `getResult()`.
+ * `InvalidCardMts7Exception` if the card cannot be trusted (a problem on the card side). For the details of such a card, use `LenientMts7CardFactory` (see below).
    * `TrustChainInvalidCardMts7Exception` (trust chain only) if the card certificate was not signed by a known issuer: the issuer signature is not valid, its algorithm (`alg` in the header) does not match the issuer key, or the issuer key is not among the public keys (unless the factory was created with `trustUnknownRootKeys`).
      * `UnknownIssuerKeyInvalidCardMts7Exception` (a subclass) if the issuer key is not among the public keys, with `getIssuerId()` and `getKeyId()`. This may be a forged card, but also a genuine card while the participant metadata is out of date, so it is worth logging separately.
    * `KeyPairInvalidCardMts7Exception` if the card did not prove that it has the private key, as for a cloned card.
-   * `IccKeyInvalidCardMts7Exception` if the public key of the card (`tpk` in its certificate) is missing, of a type which is not in MTS1 (EC with P-256, or RSA), or malformed. The cause is the `UnableToConstructIccKeyException`.
+   * `IccKeyInvalidCardMts7Exception` if the public key of the card (`tpk` in its certificate) is missing, of a type which is not in MTS1 (EC with P-256, or RSA), or malformed.
    * `InvalidCardMts7Exception` itself if what the card returned is malformed (including an issuer signature algorithm `alg` which is missing or not `ES256` or `RS256`, checked by all factories and processors before the issuer key is looked up, a select application response without a valid application identifier, which has the serial and the participant identifier), or if the card was not completely read and processed (the card was closed or not read in time, or the timeout expired).
  * `ExecutionException` if the processing failed because of a problem on our side, which is the cause: an `InfrastructureMts7Exception`, namely
    * `UnableToConstructIssuerKeyException` if the issuer key of the card is among the public keys but cannot be created, is of a type which is not supported, or is not accepted by the security provider,
@@ -253,23 +253,24 @@ VerifyMts7CardFactory cardFactory = new VerifyMts7CardFactory(keys);
 
 // for each card, where 'exchange' is the Mts7Exchange for the card
 Mts7ApduExchanges exchanges = exchangesFactory.createCard(exchange, null);
-Mts7ApduPayloads payloads = payloadsFactory.createCard(exchanges);
 
 try {
+    Mts7ApduPayloads payloads = payloadsFactory.createCard(exchanges);
     Mts7Card card = cardFactory.create(payloads);
 } catch (UnknownIssuerKeyInvalidCardMts7Exception e) {
     // the card refers to an issuer key which is not among the keys: a forged card, or the participant metadata is out of date;
     // log e.getIssuerId() and e.getKeyId() separately
 } catch (InvalidCardMts7Exception e) {
-    // a problem on the card side: it does not have the private key, was not issued by one of the issuers of the keys, or returned something malformed;
-    // e.getResult() has the card as far as it was read
+    // a problem on the card side: it does not have the private key, was not issued by one of the issuers of the keys, or returned something malformed
+} catch (ReaderMts7Exception e) {
+    // a problem with the reader: the exchanges are not as a reader following MTS7 sends them
 } catch (InfrastructureMts7Exception e) {
     // a problem on our side: an issuer key which cannot be created, a security provider without a signature algorithm, or a thumbprint which cannot be created
 }
 ```
 </details>
 
-The card factories tell problems on the card side from problems on our side, as the processors do (see above). `InvalidCardMts7Exception` is for the card side: the card returned something which is missing or malformed (`IccKeyInvalidCardMts7Exception` for the public key of the card), or did not pass verification, which is reported by its subclasses `TrustChainInvalidCardMts7Exception` (door 2, see [TRUST_CHAIN.md](docs/TRUST_CHAIN.md), with the subclass `UnknownIssuerKeyInvalidCardMts7Exception` for an unknown issuer key) and `KeyPairInvalidCardMts7Exception` (door 3). Problems on our side are reported with `InfrastructureMts7Exception`, as they are thrown on the calling thread: its subclasses `UnableToConstructIssuerKeyException` if the issuer key of the card is among the public keys but cannot be created, is of a type which is not supported, or is not accepted by the security provider, `NoSuchAlgorithmMts7Exception` if the security provider does not have a signature algorithm, and `UnableToConstructThumbprintKeyException` if the thumbprint of the card's public key cannot be created although the key can. A thumbprint which cannot be created because of the card's public key is the card's problem: `IccKeyInvalidCardMts7Exception`. The constructors of the factories still throw `NoSuchAlgorithmException`, as the digest algorithm is checked when they are created. A verified card always has a thumbprint. Anything else, such as a `RuntimeException`, is a bug.
+Each problem is reported as the problem of one side, with one of three exceptions in `api`: `InvalidCardMts7Exception` for the card, `ReaderMts7Exception` for the reader which sent the exchanges with the card, and `InfrastructureMts7Exception` for us. `Mts7ApduPayloadsFactory.createCard(..)` throws `ReaderMts7Exception` if the exchanges are not as a reader following MTS7 sends them: commands are missing (`MissingCardCommandsException`), unexpected (`UnexpectedCardCommandException`) or malformed. If the card did not respond with success, it throws `UnexpectedCardResponseException`, an `InvalidCardMts7Exception`. The card factories tell problems on the card side from problems on our side, as the processors do (see above). `InvalidCardMts7Exception` is for the card side: the card returned something which is missing or malformed (`IccKeyInvalidCardMts7Exception` for the public key of the card), or did not pass verification, which is reported by its subclasses `TrustChainInvalidCardMts7Exception` (door 2, see [TRUST_CHAIN.md](docs/TRUST_CHAIN.md), with the subclass `UnknownIssuerKeyInvalidCardMts7Exception` for an unknown issuer key) and `KeyPairInvalidCardMts7Exception` (door 3). Problems on our side are reported with `InfrastructureMts7Exception`, as they are thrown on the calling thread: its subclasses `UnableToConstructIssuerKeyException` if the issuer key of the card is among the public keys but cannot be created, is of a type which is not supported, or is not accepted by the security provider, `NoSuchAlgorithmMts7Exception` if the security provider does not have a signature algorithm, and `UnableToConstructThumbprintKeyException` if the thumbprint of the card's public key cannot be created although the key can. A thumbprint which cannot be created because of the card's public key is the card's problem: `IccKeyInvalidCardMts7Exception`. The constructors of the factories still throw `NoSuchAlgorithmException`, as the digest algorithm is checked when they are created. A verified card always has a thumbprint. Anything else, such as a `RuntimeException`, is a bug.
 
 ## Trust chain
 

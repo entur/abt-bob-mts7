@@ -8,7 +8,7 @@ import java.security.Provider;
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonGenerator;
 
-import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
+import no.entur.abt.bob.mts7.core.IccKeyInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.UnableToConstructThumbprintKeyException;
 import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
 import no.entur.abt.bob.mts7.mtb.TokenPublicKey;
@@ -55,15 +55,15 @@ public class ThumbprintFactory {
 	 *
 	 * @param header the Issuer Signature Protected Header of the card
 	 * @return the thumbprint
-	 * @throws UnableToConstructIccKeyException        if the token public key of the card is missing or of a type which is not in MTS1 (a problem on the card
+	 * @throws IccKeyInvalidCardMts7Exception          if the token public key of the card is missing or of a type which is not in MTS1 (a problem on the card
 	 *                                                 side)
 	 * @throws UnableToConstructThumbprintKeyException if the thumbprint could not be created for a valid key (a problem on our side)
 	 */
 
-	public byte[] create(IssuerSignatureProtectedHeader header) throws UnableToConstructIccKeyException, UnableToConstructThumbprintKeyException {
+	public byte[] create(IssuerSignatureProtectedHeader header) throws IccKeyInvalidCardMts7Exception, UnableToConstructThumbprintKeyException {
 		TokenPublicKey tpk = header.getTpk();
 		if (tpk == null) {
-			throw new UnableToConstructIccKeyException("Missing token public key");
+			throw new IccKeyInvalidCardMts7Exception("Missing token public key");
 		}
 
 		// by the type of the key, not alg in the header, which is the algorithm of the issuer signature
@@ -75,7 +75,7 @@ public class ThumbprintFactory {
 		} else if (Mts1Algorithms.ES256.equals(algorithm)) {
 			message = createECMessage(tpk);
 		} else {
-			throw new UnableToConstructIccKeyException("Unknown key type " + tpk.getKty());
+			throw new IccKeyInvalidCardMts7Exception("Unknown key type " + tpk.getKty());
 		}
 
 		byte[] digest;

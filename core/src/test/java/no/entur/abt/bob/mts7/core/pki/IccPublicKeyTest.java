@@ -24,8 +24,8 @@ import org.junit.jupiter.api.Test;
 
 import com.nimbusds.jose.crypto.impl.ECDSA;
 
+import no.entur.abt.bob.mts7.core.IccKeyInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
-import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
 import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
 import no.entur.abt.bob.mts7.mtb.TokenPublicKey;
 import no.entur.abt.bob.mts7.test.util.ConcurrentRunner;
@@ -243,7 +243,7 @@ public class IccPublicKeyTest {
 		tpk.setY("AAAA");
 		header.setTpk(tpk);
 
-		assertThrows(UnableToConstructIccKeyException.class, () -> new IccPublicKeyFactory().create(header));
+		assertThrows(IccKeyInvalidCardMts7Exception.class, () -> new IccPublicKeyFactory().create(header));
 	}
 
 	@Test
@@ -277,7 +277,7 @@ public class IccPublicKeyTest {
 		header.setAlg("ES256");
 		header.setTpk(tpk);
 
-		UnableToConstructIccKeyException e = assertThrows(UnableToConstructIccKeyException.class, () -> new IccPublicKeyFactory().create(header));
+		IccKeyInvalidCardMts7Exception e = assertThrows(IccKeyInvalidCardMts7Exception.class, () -> new IccPublicKeyFactory().create(header));
 		assertEquals("Curve P-384 is not P-256", e.getMessage());
 	}
 
@@ -286,7 +286,7 @@ public class IccPublicKeyTest {
 		IssuerSignatureProtectedHeader header = ecHeader((ECPublicKey) ecKeyPair.getPublic());
 		header.getTpk().setKty("oct");
 
-		assertThrows(UnableToConstructIccKeyException.class, () -> new IccPublicKeyFactory().create(header));
+		assertThrows(IccKeyInvalidCardMts7Exception.class, () -> new IccPublicKeyFactory().create(header));
 	}
 
 	@Test

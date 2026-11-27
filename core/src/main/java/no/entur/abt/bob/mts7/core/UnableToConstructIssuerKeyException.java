@@ -1,5 +1,7 @@
 package no.entur.abt.bob.mts7.core;
 
+import no.entur.abt.bob.mts7.api.InfrastructureMts7Exception;
+
 /**
  * An issuer key which is among the public keys cannot be used: it cannot be created, is of a type which is not supported, or is not accepted by the security
  * provider (a problem on our side).

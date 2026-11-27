@@ -19,6 +19,7 @@ import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
 import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
+import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
 import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
@@ -140,7 +141,6 @@ public class InvalidMobileTicketBundleTest {
 			InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class, verification::verify);
 
 			assertEquals(expected, e.getClass().getSimpleName(), e.getMessage());
-			assertFalse(e.getResult().isVerifiedPrivateKeyPresent());
 		}
 	}
 
@@ -167,8 +167,8 @@ public class InvalidMobileTicketBundleTest {
 	private static ThumbprintFactory cardSideFailingThumbprintFactory() throws Exception {
 		return new ThumbprintFactory(null) {
 			@Override
-			public byte[] create(IssuerSignatureProtectedHeader header) throws UnableToConstructIccKeyException {
-				throw new UnableToConstructIccKeyException("Broken");
+			public byte[] create(IssuerSignatureProtectedHeader header) throws IccKeyInvalidCardMts7Exception {
+				throw new IccKeyInvalidCardMts7Exception("Broken");
 			}
 		};
 	}

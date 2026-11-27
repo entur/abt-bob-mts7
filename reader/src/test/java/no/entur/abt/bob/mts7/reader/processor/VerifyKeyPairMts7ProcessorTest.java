@@ -71,11 +71,8 @@ public class VerifyKeyPairMts7ProcessorTest extends AbstractExecutorTest {
 	@Test
 	public void testCardWithoutPrivateKeyIsRejected() throws Exception {
 		// as from a cloned card, which does not have the private key
-		KeyPairInvalidCardMts7Exception e = assertThrows(KeyPairInvalidCardMts7Exception.class,
+		assertThrows(KeyPairInvalidCardMts7Exception.class,
 				() -> process(processorFactory.create(), SIGNATURE_RESPONSE.replace("DCC5", "DCC6")).waitForVerify(0));
-
-		assertFalse(e.getResult().isVerifiedPrivateKeyPresent());
-		assertEquals("0000175F96B61D", ByteArrayHexStringConverter.toHexString(e.getResult().getSerial()));
 	}
 
 	@Test

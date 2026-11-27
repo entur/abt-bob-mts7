@@ -10,7 +10,7 @@ import java.util.function.BooleanSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import no.entur.abt.bob.mts7.core.InvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.Mts7Card;
 
 /**
@@ -34,7 +34,7 @@ import no.entur.abt.bob.mts7.core.Mts7Card;
  *
  * <p>
  * The processing reports a problem on the card side by throwing an {@linkplain InvalidCardMts7Exception} (or a subclass) from {@linkplain #process()}, which
- * {@linkplain #waitForVerify(long)} then throws as it is. A problem on our side is an {@linkplain no.entur.abt.bob.mts7.core.InfrastructureMts7Exception} (or a
+ * {@linkplain #waitForVerify(long)} then throws as it is. A problem on our side is an {@linkplain no.entur.abt.bob.mts7.api.InfrastructureMts7Exception} (or a
  * subclass), which {@linkplain #waitForVerify(long)} throws as the cause of an {@linkplain ExecutionException}, as it does anything else, such as a
  * {@linkplain java.util.concurrent.RejectedExecutionException} if the executor did not run the processor, or a {@linkplain RuntimeException}, which is a bug.
  */
@@ -234,7 +234,7 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 	 * @throws InvalidCardMts7Exception if the card is not valid, or could not be verified (a problem on the card side), or if the card was not completely read
 	 *                                  and processed (because the processor was closed, the card was not read in time, or the timeout expired)
 	 * @throws ExecutionException       if the processing failed because of a problem on our side, which is the cause: an
-	 *                                  {@linkplain no.entur.abt.bob.mts7.core.InfrastructureMts7Exception} (or a subclass), or anything else (see above)
+	 *                                  {@linkplain no.entur.abt.bob.mts7.api.InfrastructureMts7Exception} (or a subclass), or anything else (see above)
 	 */
 
 	@Override
@@ -253,7 +253,7 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 		if (failure != null) {
 			throw new ExecutionException("Unable to process the card", failure);
 		}
-		throw new InvalidCardMts7Exception("The card was not completely read and processed", card);
+		throw new InvalidCardMts7Exception("The card was not completely read and processed");
 	}
 
 	protected Mts7Card awaitResult(long timeout) throws InterruptedException {
@@ -358,7 +358,7 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 	 *
 	 * @throws InvalidCardMts7Exception if the card is not valid, or could not be verified (a problem on the card side)
 	 * @throws Exception                if the processing failed because of a problem on our side: an
-	 *                                  {@linkplain no.entur.abt.bob.mts7.core.InfrastructureMts7Exception} (or a subclass)
+	 *                                  {@linkplain no.entur.abt.bob.mts7.api.InfrastructureMts7Exception} (or a subclass)
 	 */
 
 	protected abstract void process() throws Exception;

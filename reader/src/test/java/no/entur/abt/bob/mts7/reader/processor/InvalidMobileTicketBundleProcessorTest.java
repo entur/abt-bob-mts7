@@ -1,7 +1,6 @@
 package no.entur.abt.bob.mts7.reader.processor;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -22,12 +21,11 @@ import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
 import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
+import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.api.apdu.CommandAPDU;
 import no.entur.abt.bob.mts7.core.IccKeyInvalidCardMts7Exception;
-import no.entur.abt.bob.mts7.core.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.Mts7Card;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
-import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
 import no.entur.abt.bob.mts7.core.UnableToConstructThumbprintKeyException;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
@@ -144,7 +142,6 @@ public class InvalidMobileTicketBundleProcessorTest {
 			InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class, verification::verify);
 
 			assertEquals(expected, e.getClass().getSimpleName(), e.getMessage());
-			assertFalse(e.getResult().isVerifiedPrivateKeyPresent());
 		}
 	}
 
@@ -170,8 +167,8 @@ public class InvalidMobileTicketBundleProcessorTest {
 	private static ThumbprintFactory cardSideFailingThumbprintFactory() throws Exception {
 		return new ThumbprintFactory(null) {
 			@Override
-			public byte[] create(IssuerSignatureProtectedHeader header) throws UnableToConstructIccKeyException {
-				throw new UnableToConstructIccKeyException("Broken");
+			public byte[] create(IssuerSignatureProtectedHeader header) throws IccKeyInvalidCardMts7Exception {
+				throw new IccKeyInvalidCardMts7Exception("Broken");
 			}
 		};
 	}

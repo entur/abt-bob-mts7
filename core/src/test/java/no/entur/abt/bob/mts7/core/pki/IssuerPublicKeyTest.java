@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Test;
 
 import com.nimbusds.jose.crypto.impl.ECDSA;
 
-import no.entur.abt.bob.mts7.core.InfrastructureMts7Exception;
+import no.entur.abt.bob.mts7.api.InfrastructureMts7Exception;
 import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
 import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
 

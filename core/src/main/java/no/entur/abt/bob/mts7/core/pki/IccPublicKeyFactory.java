@@ -16,8 +16,8 @@ import com.nimbusds.jose.jwk.KeyType;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.util.Base64URL;
 
+import no.entur.abt.bob.mts7.core.IccKeyInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
-import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
 import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
 import no.entur.abt.bob.mts7.mtb.TokenPublicKey;
 
@@ -52,24 +52,24 @@ public class IccPublicKeyFactory {
 	 *
 	 * @param header the Issuer Signature Protected Header of the card
 	 * @return the public key of the card
-	 * @throws UnableToConstructIccKeyException if the token public key of the card is missing, of a type which is not in MTS1 (EC with P-256, or RSA), or
-	 *                                          invalid (a problem on the card side)
-	 * @throws NoSuchAlgorithmMts7Exception     if the signature algorithm is not available from the security provider (a problem on our side)
+	 * @throws IccKeyInvalidCardMts7Exception if the token public key of the card is missing, of a type which is not in MTS1 (EC with P-256, or RSA), or invalid
+	 *                                        (a problem on the card side)
+	 * @throws NoSuchAlgorithmMts7Exception   if the signature algorithm is not available from the security provider (a problem on our side)
 	 */
 
-	public IccPublicKey create(IssuerSignatureProtectedHeader header) throws UnableToConstructIccKeyException, NoSuchAlgorithmMts7Exception {
+	public IccPublicKey create(IssuerSignatureProtectedHeader header) throws IccKeyInvalidCardMts7Exception, NoSuchAlgorithmMts7Exception {
 		TokenPublicKey tpk = header.getTpk();
 
 		try {
 			if (tpk == null) {
-				throw new UnableToConstructIccKeyException("Missing token public key");
+				throw new IccKeyInvalidCardMts7Exception("Missing token public key");
 			}
 
 			JWK jwk = toJwk(tpk);
 
 			List<Key> keys = KeyConverter.toJavaKeys(Arrays.asList(jwk));
 			if (keys.isEmpty()) {
-				throw new UnableToConstructIccKeyException("Invalid token public key");
+				throw new IccKeyInvalidCardMts7Exception("Invalid token public key");
 			}
 
 			Key key = keys.get(0);
@@ -80,27 +80,27 @@ public class IccPublicKeyFactory {
 			if (key instanceof RSAPublicKey) {
 				return create((RSAPublicKey) key, "NONEwithRSA");
 			}
-			throw new UnableToConstructIccKeyException("Unknown key type " + key.getAlgorithm());
-		} catch (UnableToConstructIccKeyException | NoSuchAlgorithmMts7Exception e) {
+			throw new IccKeyInvalidCardMts7Exception("Unknown key type " + key.getAlgorithm());
+		} catch (IccKeyInvalidCardMts7Exception | NoSuchAlgorithmMts7Exception e) {
 			throw e;
 		} catch (Exception e) {
-			throw new UnableToConstructIccKeyException(e);
+			throw new IccKeyInvalidCardMts7Exception("Invalid token public key", e);
 		}
 	}
 
-	private static JWK toJwk(TokenPublicKey tpk) throws UnableToConstructIccKeyException {
+	private static JWK toJwk(TokenPublicKey tpk) throws IccKeyInvalidCardMts7Exception {
 		KeyType keyType = KeyType.parse(tpk.getKty());
 
 		if (KeyType.EC.equals(keyType)) {
 			// MTS1 has P-256 only
 			if (!Curve.P_256.getName().equals(tpk.getCrv())) {
-				throw new UnableToConstructIccKeyException("Curve " + tpk.getCrv() + " is not " + Curve.P_256.getName());
+				throw new IccKeyInvalidCardMts7Exception("Curve " + tpk.getCrv() + " is not " + Curve.P_256.getName());
 			}
 			return new ECKey.Builder(Curve.P_256, new Base64URL(tpk.getX()), new Base64URL(tpk.getY())).build();
 		} else if (KeyType.RSA.equals(keyType)) {
 			return new RSAKey.Builder(new Base64URL(tpk.getN()), new Base64URL(tpk.getE())).build();
 		}
-		throw new UnableToConstructIccKeyException("Unknown key type " + tpk.getKty());
+		throw new IccKeyInvalidCardMts7Exception("Unknown key type " + tpk.getKty());
 	}
 
 	private IccPublicKey create(PublicKey key, String algorithm) throws Exception {

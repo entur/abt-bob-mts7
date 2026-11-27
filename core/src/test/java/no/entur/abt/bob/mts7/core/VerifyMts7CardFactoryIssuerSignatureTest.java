@@ -1,10 +1,8 @@
 package no.entur.abt.bob.mts7.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -31,6 +29,7 @@ import com.nimbusds.jose.crypto.impl.ECDSA;
 
 import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
+import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
 import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
 
@@ -232,16 +231,8 @@ public class VerifyMts7CardFactoryIssuerSignatureTest {
 	private void assertRejected(ParticipantPublicKeys issuers, Mts7ApduPayloads payloads) throws Exception {
 		VerifyMts7CardFactory factory = new VerifyMts7CardFactory(issuers);
 
-		Mts7Card result;
-		try {
-			result = factory.create(payloads);
-		} catch (InvalidCardMts7Exception e) {
-			result = e.getResult();
-		}
-		if (result.isVerifiedTrustChain() && result.isVerifiedPrivateKeyPresent()) {
-			fail("Card was trusted");
-		}
-		assertFalse(result.isVerifiedTrustChain(), "Trust chain must not be verified");
+		// without trustUnknownRootKeys, a card is only returned if its trust chain is verified
+		assertThrows(InvalidCardMts7Exception.class, () -> factory.create(payloads), "Card was trusted");
 	}
 
 	// genuine card

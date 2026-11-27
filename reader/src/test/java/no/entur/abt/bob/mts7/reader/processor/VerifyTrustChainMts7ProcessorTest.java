@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.IOException;
 import java.security.Provider;
@@ -19,8 +18,8 @@ import org.junit.jupiter.api.Test;
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
 import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
+import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.api.apdu.CommandAPDU;
-import no.entur.abt.bob.mts7.core.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.KeyPairInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.Mts7Card;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
@@ -111,14 +110,7 @@ public class VerifyTrustChainMts7ProcessorTest extends AbstractTest {
 
 		processor.run();
 
-		Mts7Card card;
-		try {
-			card = processor.waitForVerify(0);
-			fail("Expected card not to be trusted");
-		} catch (InvalidCardMts7Exception e) {
-			card = e.getResult();
-		}
-		assertFalse(card.isVerifiedTrustChain());
+		assertThrows(InvalidCardMts7Exception.class, () -> processor.waitForVerify(0), "Expected card not to be trusted");
 	}
 
 	@Test
@@ -130,7 +122,6 @@ public class VerifyTrustChainMts7ProcessorTest extends AbstractTest {
 				() -> process(factory.create(), GET_NEXT_DATA_RESPONSE, SIGNATURE_RESPONSE).waitForVerify(0));
 		assertEquals(10, e.getIssuerId());
 		assertEquals("10:20230213", e.getKeyId());
-		assertFalse(e.getResult().isVerifiedTrustChain());
 	}
 
 	@Test
@@ -178,7 +169,6 @@ public class VerifyTrustChainMts7ProcessorTest extends AbstractTest {
 
 		// the key is known, so the issuer signature is not valid
 		assertFalse(e instanceof UnknownIssuerKeyInvalidCardMts7Exception);
-		assertFalse(e.getResult().isVerifiedTrustChain());
 	}
 
 	@Test
@@ -201,8 +191,6 @@ public class VerifyTrustChainMts7ProcessorTest extends AbstractTest {
 		assertFalse(e instanceof KeyPairInvalidCardMts7Exception);
 		assertFalse(e instanceof TrustChainInvalidCardMts7Exception);
 		assertInstanceOf(IOException.class, e.getCause());
-		// the card as far as it was read
-		assertEquals("0000175F96B61D", ByteArrayHexStringConverter.toHexString(e.getResult().getSerial()));
 	}
 
 	@Test

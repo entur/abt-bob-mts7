@@ -1,5 +1,7 @@
 package no.entur.abt.bob.mts7.core;
 
+import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
+
 import no.entur.tlv.parser.LenientTlvPullParser;
 
 /**
@@ -68,10 +70,10 @@ public class Mts7CardEnricher {
 			applicationIdentifier = parse(card, pullParser);
 		} catch (RuntimeException e) {
 			// the parsing is lenient, so this is not expected; whatever is wrong with the response, it came from the card
-			throw new InvalidCardMts7Exception("Malformed select application response", card, e);
+			throw new InvalidCardMts7Exception("Malformed select application response", e);
 		}
 		if (!applicationIdentifier) {
-			throw new InvalidCardMts7Exception("Missing or malformed application identifier in the select application response", card);
+			throw new InvalidCardMts7Exception("Missing or malformed application identifier in the select application response");
 		}
 	}
 

@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
+import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
 import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
@@ -44,12 +45,7 @@ public class VerifyKeyPairMts7CardFactoryTest {
 	public void testCardWithoutPrivateKeyIsRejected() throws Exception {
 		VerifyKeyPairMts7CardFactory factory = new VerifyKeyPairMts7CardFactory();
 
-		KeyPairInvalidCardMts7Exception e = assertThrows(KeyPairInvalidCardMts7Exception.class,
-				() -> factory.create(card(GET_NEXT_DATA_RESPONSE, OTHER_SIGNATURE_RESPONSE)));
-
-		assertFalse(e.getResult().isVerifiedPrivateKeyPresent());
-		assertTrue(e.getResult().hasThumprint());
-		assertEquals(SERIAL, ByteArrayHexStringConverter.toHexString(e.getResult().getSerial()));
+		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> factory.create(card(GET_NEXT_DATA_RESPONSE, OTHER_SIGNATURE_RESPONSE)));
 	}
 
 	@Test
@@ -60,8 +56,6 @@ public class VerifyKeyPairMts7CardFactoryTest {
 
 		assertFalse(e instanceof KeyPairInvalidCardMts7Exception);
 		assertInstanceOf(IOException.class, e.getCause());
-		// the card as far as it was read
-		assertEquals(SERIAL, ByteArrayHexStringConverter.toHexString(e.getResult().getSerial()));
 	}
 
 	@Test

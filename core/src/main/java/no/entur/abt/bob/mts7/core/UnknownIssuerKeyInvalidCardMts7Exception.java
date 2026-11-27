@@ -20,11 +20,10 @@ public class UnknownIssuerKeyInvalidCardMts7Exception extends TrustChainInvalidC
 	 *
 	 * @param issuerId issuer id (iid) from the certificate of the card
 	 * @param keyId    key id (kid) from the certificate of the card
-	 * @param result   the card as far as it was read
 	 */
 
-	public UnknownIssuerKeyInvalidCardMts7Exception(long issuerId, String keyId, Mts7Card result) {
-		super("Unknown issuer public key " + keyId + " of participant " + issuerId, result);
+	public UnknownIssuerKeyInvalidCardMts7Exception(long issuerId, String keyId) {
+		super("Unknown issuer public key " + keyId + " of participant " + issuerId);
 		this.issuerId = issuerId;
 		this.keyId = keyId;
 	}

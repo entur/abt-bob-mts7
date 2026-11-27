@@ -3,7 +3,7 @@ package no.entur.abt.bob.mts7.reader;
 import java.io.Closeable;
 import java.util.concurrent.ExecutionException;
 
-import no.entur.abt.bob.mts7.core.InvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.Mts7Card;
 import no.entur.abt.bob.mts7.reader.processor.Mts7Processor;
 import no.entur.abt.bob.mts7.simple.api.Mts7ApduExchanges;

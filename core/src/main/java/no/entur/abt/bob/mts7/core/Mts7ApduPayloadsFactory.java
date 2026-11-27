@@ -3,20 +3,42 @@ package no.entur.abt.bob.mts7.core;
 import java.io.ByteArrayOutputStream;
 import java.util.List;
 
-import no.entur.abt.bob.mts7.api.Mts7Exception;
+import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.api.ReaderMts7Exception;
 import no.entur.abt.bob.mts7.api.UnexpectedCardResponseException;
 import no.entur.abt.bob.mts7.api.apdu.CommandAPDU;
 import no.entur.abt.bob.mts7.simple.api.Mts7ApduExchange;
 import no.entur.abt.bob.mts7.simple.api.Mts7ApduExchanges;
 
+/**
+ * Sorts out the payloads of the exchanges with a card, which the reader (for example the control client) sends us.
+ * <p>
+ * Instances are thread safe.
+ */
+
 public class Mts7ApduPayloadsFactory {
 
-	public Mts7ApduPayloads createCard(Mts7ApduExchanges mts7ApduExchanges) throws Mts7Exception {
+	/**
+	 * Sort out the payloads of the exchanges with a card, as a reader following MTS7 sends them: select application first, then get (next) data (followed by
+	 * get response for as long as the card says there is more), and internal authenticate last.
+	 *
+	 * @param mts7ApduExchanges the exchanges with the card
+	 * @return the payloads
+	 * @throws ReaderMts7Exception      if the exchanges are not as a reader following MTS7 sends them: commands are missing
+	 *                                  ({@linkplain MissingCardCommandsException}), unexpected ({@linkplain UnexpectedCardCommandException}), or malformed (a
+	 *                                  problem with the reader)
+	 * @throws InvalidCardMts7Exception if the card did not respond with success ({@linkplain UnexpectedCardResponseException}, a problem on the card side)
+	 */
 
-		List<Mts7ApduExchange> exchanges = mts7ApduExchanges.getExchanges();
+	public Mts7ApduPayloads createCard(Mts7ApduExchanges mts7ApduExchanges) throws ReaderMts7Exception, InvalidCardMts7Exception {
 
-		if (exchanges.size() <= 2) {
+		List<Mts7ApduExchange> exchanges = mts7ApduExchanges == null ? null : mts7ApduExchanges.getExchanges();
+
+		if (exchanges == null || exchanges.size() <= 2) {
 			throw new MissingCardCommandsException();
+		}
+		for (Mts7ApduExchange exchange : exchanges) {
+			checkExchange(exchange);
 		}
 
 		Mts7ApduPayloads payloads = new Mts7ApduPayloads();
@@ -127,9 +149,34 @@ public class Mts7ApduPayloadsFactory {
 		return payload;
 	}
 
-	protected static byte[] getCommandPayload(byte[] apdu) {
-		CommandAPDU command = new CommandAPDU(apdu);
-		return command.getData();
+	protected static byte[] getCommandPayload(byte[] apdu) throws ReaderMts7Exception {
+		try {
+			CommandAPDU command = new CommandAPDU(apdu);
+			return command.getData();
+		} catch (RuntimeException e) {
+			throw new ReaderMts7Exception("Malformed command", e);
+		}
+	}
+
+	/**
+	 * Check that an exchange can be from a card: a command has at least the four bytes of its header, and a response at least the two bytes of its status word.
+	 *
+	 * @param exchange the exchange
+	 * @throws ReaderMts7Exception if the exchange cannot be from a card (a problem with the reader)
+	 */
+
+	protected static void checkExchange(Mts7ApduExchange exchange) throws ReaderMts7Exception {
+		if (exchange == null) {
+			throw new ReaderMts7Exception("Missing exchange");
+		}
+		byte[] command = exchange.getCommand();
+		if (command == null || command.length < 4) {
+			throw new ReaderMts7Exception("Malformed command: " + (command == null ? "missing" : command.length + " bytes"));
+		}
+		byte[] response = exchange.getResponse();
+		if (response == null || response.length < 2) {
+			throw new ReaderMts7Exception("Malformed response: " + (response == null ? "missing" : response.length + " bytes"));
+		}
 	}
 
 	protected static boolean isSelectApplication(byte[] command) {

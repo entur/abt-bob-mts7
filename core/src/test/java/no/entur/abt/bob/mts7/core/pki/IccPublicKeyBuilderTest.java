@@ -13,7 +13,6 @@ import java.security.KeyPairGenerator;
 import java.security.PrivateKey;
 import java.security.Provider;
 import java.security.Signature;
-import java.security.SignatureException;
 import java.security.interfaces.ECPublicKey;
 import java.security.spec.ECGenParameterSpec;
 import java.util.Base64;
@@ -26,7 +25,9 @@ import org.junit.jupiter.api.Test;
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 import com.nimbusds.jose.crypto.impl.ECDSA;
 
+import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
+import no.entur.abt.bob.mts7.core.TrustChainInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
 
 public class IccPublicKeyBuilderTest {
@@ -224,7 +225,7 @@ public class IccPublicKeyBuilderTest {
 		// there is enough data to try
 		assertTrue(builder.canBuild());
 
-		assertThrows(SignatureException.class, builder::build);
+		assertThrows(TrustChainInvalidCardMts7Exception.class, builder::build);
 	}
 
 	@Test
@@ -238,7 +239,7 @@ public class IccPublicKeyBuilderTest {
 		IccPublicKeyBuilder builder = signedBuilder()
 				.withSignature(sign(other.getPrivate(), CBOR.writeValueAsBytes(new byte[][] { header, new byte[] { (byte) 0xA0 } })));
 
-		assertThrows(SignatureException.class, builder::build);
+		assertThrows(TrustChainInvalidCardMts7Exception.class, builder::build);
 	}
 
 	@Test
@@ -258,7 +259,7 @@ public class IccPublicKeyBuilderTest {
 				.withIssuerPublicKey(issuerKey())
 				.withIssuerSignatureProtectedHeader(issuerSignatureProtectedHeader());
 
-		assertThrows(SignatureException.class, builder::build);
+		assertThrows(TrustChainInvalidCardMts7Exception.class, builder::build);
 	}
 
 	// the algorithm of the issuer signature
@@ -267,7 +268,8 @@ public class IccPublicKeyBuilderTest {
 	public void testBuildWithoutAlgorithm() throws Exception {
 		IccPublicKeyBuilder builder = signedBuilder(header(null), issuerKey());
 
-		SignatureException e = assertThrows(SignatureException.class, builder::build);
+		InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class, builder::build);
+		assertEquals(InvalidCardMts7Exception.class, e.getClass());
 		assertEquals("Issuer signature algorithm null is not ES256 or RS256", e.getMessage());
 	}
 
@@ -277,7 +279,8 @@ public class IccPublicKeyBuilderTest {
 		for (String alg : new String[] { "", "none", "HS256", "ES384", "PS256", "es256" }) {
 			IccPublicKeyBuilder builder = signedBuilder(header(alg), issuerKey());
 
-			SignatureException e = assertThrows(SignatureException.class, builder::build, alg);
+			InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class, builder::build, alg);
+			assertEquals(InvalidCardMts7Exception.class, e.getClass());
 			assertEquals("Issuer signature algorithm " + alg + " is not ES256 or RS256", e.getMessage());
 		}
 	}
@@ -287,7 +290,7 @@ public class IccPublicKeyBuilderTest {
 		// RS256 is in MTS1, but the issuer key is EC
 		IccPublicKeyBuilder builder = signedBuilder(header("RS256"), issuerKey());
 
-		SignatureException e = assertThrows(SignatureException.class, builder::build);
+		TrustChainInvalidCardMts7Exception e = assertThrows(TrustChainInvalidCardMts7Exception.class, builder::build);
 		assertEquals("Issuer signature algorithm RS256 does not match issuer public key 10:test of participant 10 (ES256)", e.getMessage());
 	}
 
@@ -296,7 +299,7 @@ public class IccPublicKeyBuilderTest {
 		// verifying would fail on our side, but the card is checked first
 		IccPublicKeyBuilder builder = signedBuilder(header("HS256"), issuerKeyWithoutAlgorithms());
 
-		assertThrows(SignatureException.class, builder::build);
+		assertEquals(InvalidCardMts7Exception.class, assertThrows(InvalidCardMts7Exception.class, builder::build).getClass());
 	}
 
 	@Test

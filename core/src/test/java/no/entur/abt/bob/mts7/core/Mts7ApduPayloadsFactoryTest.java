@@ -2,7 +2,9 @@ package no.entur.abt.bob.mts7.core;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -10,7 +12,9 @@ import java.util.Arrays;
 
 import org.junit.jupiter.api.Test;
 
+import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.api.Mts7Exception;
+import no.entur.abt.bob.mts7.api.ReaderMts7Exception;
 import no.entur.abt.bob.mts7.api.UnexpectedCardResponseException;
 import no.entur.abt.bob.mts7.simple.api.Mts7ApduExchanges;
 import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
@@ -271,6 +275,60 @@ public class Mts7ApduPayloadsFactoryTest {
 						GET_RESPONSE_COMMAND, secondPart(), INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE)));
 
 		assertArrayEquals(GET_RESPONSE_COMMAND, e.getCommand());
+	}
+
+	// exchanges which cannot be from a card are a problem with the reader, never a RuntimeException
+
+	@Test
+	public void testMissingExchangesAreReaderProblem() {
+		assertThrows(MissingCardCommandsException.class, () -> factory.createCard(null));
+		assertThrows(MissingCardCommandsException.class, () -> factory.createCard(new Mts7ApduExchanges()));
+	}
+
+	@Test
+	public void testShortCommandIsReaderProblem() {
+		for (byte[] command : new byte[][] { null, {}, { 0x00, (byte) 0xCA, 0x7F } }) {
+			ReaderMts7Exception e = assertThrows(ReaderMts7Exception.class, () -> factory.createCard(
+					exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE, command, GET_DATA_RESPONSE, INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE)));
+			assertTrue(e.getMessage().startsWith("Malformed command"), e.getMessage());
+		}
+	}
+
+	@Test
+	public void testShortResponseIsReaderProblem() {
+		for (byte[] response : new byte[][] { null, {}, { (byte) 0x90 } }) {
+			ReaderMts7Exception e = assertThrows(ReaderMts7Exception.class, () -> factory.createCard(
+					exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE, GET_DATA_COMMAND, response, INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE)));
+			assertTrue(e.getMessage().startsWith("Malformed response"), e.getMessage());
+		}
+	}
+
+	@Test
+	public void testMissingExchangeIsReaderProblem() {
+		Mts7ApduExchanges exchanges = exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE, GET_DATA_COMMAND, GET_DATA_RESPONSE,
+				INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE);
+		exchanges.getExchanges().add(1, null);
+
+		assertThrows(ReaderMts7Exception.class, () -> factory.createCard(exchanges));
+	}
+
+	@Test
+	public void testMalformedInternalAuthenticateIsReaderProblem() {
+		// says 32 bytes of data, but has 3
+		byte[] command = ByteArrayHexStringConverter.hexStringToByteArray("0088000020" + "000000");
+
+		ReaderMts7Exception e = assertThrows(ReaderMts7Exception.class, () -> factory
+				.createCard(exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE, GET_DATA_COMMAND, GET_DATA_RESPONSE, command, SIGNATURE_RESPONSE)));
+		assertEquals("Malformed command", e.getMessage());
+	}
+
+	@Test
+	public void testUnexpectedResponseIsCardProblem() {
+		// the card does not have the application
+		InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class, () -> factory.createCard(
+				exchanges(SELECT_BOB_COMMAND, FILE_NOT_FOUND, GET_DATA_COMMAND, GET_DATA_RESPONSE, INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE)));
+		assertInstanceOf(UnexpectedCardResponseException.class, e);
+		assertEquals("Unexpected response from the card: status word 6A82", e.getMessage());
 	}
 
 	public byte[] fromResponseApdu(byte[] response) {

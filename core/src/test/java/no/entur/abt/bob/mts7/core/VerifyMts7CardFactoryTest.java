@@ -28,6 +28,7 @@ import com.nimbusds.jose.jwk.gen.ECKeyGenerator;
 
 import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
+import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.IssuerPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IssuerSignatureFactory;
@@ -111,7 +112,6 @@ public class VerifyMts7CardFactoryTest {
 				() -> factory.create(card(SIGNATURE_RESPONSE)));
 		assertEquals(10, e.getIssuerId());
 		assertEquals("10:20230213", e.getKeyId());
-		assertFalse(e.getResult().isVerifiedTrustChain());
 	}
 
 	@Test
@@ -156,16 +156,13 @@ public class VerifyMts7CardFactoryTest {
 
 		// the key is known, so the issuer signature is not valid
 		assertFalse(e instanceof UnknownIssuerKeyInvalidCardMts7Exception);
-		assertFalse(e.getResult().isVerifiedTrustChain());
 	}
 
 	@Test
 	public void testCardWithoutPrivateKeyIsRejectedWithOption() throws Exception {
 		VerifyMts7CardFactory factory = new VerifyMts7CardFactory(participantPublicKeys(), null, true);
 
-		KeyPairInvalidCardMts7Exception e = assertThrows(KeyPairInvalidCardMts7Exception.class, () -> factory.create(card(OTHER_SIGNATURE_RESPONSE)));
-
-		assertTrue(e.getResult().isVerifiedTrustChain());
+		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> factory.create(card(OTHER_SIGNATURE_RESPONSE)));
 	}
 
 	@Test
@@ -258,8 +255,6 @@ public class VerifyMts7CardFactoryTest {
 
 		assertFalse(e instanceof KeyPairInvalidCardMts7Exception);
 		assertInstanceOf(IOException.class, e.getCause());
-		// the card as far as it was read
-		assertEquals("0000175F96B61D", ByteArrayHexStringConverter.toHexString(e.getResult().getSerial()));
 	}
 
 	// the root key of the card is among the issuer keys, but its type is not supported

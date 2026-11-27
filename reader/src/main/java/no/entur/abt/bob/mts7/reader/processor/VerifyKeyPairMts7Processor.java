@@ -8,11 +8,9 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
-import no.entur.abt.bob.mts7.core.IccKeyInvalidCardMts7Exception;
-import no.entur.abt.bob.mts7.core.InvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.KeyPairInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
-import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.Mts1Algorithms;
@@ -72,19 +70,19 @@ public class VerifyKeyPairMts7Processor extends AbstractMts7Processor {
 		try {
 			mobileTicketBundle = mobileTicketBundleParser.parse(getDataResponsePayload);
 		} catch (IOException e) {
-			throw new InvalidCardMts7Exception("Unable to parse the Mobile Ticket Bundle", result, e);
+			throw new InvalidCardMts7Exception("Unable to parse the Mobile Ticket Bundle", e);
 		}
 
 		IssuerSignatureProtectedHeader header = mobileTicketBundle.getIssuerSignatureProtectedHeader();
 		if (header == null) {
-			throw new InvalidCardMts7Exception("Missing Issuer Signature Protected Header", result);
+			throw new InvalidCardMts7Exception("Missing Issuer Signature Protected Header");
 		}
 
 		// MTS1 requires alg, the algorithm of the issuer signature, and has two. Checked before anything else in the header, so that a card which is
 		// not as in the specification is to blame, whatever happens on our side with the issuer key.
 		if (!Mts1Algorithms.isIssuerSignatureAlgorithm(header.getAlg())) {
 			throw new InvalidCardMts7Exception(
-					"Issuer signature algorithm " + header.getAlg() + " is not " + Mts1Algorithms.ES256 + " or " + Mts1Algorithms.RS256, result);
+					"Issuer signature algorithm " + header.getAlg() + " is not " + Mts1Algorithms.ES256 + " or " + Mts1Algorithms.RS256);
 		}
 
 		// note here what kind of algorithm the card uses: EC and RSA do not encode the input to the internal authenticate function in the same way. It
@@ -93,20 +91,10 @@ public class VerifyKeyPairMts7Processor extends AbstractMts7Processor {
 		setIccKeyAlgorithm(Mts1Algorithms.getTokenAlgorithm(header.getTpk()));
 
 		IccPublicKey iccPublicKey;
-		try {
-			iccPublicKey = iccSignatureFactory.create(header);
-		} catch (UnableToConstructIccKeyException e) {
-			throw new IccKeyInvalidCardMts7Exception(result, e);
-		}
+		iccPublicKey = iccSignatureFactory.create(header);
 
-		// from the same token public key as the public key of the card, which could be created, so a problem here is on our side
-		byte[] thumbprint;
-		try {
-			thumbprint = thumbprintFactory.create(header);
-		} catch (UnableToConstructIccKeyException e) {
-			// not after the key could be created, but the card is to blame
-			throw new IccKeyInvalidCardMts7Exception(result, e);
-		}
+		// from the same token public key as the public key of the card, which could be created, so a problem here is expected to be on our side
+		byte[] thumbprint = thumbprintFactory.create(header);
 		updateResult(card -> card.setThumbprint(thumbprint));
 
 		LOGGER.info("Processed 'get (next) data' response");
@@ -127,7 +115,7 @@ public class VerifyKeyPairMts7Processor extends AbstractMts7Processor {
 
 		// process signature - the only time-critical part of the logic here
 		if (!iccPublicKey.verify(commandPayload, responsePayload)) {
-			throw new KeyPairInvalidCardMts7Exception(result);
+			throw new KeyPairInvalidCardMts7Exception();
 		}
 		LOGGER.info("Verified ICC private key");
 

@@ -2,8 +2,8 @@ package no.entur.abt.bob.mts7.reader.processor;
 
 import java.util.concurrent.ExecutionException;
 
+import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.api.apdu.CommandAPDU;
-import no.entur.abt.bob.mts7.core.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.Mts7Card;
 
 public interface Mts7Processor extends Runnable {

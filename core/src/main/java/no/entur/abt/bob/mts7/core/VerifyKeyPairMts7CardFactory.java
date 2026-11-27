@@ -6,6 +6,8 @@ import java.security.Provider;
 
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
+import no.entur.abt.bob.mts7.api.InfrastructureMts7Exception;
+import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.Mts1Algorithms;
@@ -86,7 +88,7 @@ public class VerifyKeyPairMts7CardFactory {
 		Mts7Card result = new Mts7Card();
 
 		if (!card.hasSelectApplicationOutput() || !card.hasGetDataOutput() || !card.hasInternalAuthenticateOutput()) {
-			throw new InvalidCardMts7Exception("Missing response from the card", result);
+			throw new InvalidCardMts7Exception("Missing response from the card");
 		}
 
 		enricher.enrichSelectApplicationResponsePayload(result, card.getSelectApplicationOutput());
@@ -95,38 +97,29 @@ public class VerifyKeyPairMts7CardFactory {
 		try {
 			mobileTicketBundle = mobileTicketBundleParser.parse(card.getGetDataOutput());
 		} catch (IOException e) {
-			throw new InvalidCardMts7Exception("Unable to parse the Mobile Ticket Bundle", result, e);
+			throw new InvalidCardMts7Exception("Unable to parse the Mobile Ticket Bundle", e);
 		}
 
 		IssuerSignatureProtectedHeader header = mobileTicketBundle.getIssuerSignatureProtectedHeader();
 		if (header == null) {
-			throw new InvalidCardMts7Exception("Missing Issuer Signature Protected Header", result);
+			throw new InvalidCardMts7Exception("Missing Issuer Signature Protected Header");
 		}
 
 		// MTS1 requires alg, the algorithm of the issuer signature, and has two. Checked before anything else in the header, so that a card which is
 		// not as in the specification is to blame, whatever happens on our side with the issuer key.
 		if (!Mts1Algorithms.isIssuerSignatureAlgorithm(header.getAlg())) {
 			throw new InvalidCardMts7Exception(
-					"Issuer signature algorithm " + header.getAlg() + " is not " + Mts1Algorithms.ES256 + " or " + Mts1Algorithms.RS256, result);
+					"Issuer signature algorithm " + header.getAlg() + " is not " + Mts1Algorithms.ES256 + " or " + Mts1Algorithms.RS256);
 		}
 
 		IccPublicKey iccPublicKey;
-		try {
-			iccPublicKey = iccPublicKeyFactory.create(header);
-		} catch (UnableToConstructIccKeyException e) {
-			throw new IccKeyInvalidCardMts7Exception(result, e);
-		}
+		iccPublicKey = iccPublicKeyFactory.create(header);
 
-		// from the same token public key as the public key of the card, which could be created, so a problem here is on our side
-		try {
-			result.setThumbprint(thumbprintFactory.create(header));
-		} catch (UnableToConstructIccKeyException e) {
-			// not after the key could be created, but the card is to blame
-			throw new IccKeyInvalidCardMts7Exception(result, e);
-		}
+		// from the same token public key as the public key of the card, which could be created, so a problem here is expected to be on our side
+		result.setThumbprint(thumbprintFactory.create(header));
 
 		if (!iccPublicKey.verify(card.getInternalAuthenticateInput(), card.getInternalAuthenticateOutput())) {
-			throw new KeyPairInvalidCardMts7Exception(result);
+			throw new KeyPairInvalidCardMts7Exception();
 		}
 		result.setVerifiedPrivateKeyPresent(true);
 
