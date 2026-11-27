@@ -11,9 +11,9 @@ import java.util.function.BooleanSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import no.entur.abt.bob.mts7.api.InsufficientCardCommandsException;
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.api.ReaderMts7Exception;
-import no.entur.abt.bob.mts7.core.InsufficientCardCommandsException;
 import no.entur.abt.bob.mts7.core.MalformedCardCommandException;
 import no.entur.abt.bob.mts7.core.MissingCardCommandsException;
 import no.entur.abt.bob.mts7.core.Mts7ApduPayloadsFactory;

@@ -15,6 +15,7 @@ import java.util.Random;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import no.entur.abt.bob.mts7.api.InsufficientCardCommandsException;
 import no.entur.abt.bob.mts7.api.MalformedCardResponseException;
 import no.entur.abt.bob.mts7.api.UnexpectedCardResponseException;
 import no.entur.abt.bob.mts7.core.LenientMts7ApduPayloadsFactory;
@@ -190,13 +191,14 @@ public class ApduLengthTest extends AbstractExecutorTest {
 
 	@Test
 	public void testCardWhichRejectsShortLength() throws Exception {
+		// not provably the fault of the card, as the examples of GET NEXT DATA in MTS7 have an extended Le, which the card need not support
 		WrongLengthCard card = new WrongLengthCard();
-		UnexpectedCardResponseException e = assertThrows(UnexpectedCardResponseException.class, () -> read(new DefaultMts7Card(card), random()));
+		InsufficientCardCommandsException e = assertThrows(InsufficientCardCommandsException.class, () -> read(new DefaultMts7Card(card), random()));
 		assertArrayEquals(GET_NEXT_DATA_SHORT_LENGTH, e.getCommand());
 		assertEquals(3, card.getCommands().size());
 
 		WrongLengthCard processorCard = new WrongLengthCard();
-		e = assertThrows(UnexpectedCardResponseException.class, () -> readWithProcessor(new DefaultMts7Card(processorCard), random()));
+		e = assertThrows(InsufficientCardCommandsException.class, () -> readWithProcessor(new DefaultMts7Card(processorCard), random()));
 		assertArrayEquals(GET_NEXT_DATA_SHORT_LENGTH, e.getCommand());
 		assertEquals(3, processorCard.getCommands().size());
 	}
@@ -334,5 +336,105 @@ public class ApduLengthTest extends AbstractExecutorTest {
 	public void testResponseWithoutStatusWordIsReaderProblem() throws Exception {
 		assertThrows(MalformedCardResponseException.class, () -> read(new DefaultMts7Card(new ShortResponseCard()), random()));
 		assertThrows(MalformedCardResponseException.class, () -> readWithProcessor(new DefaultMts7Card(new ShortResponseCard()), random()));
+	}
+
+	/**
+	 * A card with a maximum response length which is less than its select application response and its signature, so that it returns them in parts, as every
+	 * card may (MTS7 section 2.1). It may also ask for the exact Le of internal authenticate (6Cxx, ISO/IEC 7816-4 section 5.6).
+	 */
+
+	private static class ChainingCard extends SimulatedCard {
+
+		private final int maximumResponseLength;
+		private final boolean exactLe;
+
+		// the rest of a response, without the status word
+		private byte[] pending;
+		private int offset;
+
+		public ChainingCard(int maximumResponseLength, boolean exactLe) {
+			super(participant10, true, 1024, mtb(participant10));
+			this.maximumResponseLength = maximumResponseLength;
+			this.exactLe = exactLe;
+		}
+
+		@Override
+		public byte[] transceive(byte[] command) throws IOException {
+			int ins = command[1] & 0xFF;
+			if (ins == 0xA4) {
+				getCommands().add(command);
+				return firstPart(getResponse(participant10, 0));
+			}
+			if (ins == 0x88) {
+				getCommands().add(command);
+				byte[] response = lastResponse(participant10);
+				int le = command[command.length - 1] & 0xFF;
+				if (exactLe && (le == 0 ? 256 : le) != response.length - 2) {
+					return new byte[] { 0x6C, (byte) (response.length - 2) };
+				}
+				return firstPart(response);
+			}
+			if (ins == 0xC0 && pending != null) {
+				getCommands().add(command);
+				return nextPart();
+			}
+			return super.transceive(command);
+		}
+
+		private byte[] firstPart(byte[] response) {
+			pending = Arrays.copyOf(response, response.length - 2);
+			offset = 0;
+			return nextPart();
+		}
+
+		private byte[] nextPart() {
+			int length = Math.min(maximumResponseLength, pending.length - offset);
+			byte[] part = new byte[length + 2];
+			System.arraycopy(pending, offset, part, 0, length);
+			offset += length;
+			int remaining = pending.length - offset;
+			if (remaining > 0) {
+				part[length] = 0x61;
+				part[length + 1] = (byte) Math.min(remaining, 0xFF);
+			} else {
+				part[length] = (byte) 0x90;
+				part[length + 1] = 0x00;
+				pending = null;
+			}
+			return part;
+		}
+	}
+
+	@Test
+	public void testCardWhichReturnsEveryResponseInParts() throws Exception {
+		for (boolean exactLe : new boolean[] { false, true }) {
+			ChainingCard card = new ChainingCard(16, exactLe);
+			Mts7ApduExchanges exchanges = read(new DefaultMts7Card(card), MockRandomFactory.newInstance(participant10.getRandomValue()));
+
+			// select application in three parts, get next data, and the signature in four (after internal authenticate again with the exact Le)
+			assertEquals(exactLe ? 9 : 8, card.getCommands().size());
+
+			Mts7ApduPayloads payloads = new Mts7ApduPayloadsFactory().createCard(exchanges);
+			byte[] select = getResponse(participant10, 0);
+			assertArrayEquals(Arrays.copyOf(select, select.length - 2), payloads.getSelectApplicationOutput());
+			Mts7Card verified = new VerifyKeyPairMts7CardFactory().create(payloads);
+			assertTrue(verified.isVerifiedPrivateKeyPresent());
+			assertEquals(10, verified.getParticipantIdentifier());
+
+			// and with the processor
+			ChainingCard processorCard = new ChainingCard(16, exactLe);
+			Mts7Processor processor = new VerifyKeyPairMts7ProcessorFactory(executor).create();
+			processor.start();
+			try {
+				Mts7ApduExchanges processorExchanges = new ProcessorMts7ApduExchangesFactory(MockRandomFactory.newInstance(participant10.getRandomValue()))
+						.create(new DefaultMts7Card(processorCard), processor, null);
+				Mts7Card processed = processor.waitForVerify(0);
+				assertTrue(processed.isVerifiedPrivateKeyPresent());
+				assertEquals(10, processed.getParticipantIdentifier());
+				assertEquals(payloads, new Mts7ApduPayloadsFactory().createCard(processorExchanges));
+			} finally {
+				processor.close();
+			}
+		}
 	}
 }

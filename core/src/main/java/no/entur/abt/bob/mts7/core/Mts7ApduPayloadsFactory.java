@@ -1,8 +1,10 @@
 package no.entur.abt.bob.mts7.core;
 
 import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
 import java.util.List;
 
+import no.entur.abt.bob.mts7.api.InsufficientCardCommandsException;
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.api.MalformedCardResponseException;
 import no.entur.abt.bob.mts7.api.ReaderMts7Exception;
@@ -32,8 +34,15 @@ public class Mts7ApduPayloadsFactory {
 	protected static final byte[] APPLICATION_IDENTIFIER = { (byte) 0xA0, 0x00, 0x00, 0x07, (byte) 0x81, 0x01 };
 
 	/**
-	 * Sort out the payloads of the exchanges with a card, as a reader following MTS7 sends them: select application first, then get (next) data (followed by
-	 * get response for as long as the card says there is more), and internal authenticate last.
+	 * The length of the longest signature of a card: RSA with a modulus of 2048 bits (MTS7 section 2.1). A signature by EC with P-256 is 64 bytes.
+	 */
+
+	public static final int MAXIMUM_SIGNATURE_LENGTH = 256;
+
+	/**
+	 * Sort out the payloads of the exchanges with a card, as a reader following MTS7 sends them: select application first, then get (next) data, and internal
+	 * authenticate last. Each command may be followed by get response for as long as the card says there is more (MTS7 section 2.1), and by the same command
+	 * again if the card asks for another Le.
 	 *
 	 * @param mts7ApduExchanges the exchanges with the card
 	 * @return the payloads
@@ -58,30 +67,39 @@ public class Mts7ApduPayloadsFactory {
 		Mts7ApduPayloads payloads = new Mts7ApduPayloads();
 		payloads.setTagId(mts7ApduExchanges.getTagId());
 
+		List<Chain> chains = toChains(exchanges);
+
 		// first must be select application of the travel card application. The command is checked before the response, as the card can only answer the
 		// command it got.
-		Mts7ApduExchange first = exchanges.get(0);
+		Chain first = chains.get(0);
 
-		if (!isSelectApplication(first.getCommand())) {
-			throw new UnexpectedCardCommandException(first.getCommand(), first.getResponse());
+		byte[] select = first.getCommand();
+		if (!isSelectApplication(select)) {
+			throw new UnexpectedCardCommandException(select, first.getHead().getResponse());
 		}
-		byte[] applicationIdentifier = getCommandPayload(first.getCommand());
+		byte[] applicationIdentifier = getCommandPayload(select);
 		if (!startsWith(applicationIdentifier, APPLICATION_IDENTIFIER)) {
 			// another application (MTS7 section 3.1.1)
-			throw new UnexpectedCardCommandException(first.getCommand(), first.getResponse());
+			throw new UnexpectedCardCommandException(select, first.getHead().getResponse());
 		}
+		checkChain(first);
 
-		if (!isSuccess(first.getResponse())) {
-			throw new UnexpectedCardResponseException(first.getCommand(), first.getResponse());
+		if (!isSuccess(first.getLast().getResponse())) {
+			if (applicationIdentifier.length != APPLICATION_IDENTIFIER.length) {
+				// only the RID and the application are submitted (MTS7 section 4.1.1), and the card need not have an application by a longer name
+				throw new MalformedCardCommandException("Select application of an application identifier of " + applicationIdentifier.length + " bytes, not "
+						+ APPLICATION_IDENTIFIER.length + ", which the card rejected with status word " + toStatusWord(first.getLast().getResponse()));
+			}
+			throw new UnexpectedCardResponseException(first.getLast().getCommand(), first.getLast().getResponse());
 		}
 
 		// may be empty (MTS7 section 4.1.1), then the application-related data is retrieved with GET DATA
-		payloads.setSelectApplicationOutput(getResposePayload(first.getResponse()));
+		payloads.setSelectApplicationOutput(first.getResponsePayload());
 
 		// last must be internal authenticate
-		Mts7ApduExchange last = exchanges.get(exchanges.size() - 1);
+		Chain last = chains.get(chains.size() - 1);
 		if (!isInternalAuthenticateCommand(last.getCommand())) {
-			throw new UnexpectedCardCommandException(last.getCommand(), last.getResponse());
+			throw new UnexpectedCardCommandException(last.getCommand(), last.getHead().getResponse());
 		}
 
 		// the challenge SHALL be a SHA-256 hash (MTS7, section 4.1.4), and the signature is only returned if asked for (Le). Checked before the response, as
@@ -94,90 +112,58 @@ public class Mts7ApduPayloadsFactory {
 		if (internalAuthenticate.getNe() == 0) {
 			throw new MalformedCardCommandException("Internal authenticate without Le, so it does not ask for the signature");
 		}
+		checkChain(last);
 
-		if (!isSuccess(last.getResponse())) {
-			throw new UnexpectedCardResponseException(last.getCommand(), last.getResponse());
+		if (!isSuccess(last.getLast().getResponse())) {
+			if (internalAuthenticate.getNe() < MAXIMUM_SIGNATURE_LENGTH && !last.isAskedFor(internalAuthenticate.getNe())) {
+				// the card may not be able to return its signature within Le, unless it asked for that Le
+				throw new MalformedCardCommandException(
+						"Internal authenticate with Le for " + internalAuthenticate.getNe() + " bytes, less than the " + MAXIMUM_SIGNATURE_LENGTH
+								+ " of a signature by RSA, which the card rejected with status word " + toStatusWord(last.getLast().getResponse()));
+			}
+			throw new UnexpectedCardResponseException(last.getLast().getCommand(), last.getLast().getResponse());
 		}
 
 		payloads.setInternalAuthenticateInput(challenge);
-		payloads.setInternalAuthenticateOutput(getResposePayload(last.getResponse()));
+		payloads.setInternalAuthenticateOutput(last.getResponsePayload());
 
-		// The rest must be GET (NEXT) DATA of the MTBs (7F21) or GET DATA of the application-related data (6E), each followed by GET RESPONSE for as long as
-		// the card says there is more, possibly with an unsuccessful internal authenticate in between.
+		// The rest must be GET (NEXT) DATA of the MTBs (7F21) or GET DATA of the application-related data (6E), possibly with an unsuccessful internal
+		// authenticate in between.
 
-		int apduIndex = 1;
-		while (apduIndex < exchanges.size() - 1) {
+		for (int i = 1; i < chains.size() - 1; i++) {
+			Chain chain = chains.get(i);
 
-			Mts7ApduExchange mts7ApduExchange = exchanges.get(apduIndex);
-
-			byte[] command = mts7ApduExchange.getCommand();
+			byte[] command = chain.getCommand();
 
 			// there might be an intermediate authenticate which was not successful; if so then ignore it.
-			if (isInternalAuthenticateCommand(command) && !isSuccess(mts7ApduExchange.getResponse())) {
-				apduIndex++;
-
+			if (isInternalAuthenticateCommand(command) && !isSuccess(chain.getLast().getResponse())) {
 				continue;
 			}
 
 			boolean mobileTicketBundle = isGetDataCommand(command) || isGetNextDataCommand(command);
 			if (!mobileTicketBundle && !isGetApplicationRelatedDataCommand(command)) {
-				throw new UnexpectedCardCommandException(mts7ApduExchange.getCommand(), mts7ApduExchange.getResponse());
+				throw new UnexpectedCardCommandException(command, chain.getHead().getResponse());
 			}
 			checkGetCommand(command);
-
-			// a card which does not support extended length rejects it with wrong length; if so then the command is repeated with short length, so ignore it
-			if (isWrongLength(mts7ApduExchange.getResponse())) {
-				apduIndex++;
-
-				continue;
-			}
-
-			ByteArrayOutputStream bout = new ByteArrayOutputStream(2048);
-
-			// the response is followed by get response commands for as long as the card says there is more (61xx)
-			Mts7ApduExchange lastOfChain;
-			do {
-				mts7ApduExchange.writeResponsePayload(bout);
-
-				lastOfChain = mts7ApduExchange;
-
-				apduIndex++;
-				if (apduIndex >= exchanges.size() - 1) {
-					break;
-				}
-
-				if (!isContinue(lastOfChain.getResponse())) {
-					break;
-				}
-
-				mts7ApduExchange = exchanges.get(apduIndex);
-
-				if (!isResponseCommand(mts7ApduExchange.getCommand())) {
-					break;
-				}
-				checkGetCommand(mts7ApduExchange.getCommand());
-			} while (true);
+			checkChain(chain);
 
 			// the last exchange of the chain (i.e. not whatever happens to follow it) must be success
-			if (isContinue(lastOfChain.getResponse())) {
-				// the card has more, but the reader did not retrieve it
-				throw new InsufficientCardCommandsException(lastOfChain.getCommand(), lastOfChain.getResponse());
-			}
-			if (mobileTicketBundle && payloads.hasGetDataOutput() && isReferencedDataNotFound(lastOfChain.getResponse())) {
+			byte[] response = chain.getLast().getResponse();
+			if (mobileTicketBundle && payloads.hasGetDataOutput() && isReferencedDataNotFound(response)) {
 				// there is no next MTB (MTS7 section 4.1.2), as when the reader looks for more than the first
 				continue;
 			}
-			if (!isSuccess(lastOfChain.getResponse())) {
-				throw new UnexpectedCardResponseException(lastOfChain.getCommand(), lastOfChain.getResponse());
+			if (!isSuccess(response)) {
+				throw new UnexpectedCardResponseException(chain.getLast().getCommand(), response);
 			}
 
 			if (mobileTicketBundle) {
 				// the first MTB, whose public key the card is authenticated with (MTS7 appendix A)
 				if (!payloads.hasGetDataOutput()) {
-					payloads.setGetDataOutput(bout.toByteArray());
+					payloads.setGetDataOutput(chain.getResponsePayload());
 				}
 			} else {
-				payloads.setApplicationRelatedDataOutput(bout.toByteArray());
+				payloads.setApplicationRelatedDataOutput(chain.getResponsePayload());
 			}
 		}
 
@@ -186,6 +172,204 @@ public class Mts7ApduPayloadsFactory {
 		}
 
 		return payloads;
+	}
+
+	/**
+	 * A command and what follows it for the same response: the same command again, for as long as the card asks for another Le, and GET RESPONSE for as long as
+	 * the card says that there is more.
+	 */
+
+	protected static final class Chain {
+
+		private final List<Mts7ApduExchange> exchanges = new ArrayList<>();
+
+		// the command which the response is to: the last of the same command sent again
+		private int head;
+
+		public Chain(Mts7ApduExchange first) {
+			exchanges.add(first);
+		}
+
+		public void add(Mts7ApduExchange exchange, boolean again) {
+			if (again && head == exchanges.size() - 1) {
+				head = exchanges.size();
+			}
+			exchanges.add(exchange);
+		}
+
+		public Mts7ApduExchange getHead() {
+			return exchanges.get(head);
+		}
+
+		public byte[] getCommand() {
+			return getHead().getCommand();
+		}
+
+		/**
+		 * @param ne the Ne of the head
+		 * @return whether the head was sent again with the exact Le which the card asked for (6Cxx)
+		 */
+
+		public boolean isAskedFor(int ne) {
+			if (head == 0) {
+				return false;
+			}
+			byte[] response = exchanges.get(head - 1).getResponse();
+			return (response[0] & 0xFF) == 0x6C && ((response[1] & 0xFF) == 0 ? 256 : response[1] & 0xFF) == ne;
+		}
+
+		public Mts7ApduExchange getLast() {
+			return exchanges.get(exchanges.size() - 1);
+		}
+
+		public List<Mts7ApduExchange> getExchanges() {
+			return exchanges;
+		}
+
+		/**
+		 * @return the payloads of the responses, from the head on, without the status words
+		 */
+
+		public byte[] getResponsePayload() {
+			ByteArrayOutputStream bout = new ByteArrayOutputStream(2048);
+			for (int i = head; i < exchanges.size(); i++) {
+				exchanges.get(i).writeResponsePayload(bout);
+			}
+			return bout.toByteArray();
+		}
+	}
+
+	/**
+	 * Split the exchanges into chains: each command with the same command again for as long as the card asks for another Le, and the GET RESPONSE commands for
+	 * as long as the card says that there is more.
+	 *
+	 * @param exchanges the exchanges, which have been checked to be complete
+	 * @return the chains
+	 */
+
+	protected static List<Chain> toChains(List<Mts7ApduExchange> exchanges) {
+		List<Chain> chains = new ArrayList<>();
+		int index = 0;
+		while (index < exchanges.size()) {
+			Chain chain = new Chain(exchanges.get(index++));
+			while (index < exchanges.size()) {
+				Mts7ApduExchange previous = chain.getLast();
+				Mts7ApduExchange next = exchanges.get(index);
+				if (isContinue(previous.getResponse()) && isResponseCommand(next.getCommand())) {
+					// the rest of the response (MTS7 section 2.1)
+					chain.add(next, false);
+				} else if (isAgain(previous.getCommand(), previous.getResponse()) && isSameCommand(previous.getCommand(), next.getCommand())) {
+					chain.add(next, true);
+				} else {
+					break;
+				}
+				index++;
+			}
+			chains.add(chain);
+		}
+		return chains;
+	}
+
+	/**
+	 * Check that the reader retrieved all of the response which the chain is for: the GET RESPONSE commands are as MTS7 specifies them, the last response does
+	 * not say that there is more, and the card does not ask for the last command again.
+	 *
+	 * @param chain the chain
+	 * @throws ReaderMts7Exception if not (a problem with the reader)
+	 */
+
+	protected static void checkChain(Chain chain) throws ReaderMts7Exception {
+		for (Mts7ApduExchange exchange : chain.getExchanges()) {
+			if (isResponseCommand(exchange.getCommand())) {
+				checkGetCommand(exchange.getCommand());
+			}
+		}
+		Mts7ApduExchange last = chain.getLast();
+		if (isContinue(last.getResponse())) {
+			// the card has more, but the reader did not retrieve it
+			throw new InsufficientCardCommandsException(last.getCommand(), last.getResponse());
+		}
+		if (isAgain(last.getCommand(), last.getResponse())) {
+			throw new InsufficientCardCommandsException(
+					"Command not sent again with other lengths, which the card asked for with status word " + toStatusWord(last.getResponse()),
+					last.getCommand(), last.getResponse());
+		}
+	}
+
+	/**
+	 * Whether the card asks for a command again with another Le: wrong Le, with the exact length in SW2 (6Cxx, ISO/IEC 7816-4 section 5.6), or wrong length
+	 * (6700) to a command with other lengths than in an example in MTS7 which every card must accept (see {@linkplain #hasExampleLengths(byte[])}).
+	 *
+	 * @param command  the command
+	 * @param response the response to it
+	 * @return true if the card did not execute the command, and the reader is to send it again with other lengths
+	 */
+
+	protected static boolean isAgain(byte[] command, byte[] response) {
+		if (response.length != 2) {
+			return false;
+		}
+		if ((response[0] & 0xFF) == 0x6C) {
+			return true;
+		}
+		return isWrongLength(response) && !hasExampleLengths(command);
+	}
+
+	/**
+	 * Whether a command has the lengths of an example in MTS7 which every card must accept, so that the card is to blame for rejecting them with wrong length
+	 * (6700): select application with a short Le of 00 (section 4.1.1) or without Le (appendix A), and internal authenticate with a short Le of 00 (section
+	 * 4.1.4). The examples of GET (NEXT) DATA and GET RESPONSE have an extended Le, which the card need not support (section 3.1.4), and there is no example of
+	 * GET DATA of the application-related data.
+	 *
+	 * @param command the command
+	 * @return true if the card must accept the lengths of the command
+	 */
+
+	protected static boolean hasExampleLengths(byte[] command) {
+		if (isExtendedLength(command)) {
+			return false;
+		}
+		CommandAPDU apdu;
+		try {
+			apdu = new CommandAPDU(command);
+		} catch (RuntimeException e) {
+			// a malformed command, which is the fault of the reader anyway
+			return false;
+		}
+		if (isSelectApplication(command)) {
+			return apdu.getNe() == 256 || apdu.getNe() == 0;
+		}
+		if (isInternalAuthenticateCommand(command)) {
+			return apdu.getNe() == 256;
+		}
+		return false;
+	}
+
+	/**
+	 * An extended length has a zero byte where a short length has its Lc or Le (ISO/IEC 7816-4 section 5.1), except for a short Le of 00 at the end of the
+	 * command.
+	 *
+	 * @param command the command
+	 * @return true if the command has an extended length
+	 */
+
+	protected static boolean isExtendedLength(byte[] command) {
+		return command.length > 5 && command[4] == 0x00;
+	}
+
+	/**
+	 * Whether a command is the same as another one, apart from its lengths: the same header, or GET DATA and GET NEXT DATA of an MTB.
+	 */
+
+	protected static boolean isSameCommand(byte[] command, byte[] other) {
+		if ((isGetDataCommand(command) || isGetNextDataCommand(command)) && (isGetDataCommand(other) || isGetNextDataCommand(other))) {
+			return true;
+		}
+		return command[0] == other[0] && command[1] == other[1] && command[2] == other[2] && command[3] == other[3];
+	}
+
+	protected static String toStatusWord(byte[] response) {
+		return String.format("%02X%02X", response[response.length - 2] & 0xFF, response[response.length - 1] & 0xFF);
 	}
 
 	protected static byte[] getResposePayload(byte[] apdu) {
