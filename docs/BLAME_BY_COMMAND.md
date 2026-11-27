@@ -22,6 +22,8 @@ The same checks are made in two places: on the device, while it reads the card (
 
 Each command is checked before the response of the card to it. A card which rejects a command that is not as MTS7 specifies it is not to blame.
 
+A card which is not valid is to blame for that, whatever else it did. The card is checked at door 2 and door 3 before a problem with the reader is reported which does not stop them: an incomplete select application response, missing application-related data, and, for door 2, an incomplete response to INTERNAL AUTHENTICATE. The readers on the device read the card on after such a problem, and `Mts7ApduPayloadsFactory` keeps it in the payloads (`getReaderProblem()`) for the card factories to report once the card has passed. A card which stops responding, or makes the reader fail, after its MTB is to blame if its MTB is not valid (`InFlightMts7CardFactory`).
+
 ## Responses which ask the reader for more
 
 To any command, the card may answer with one of these, as ISO/IEC 7816-4 allows. None of them is a problem in itself, but the reader must act on it, or it is to blame (`InsufficientCardCommandsException`):
@@ -41,10 +43,12 @@ The card is only to blame for `67 00` (`UnexpectedCardResponseException`) to a c
 | No exchanges, fewer than three, or a missing exchange | `MissingCardCommandsException` | | ✅ | |
 | The processor was closed before the card was read, or the card was not completely read within the lifetime of the processor (device) | `MissingCardCommandsException` | | ✅ | |
 | A command between SELECT and INTERNAL AUTHENTICATE which is not GET (NEXT) DATA of `7F21`, GET DATA of `6E`, GET RESPONSE after `61xx`, the same command again after `6Cxx` or `67 00`, or a failed INTERNAL AUTHENTICATE (backend) | `UnexpectedCardCommandException` | | ✅ | |
-| The card said `61xx`, and no GET RESPONSE followed (backend) | `InsufficientCardCommandsException` | | ✅ | |
+| The card said `61xx`, and no GET RESPONSE followed (backend). For select application, the application-related data and INTERNAL AUTHENTICATE, reported only once the card has passed the doors which the response is not needed for | `InsufficientCardCommandsException` | | ✅ | |
 | The card asked for the command again with other lengths, and it was not sent again, or there were no other lengths left to send it with | `InsufficientCardCommandsException` | | ✅ | |
+| The card asked for the command again, although it was sent the Le which the card asked for (`6Cxx`) | `UnexpectedCardResponseException` | ✅ | | |
 | A command shorter than its header (four bytes), or with length fields which do not add up | `MalformedCardCommandException` | | ✅ | |
-| A response shorter than its status word (two bytes), which no card returns | `MalformedCardResponseException` | | ✅ | |
+| A response shorter than its status word (two bytes) in the exchanges, which may not be as the card sent it (backend) | `MalformedCardResponseException` | | ✅ | |
+| A response shorter than its status word (two bytes), read from the card as it is (device) | `UnexpectedCardResponseException` | ✅ | | |
 
 Not a problem of any side: a `TimeoutException` from `waitForVerify(..)` or `getMts7Card(..)`. The processing goes on, and can be waited for again.
 
@@ -61,7 +65,7 @@ Not a problem of any side: a `TimeoutException` from `waitForVerify(..)` or `get
 | The response data is not well-formed BER-TLV, and there is no application-related data (`6E`) from GET DATA either | `InvalidCardMts7Exception` | ✅ | | |
 | The response has application-related data (`6E`), but no application identifier (`4F`) of at least 16 bytes in it | `InvalidCardMts7Exception` | ✅ | | |
 
-Not a problem of any side: an empty response, or one without application-related data. The File Management Data is only a SHOULD, and a terminal MUST accept an empty response (MTS7 4.1.1); the reader then retrieves `6E` with GET DATA. Padding (`00` or `FF`) between the data objects is allowed (ISO/IEC 7816-4 5.2.2). A longer application identifier which the card accepts.
+Not a problem of any side: an empty response, or one without application-related data. The File Management Data is only a SHOULD, and a terminal MUST accept an empty response (MTS7 4.1.1); the reader then retrieves `6E` with GET DATA. Padding (`00` or `FF`) before, between and after the data objects is allowed (ISO/IEC 7816-4 5.2.2), also inside `64` and `6E`; the reader and the library skip it in the same way, so that a card cannot make the reader look as if it did not retrieve the application-related data. A longer application identifier which the card accepts.
 
 ## 2. GET DATA of the application-related data
 
@@ -69,7 +73,7 @@ Not a problem of any side: an empty response, or one without application-related
 
 | What goes wrong | Exception | Card | Reader | Infrastructure |
 | --- | --- | :---: | :---: | :---: |
-| The select application response has no `6E`, and the reader did not send GET DATA of it | `InsufficientCardCommandsException` | | ✅ | |
+| The select application response has no `6E`, and the reader did not send GET DATA of it, or could not retrieve it. Reported only once the card has passed door 2 and door 3 | `InsufficientCardCommandsException` | | ✅ | |
 | The command has data, or no Le | `MalformedCardCommandException` | | ✅ | |
 | The card does not respond with success, such as `6A 88` (no `6E`, which every card has) | `UnexpectedCardResponseException` | ✅ | | |
 | The response has no application identifier (`4F`) of at least 16 bytes, or is malformed | `InvalidCardMts7Exception` | ✅ | | |
@@ -115,7 +119,7 @@ Not a problem of any side:
 | GET RESPONSE after a complete response (backend) | `UnexpectedCardCommandException` | | ✅ | |
 | The command has data, or no Le | `MalformedCardCommandException` | | ✅ | |
 | The card does not respond with success or `61xx` | `UnexpectedCardResponseException` | ✅ | | |
-| The card still says `61xx` after 256 GET RESPONSE commands (device) | `UnexpectedCardResponseException` | ✅ | | |
+| The card still says `61xx` after 256 GET RESPONSE commands | `UnexpectedCardResponseException` | ✅ | | |
 
 ## 5. INTERNAL AUTHENTICATE
 
