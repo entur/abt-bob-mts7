@@ -42,7 +42,8 @@ public class Mts7ExceptionSidesTest {
 
 	@Test
 	public void testReaderSide() {
-		assertSide(ReaderMts7Exception.class, MissingCardCommandsException.class, UnexpectedCardCommandException.class);
+		assertSide(ReaderMts7Exception.class, MissingCardCommandsException.class, InsufficientCardCommandsException.class, UnexpectedCardCommandException.class,
+				MalformedCardCommandException.class, MalformedCardResponseException.class);
 	}
 
 	@Test

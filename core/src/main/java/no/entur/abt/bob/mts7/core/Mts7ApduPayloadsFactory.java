@@ -19,14 +19,21 @@ import no.entur.abt.bob.mts7.simple.api.Mts7ApduExchanges;
 public class Mts7ApduPayloadsFactory {
 
 	/**
+	 * The length of the challenge for internal authenticate: a SHA-256 hash (MTS7, section 4.1.4)
+	 */
+
+	public static final int CHALLENGE_LENGTH = 32;
+
+	/**
 	 * Sort out the payloads of the exchanges with a card, as a reader following MTS7 sends them: select application first, then get (next) data (followed by
 	 * get response for as long as the card says there is more), and internal authenticate last.
 	 *
 	 * @param mts7ApduExchanges the exchanges with the card
 	 * @return the payloads
-	 * @throws ReaderMts7Exception      if the exchanges are not as a reader following MTS7 sends them: commands are missing
-	 *                                  ({@linkplain MissingCardCommandsException}), unexpected ({@linkplain UnexpectedCardCommandException}), or malformed (a
-	 *                                  problem with the reader)
+	 * @throws ReaderMts7Exception      if the exchanges are not as a reader following MTS7 sends them (a problem with the reader): commands are missing
+	 *                                  ({@linkplain MissingCardCommandsException}), too few to retrieve all of a response
+	 *                                  ({@linkplain InsufficientCardCommandsException}), unexpected ({@linkplain UnexpectedCardCommandException}), or malformed
+	 *                                  ({@linkplain MalformedCardCommandException}, {@linkplain MalformedCardResponseException})
 	 * @throws InvalidCardMts7Exception if the card did not respond with success ({@linkplain UnexpectedCardResponseException}, a problem on the card side)
 	 */
 
@@ -63,11 +70,18 @@ public class Mts7ApduPayloadsFactory {
 			throw new UnexpectedCardCommandException(last.getCommand(), last.getResponse());
 		}
 
+		// the challenge SHALL be a SHA-256 hash (MTS7, section 4.1.4). Checked before the response, as a card may well reject another challenge.
+		byte[] challenge = getCommandPayload(last.getCommand());
+		if (challenge == null || challenge.length != CHALLENGE_LENGTH) {
+			throw new MalformedCardCommandException(
+					"Challenge for internal authenticate of " + (challenge == null ? 0 : challenge.length) + " bytes, not " + CHALLENGE_LENGTH);
+		}
+
 		if (!isSuccess(last.getResponse())) {
 			throw new UnexpectedCardResponseException(last.getCommand(), last.getResponse());
 		}
 
-		payloads.setInternalAuthenticateInput(getCommandPayload(last.getCommand()));
+		payloads.setInternalAuthenticateInput(challenge);
 		payloads.setInternalAuthenticateOutput(getResposePayload(last.getResponse()));
 
 		// the rest must be get (next) data or get response
@@ -129,6 +143,10 @@ public class Mts7ApduPayloadsFactory {
 			} while (true);
 
 			// the last exchange of the chain (i.e. not whatever happens to follow it) must be success
+			if (isContinue(lastOfChain.getResponse())) {
+				// the card has more, but the reader did not retrieve it
+				throw new InsufficientCardCommandsException(lastOfChain.getCommand(), lastOfChain.getResponse());
+			}
 			if (!isSuccess(lastOfChain.getResponse())) {
 				throw new UnexpectedCardResponseException(lastOfChain.getCommand(), lastOfChain.getResponse());
 			}
@@ -149,12 +167,12 @@ public class Mts7ApduPayloadsFactory {
 		return payload;
 	}
 
-	protected static byte[] getCommandPayload(byte[] apdu) throws ReaderMts7Exception {
+	protected static byte[] getCommandPayload(byte[] apdu) throws MalformedCardCommandException {
 		try {
 			CommandAPDU command = new CommandAPDU(apdu);
 			return command.getData();
 		} catch (RuntimeException e) {
-			throw new ReaderMts7Exception("Malformed command", e);
+			throw new MalformedCardCommandException("Malformed command", e);
 		}
 	}
 
@@ -162,20 +180,21 @@ public class Mts7ApduPayloadsFactory {
 	 * Check that an exchange can be from a card: a command has at least the four bytes of its header, and a response at least the two bytes of its status word.
 	 *
 	 * @param exchange the exchange
-	 * @throws ReaderMts7Exception if the exchange cannot be from a card (a problem with the reader)
+	 * @throws ReaderMts7Exception if the exchange cannot be from a card (a problem with the reader): it is missing ({@linkplain MissingCardCommandsException}),
+	 *                             or its command ({@linkplain MalformedCardCommandException}) or response ({@linkplain MalformedCardResponseException}) is
 	 */
 
 	protected static void checkExchange(Mts7ApduExchange exchange) throws ReaderMts7Exception {
 		if (exchange == null) {
-			throw new ReaderMts7Exception("Missing exchange");
+			throw new MissingCardCommandsException("Missing exchange");
 		}
 		byte[] command = exchange.getCommand();
 		if (command == null || command.length < 4) {
-			throw new ReaderMts7Exception("Malformed command: " + (command == null ? "missing" : command.length + " bytes"));
+			throw new MalformedCardCommandException("Malformed command: " + (command == null ? "missing" : command.length + " bytes"));
 		}
 		byte[] response = exchange.getResponse();
 		if (response == null || response.length < 2) {
-			throw new ReaderMts7Exception("Malformed response: " + (response == null ? "missing" : response.length + " bytes"));
+			throw new MalformedCardResponseException("Malformed response: " + (response == null ? "missing" : response.length + " bytes"));
 		}
 	}
 

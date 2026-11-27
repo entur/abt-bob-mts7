@@ -14,7 +14,6 @@ import org.junit.jupiter.api.Test;
 
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.api.Mts7Exception;
-import no.entur.abt.bob.mts7.api.ReaderMts7Exception;
 import no.entur.abt.bob.mts7.api.UnexpectedCardResponseException;
 import no.entur.abt.bob.mts7.simple.api.Mts7ApduExchanges;
 import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
@@ -248,10 +247,20 @@ public class Mts7ApduPayloadsFactoryTest {
 
 	@Test
 	public void testIncompleteResponseIsRejected() {
-		// the card says there is more to get (61xx), but no get response follows
-		UnexpectedCardResponseException e = assertThrows(UnexpectedCardResponseException.class,
+		// the card says there is more to get (61xx), but no get response follows: the reader did not retrieve it (MTS7, section 4.1.3)
+		InsufficientCardCommandsException e = assertThrows(InsufficientCardCommandsException.class,
 				() -> factory.createCard(exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE, GET_NEXT_DATA_COMMAND, firstPart(), GET_NEXT_DATA_COMMAND,
 						GET_DATA_RESPONSE, INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE)));
+
+		assertArrayEquals(GET_NEXT_DATA_COMMAND, e.getCommand());
+		assertArrayEquals(firstPart(), e.getResponse());
+	}
+
+	@Test
+	public void testIncompleteResponseBeforeInternalAuthenticateIsReaderProblem() {
+		// the card says there is more to get (61xx), but the reader goes on to internal authenticate
+		InsufficientCardCommandsException e = assertThrows(InsufficientCardCommandsException.class, () -> factory.createCard(exchanges(SELECT_BOB_COMMAND,
+				SELECT_APPLICATION_RESPONSE, GET_NEXT_DATA_COMMAND, firstPart(), INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE)));
 
 		assertArrayEquals(GET_NEXT_DATA_COMMAND, e.getCommand());
 		assertArrayEquals(firstPart(), e.getResponse());
@@ -288,7 +297,7 @@ public class Mts7ApduPayloadsFactoryTest {
 	@Test
 	public void testShortCommandIsReaderProblem() {
 		for (byte[] command : new byte[][] { null, {}, { 0x00, (byte) 0xCA, 0x7F } }) {
-			ReaderMts7Exception e = assertThrows(ReaderMts7Exception.class, () -> factory.createCard(
+			MalformedCardCommandException e = assertThrows(MalformedCardCommandException.class, () -> factory.createCard(
 					exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE, command, GET_DATA_RESPONSE, INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE)));
 			assertTrue(e.getMessage().startsWith("Malformed command"), e.getMessage());
 		}
@@ -297,7 +306,7 @@ public class Mts7ApduPayloadsFactoryTest {
 	@Test
 	public void testShortResponseIsReaderProblem() {
 		for (byte[] response : new byte[][] { null, {}, { (byte) 0x90 } }) {
-			ReaderMts7Exception e = assertThrows(ReaderMts7Exception.class, () -> factory.createCard(
+			MalformedCardResponseException e = assertThrows(MalformedCardResponseException.class, () -> factory.createCard(
 					exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE, GET_DATA_COMMAND, response, INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE)));
 			assertTrue(e.getMessage().startsWith("Malformed response"), e.getMessage());
 		}
@@ -309,7 +318,7 @@ public class Mts7ApduPayloadsFactoryTest {
 				INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE);
 		exchanges.getExchanges().add(1, null);
 
-		assertThrows(ReaderMts7Exception.class, () -> factory.createCard(exchanges));
+		assertThrows(MissingCardCommandsException.class, () -> factory.createCard(exchanges));
 	}
 
 	@Test
@@ -317,9 +326,41 @@ public class Mts7ApduPayloadsFactoryTest {
 		// says 32 bytes of data, but has 3
 		byte[] command = ByteArrayHexStringConverter.hexStringToByteArray("0088000020" + "000000");
 
-		ReaderMts7Exception e = assertThrows(ReaderMts7Exception.class, () -> factory
+		MalformedCardCommandException e = assertThrows(MalformedCardCommandException.class, () -> factory
 				.createCard(exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE, GET_DATA_COMMAND, GET_DATA_RESPONSE, command, SIGNATURE_RESPONSE)));
 		assertEquals("Malformed command", e.getMessage());
+	}
+
+	@Test
+	public void testChallengeWhichIsNotASha256HashIsReaderProblem() {
+		// the challenge SHALL be a SHA-256 hash, i.e. 32 bytes (MTS7, section 4.1.4)
+		for (int length : new int[] { 0, 16, 31, 33, 64 }) {
+			StringBuilder hex = new StringBuilder("00880000");
+			if (length > 0) {
+				hex.append(String.format("%02X", length));
+				for (int i = 0; i < length; i++) {
+					hex.append("00");
+				}
+			}
+			hex.append("00");
+			byte[] command = ByteArrayHexStringConverter.hexStringToByteArray(hex.toString());
+
+			MalformedCardCommandException e = assertThrows(MalformedCardCommandException.class,
+					() -> factory.createCard(
+							exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE, GET_DATA_COMMAND, GET_DATA_RESPONSE, command, SIGNATURE_RESPONSE)),
+					"" + length);
+			assertEquals("Challenge for internal authenticate of " + length + " bytes, not 32", e.getMessage());
+		}
+	}
+
+	@Test
+	public void testChallengeIsCheckedBeforeTheResponse() {
+		// the card rejects a challenge of the wrong length (wrong length), but that is the fault of the reader
+		byte[] command = ByteArrayHexStringConverter.hexStringToByteArray("0088000010" + "00000000000000000000000000000000" + "00");
+		byte[] wrongLength = { 0x67, 0x00 };
+
+		assertThrows(MalformedCardCommandException.class, () -> factory
+				.createCard(exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE, GET_DATA_COMMAND, GET_DATA_RESPONSE, command, wrongLength)));
 	}
 
 	@Test

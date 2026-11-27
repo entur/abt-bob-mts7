@@ -12,7 +12,11 @@ public class MissingCardCommandsException extends ReaderMts7Exception {
 	private static final long serialVersionUID = 1L;
 
 	public MissingCardCommandsException() {
-		super("Missing commands in the exchanges with the card");
+		this("Missing commands in the exchanges with the card");
+	}
+
+	public MissingCardCommandsException(String message) {
+		super(message);
 	}
 
 }
