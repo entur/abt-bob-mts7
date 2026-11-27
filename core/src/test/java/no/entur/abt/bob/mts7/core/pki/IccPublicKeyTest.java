@@ -26,6 +26,7 @@ import com.nimbusds.jose.crypto.impl.ECDSA;
 import no.entur.abt.bob.mts7.core.KeyPairInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
 import no.entur.abt.bob.mts7.core.NonCompliantIccKeyInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
 import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
 import no.entur.abt.bob.mts7.mtb.TokenPublicKey;
 import no.entur.abt.bob.mts7.test.util.ConcurrentRunner;
@@ -132,14 +133,17 @@ public class IccPublicKeyTest {
 		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> ecKey().verify(CHALLENGE, new byte[63]));
 		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> ecKey().verify(CHALLENGE, new byte[64]));
 		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> ecKey().verify(CHALLENGE, new byte[65]));
-		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> ecKey().verify(CHALLENGE, null));
-		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> ecKey().verify(null, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
-		assertThrows(KeyPairInvalidCardMts7Exception.class,
-				() -> ecKey().verify(CHALLENGE, 0, CHALLENGE.length + 1, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
-		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> ecKey().verify(CHALLENGE, -1, 1, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
-
 		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> rsaKey().verify(CHALLENGE, new byte[0]));
-		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> rsaKey().verify(CHALLENGE, null));
+	}
+
+	@Test
+	public void testMisuseIsNotInvalidCard() throws Exception {
+		// a bug of the caller, which must not be reported as a problem on the card side
+		assertThrows(NullPointerException.class, () -> ecKey().verify(CHALLENGE, null));
+		assertThrows(NullPointerException.class, () -> ecKey().verify(null, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
+		assertThrows(NullPointerException.class, () -> rsaKey().verify(CHALLENGE, null));
+		assertThrows(IllegalArgumentException.class, () -> ecKey().verify(CHALLENGE, 0, CHALLENGE.length + 1, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
+		assertThrows(IllegalArgumentException.class, () -> ecKey().verify(CHALLENGE, -1, 1, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
 	}
 
 	@Test
@@ -305,11 +309,46 @@ public class IccPublicKeyTest {
 	}
 
 	@Test
-	public void testKeyNotAcceptedIsNonCompliant() throws Exception {
-		// a problem on the card side: the key of the card does not fit its algorithm
+	public void testKeyNotAcceptedByTheProviderIsNotInvalidCard() throws Exception {
+		// a key which the factory created is as MTS7 specifies it, so a provider which does not accept it is a problem on our side
 		IccPublicKey key = new IccPublicKey(rsaKeyPair.getPublic(), "NoneWithECDSA", null);
 
-		assertThrows(NonCompliantIccKeyInvalidCardMts7Exception.class, () -> key.verify(CHALLENGE, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
+		assertThrows(UnableToConstructIccKeyException.class, () -> key.verify(CHALLENGE, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
+	}
+
+	@Test
+	public void testFactoryReportsRsaKeyNotInTheSpecification() throws Exception {
+		// MTS7 section 2.1: a modulus of 2048 bits
+		KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+		generator.initialize(1024);
+		RSAPublicKey small = (RSAPublicKey) generator.generateKeyPair().getPublic();
+		RSAPublicKey publicKey = (RSAPublicKey) rsaKeyPair.getPublic();
+
+		for (BigInteger[] modulusAndExponent : new BigInteger[][] { { small.getModulus(), small.getPublicExponent() },
+				{ publicKey.getModulus().clearBit(0), publicKey.getPublicExponent() }, { publicKey.getModulus(), BigInteger.ONE },
+				{ publicKey.getModulus(), BigInteger.valueOf(4) } }) {
+			TokenPublicKey tpk = new TokenPublicKey();
+			tpk.setKty("RSA");
+			tpk.setN(base64Url(modulusAndExponent[0], (modulusAndExponent[0].bitLength() + 7) / 8));
+			tpk.setE(base64Url(modulusAndExponent[1], Math.max(1, (modulusAndExponent[1].bitLength() + 7) / 8)));
+
+			IssuerSignatureProtectedHeader header = new IssuerSignatureProtectedHeader();
+			header.setTpk(tpk);
+
+			assertThrows(NonCompliantIccKeyInvalidCardMts7Exception.class, () -> new IccPublicKeyFactory().create(header));
+		}
+	}
+
+	@Test
+	public void testFactoryWithoutTheKeyAlgorithmIsNotInvalidCard() {
+		// a problem on our side: the security provider does not have the key algorithm
+		Provider empty = new Provider("Empty", "1.0", "Without algorithms") {
+			private static final long serialVersionUID = 1L;
+		};
+
+		NoSuchAlgorithmMts7Exception e = assertThrows(NoSuchAlgorithmMts7Exception.class,
+				() -> new IccPublicKeyFactory(empty).create(ecHeader((ECPublicKey) ecKeyPair.getPublic())));
+		assertEquals("EC", e.getAlgorithm());
 	}
 
 }

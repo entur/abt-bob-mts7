@@ -66,6 +66,16 @@ public class InvalidMobileTicketBundles {
 		 */
 		public String selectApplicationResponse;
 
+		/**
+		 * The response to GET DATA of the application-related data (6E), in hex, with the status word, or null if none.
+		 */
+
+		public String applicationRelatedDataResponse;
+
+		public byte[] applicationRelatedDataResponseApdu() {
+			return applicationRelatedDataResponse == null ? null : hex(applicationRelatedDataResponse);
+		}
+
 		public byte[] getDataResponseApdu() {
 			return hex(getDataResponse);
 		}

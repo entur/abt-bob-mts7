@@ -20,6 +20,7 @@ import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.api.ReaderMts7Exception;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
 import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
@@ -137,10 +138,11 @@ public class InvalidMobileTicketBundleTest {
 			assertEquals(trustChain, card.isVerifiedTrustChain());
 			assertTrue(card.hasThumprint());
 		} else {
-			// always a problem on the card side
-			InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class, verification::verify);
+			// a problem on the card side, or with the reader, never ours
+			Exception e = assertThrows(Exception.class, verification::verify);
 
 			assertEquals(expected, e.getClass().getSimpleName(), e.getMessage());
+			assertTrue(e instanceof InvalidCardMts7Exception || e instanceof ReaderMts7Exception, e.getClass().getName());
 		}
 	}
 
@@ -148,6 +150,9 @@ public class InvalidMobileTicketBundleTest {
 		Mts7ApduPayloads payloads = new Mts7ApduPayloads();
 		payloads.setSelectApplicationOutput(InvalidMobileTicketBundles.withoutStatusWord(bundles.selectApplicationResponseApdu(c)));
 		payloads.setGetDataOutput(InvalidMobileTicketBundles.withoutStatusWord(c.getDataResponseApdu()));
+		if (c.applicationRelatedDataResponse != null) {
+			payloads.setApplicationRelatedDataOutput(InvalidMobileTicketBundles.withoutStatusWord(c.applicationRelatedDataResponseApdu()));
+		}
 		payloads.setInternalAuthenticateInput(bundles.challengeBytes());
 		payloads.setInternalAuthenticateOutput(InvalidMobileTicketBundles.withoutStatusWord(bundles.internalAuthenticateResponseApdu()));
 		return payloads;

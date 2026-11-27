@@ -3,8 +3,9 @@ package no.entur.abt.bob.mts7.core;
 import no.entur.abt.bob.mts7.api.ReaderMts7Exception;
 
 /**
- * The card said that there is more of its response (61xx), but the reader did not send the GET RESPONSE commands to retrieve it (MTS7, section 4.1.3), so the
- * response is incomplete (a problem with the reader).
+ * The reader did not send the commands to retrieve what the card has: the rest of a response which the card said has more (61xx), as GET RESPONSE should follow
+ * (MTS7 section 4.1.3), or the application-related data (6E) which the select application response did not have, as GET DATA should follow (MTS7 section 4.1.1)
+ * (a problem with the reader).
  */
 
 public class InsufficientCardCommandsException extends ReaderMts7Exception {
@@ -25,6 +26,18 @@ public class InsufficientCardCommandsException extends ReaderMts7Exception {
 		super("Incomplete response: the card has more, but no GET RESPONSE command followed");
 		this.command = command;
 		this.response = response;
+	}
+
+	/**
+	 * Constructor, for data which the reader did not retrieve.
+	 *
+	 * @param message what is missing
+	 */
+
+	public InsufficientCardCommandsException(String message) {
+		super(message);
+		this.command = null;
+		this.response = null;
 	}
 
 	public byte[] getCommand() {

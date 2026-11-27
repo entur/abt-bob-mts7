@@ -24,9 +24,11 @@ import no.entur.abt.bob.mts7.core.KeyPairInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.Mts7Card;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
 import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
+import no.entur.abt.bob.mts7.core.OutdatedIssuerKeysException;
 import no.entur.abt.bob.mts7.core.TrustChainInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
 import no.entur.abt.bob.mts7.core.UnknownIssuerKeyInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.UnknownIssuerKeyPolicy;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.IssuerPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IssuerSignatureFactory;
@@ -111,6 +113,18 @@ public class VerifyTrustChainMts7ProcessorTest extends AbstractTest {
 		processor.run();
 
 		assertThrows(InvalidCardMts7Exception.class, () -> processor.waitForVerify(0), "Expected card not to be trusted");
+	}
+
+	@Test
+	public void testUnknownRootKeyWithOutdatedKeysIsNotInvalidCard() throws Exception {
+		// the policy decides that our keys may be out of date: a problem on our side
+		VerifyTrustChainMts7ProcessorFactory factory = new VerifyTrustChainMts7ProcessorFactory(ParticipantPublicKeys.newBuilder().build(), null,
+				UnknownIssuerKeyPolicy.blameKeys(), executor);
+
+		ExecutionException e = assertThrows(ExecutionException.class,
+				() -> process(factory.create(), GET_NEXT_DATA_RESPONSE, SIGNATURE_RESPONSE).waitForVerify(0));
+		OutdatedIssuerKeysException cause = assertInstanceOf(OutdatedIssuerKeysException.class, e.getCause());
+		assertEquals(10, cause.getIssuerId());
 	}
 
 	@Test

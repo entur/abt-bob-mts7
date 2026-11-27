@@ -1,6 +1,7 @@
 package no.entur.abt.bob.mts7.reader.processor;
 
 import java.io.IOException;
+import java.util.Objects;
 import java.util.concurrent.Executor;
 
 import org.slf4j.Logger;
@@ -10,8 +11,10 @@ import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
+import no.entur.abt.bob.mts7.core.OutdatedIssuerKeysException;
 import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
 import no.entur.abt.bob.mts7.core.UnknownIssuerKeyInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.UnknownIssuerKeyPolicy;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyBuilder;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
@@ -40,6 +43,7 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 
 	protected final ParticipantPublicKeys participantPublicKeys;
 	protected final boolean trustUnknownRootKeys;
+	protected final UnknownIssuerKeyPolicy unknownIssuerKeyPolicy;
 	protected final IccPublicKeyFactory iccSignatureFactory;
 	protected final CBORMapper cborMapper;
 	protected final MobileTicketBundleParser mobileTicketBundleParser;
@@ -54,10 +58,17 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 
 	public VerifyTrustChainMts7Processor(ParticipantPublicKeys participantPublicKeys, boolean trustUnknownRootKeys, IccPublicKeyFactory factory,
 			Mts7CardEnricher enricher, CBORMapper cborMapper, ThumbprintFactory thumbprintFactory, Executor executor) {
+		this(participantPublicKeys, trustUnknownRootKeys, UnknownIssuerKeyPolicy.blameCard(), factory, enricher, cborMapper, thumbprintFactory, executor);
+	}
+
+	public VerifyTrustChainMts7Processor(ParticipantPublicKeys participantPublicKeys, boolean trustUnknownRootKeys,
+			UnknownIssuerKeyPolicy unknownIssuerKeyPolicy, IccPublicKeyFactory factory, Mts7CardEnricher enricher, CBORMapper cborMapper,
+			ThumbprintFactory thumbprintFactory, Executor executor) {
 		super(executor);
 
 		this.participantPublicKeys = participantPublicKeys;
 		this.trustUnknownRootKeys = trustUnknownRootKeys;
+		this.unknownIssuerKeyPolicy = Objects.requireNonNull(unknownIssuerKeyPolicy, "unknownIssuerKeyPolicy");
 		this.iccSignatureFactory = factory;
 
 		this.cborMapper = cborMapper;
@@ -68,12 +79,9 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 
 	@Override
 	protected void process() throws Exception {
-		if (!awaitInput(() -> selectApplicationResponsePayload != null)) {
+		if (!enrich(enricher)) {
 			return;
 		}
-
-		byte[] selectApplicationResponse = selectApplicationResponsePayload;
-		updateResult(card -> enricher.enrichSelectApplicationResponsePayload(card, selectApplicationResponse));
 
 		LOGGER.info("Processed 'select application' response");
 
@@ -117,9 +125,7 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 		IssuerPublicKey issuerPublicKey = participantPublicKeys.getIssuerPublicKey(iid, header.getKid());
 		if (issuerPublicKey != null) {
 			IccPublicKeyBuilder iccPublicKeyBuilder = new IccPublicKeyBuilder(iccSignatureFactory);
-			for (byte[] value : mobileTicketBundle.getSignedElements()) {
-				iccPublicKeyBuilder.withSignedData(value, 0, value.length);
-			}
+			iccPublicKeyBuilder.withEncodedSignedData(mobileTicketBundle.getSignedData());
 			iccPublicKeyBuilder.withSignature(mobileTicketBundle.getSignature());
 			iccPublicKeyBuilder.withIssuerSignatureProtectedHeader(header);
 			iccPublicKeyBuilder.withIssuerPublicKey(issuerPublicKey);
@@ -137,8 +143,11 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 			// certificate as it is, and only check that the card has the private key for it, as VerifyKeyPairMts7Processor does. This does not say
 			// who issued the card, so the trust chain stays not verified.
 			iccPublicKey = iccSignatureFactory.create(header);
-		} else {
+		} else if (unknownIssuerKeyPolicy.isCardToBlame(iid, header.getKid(), participantPublicKeys)) {
 			throw new UnknownIssuerKeyInvalidCardMts7Exception(iid, header.getKid());
+		} else {
+			// our keys may be out of date
+			throw new OutdatedIssuerKeysException(iid, header.getKid());
 		}
 
 		// from the same token public key as the public key of the card, which could be created, so a problem here is expected to be on our side
@@ -156,6 +165,8 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 		InternalAuthenticate input = internalAuthenticate;
 		byte[] commandPayload = input.command;
 		byte[] responsePayload = input.response;
+
+		checkChallenge(commandPayload);
 
 		// process signature - the only time-critical part of the logic here
 		iccPublicKey.verify(commandPayload, responsePayload);

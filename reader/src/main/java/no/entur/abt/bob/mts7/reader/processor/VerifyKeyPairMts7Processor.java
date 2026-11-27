@@ -52,12 +52,9 @@ public class VerifyKeyPairMts7Processor extends AbstractMts7Processor {
 
 	@Override
 	protected void process() throws Exception {
-		if (!awaitInput(() -> selectApplicationResponsePayload != null)) {
+		if (!enrich(enricher)) {
 			return;
 		}
-
-		byte[] selectApplicationResponse = selectApplicationResponsePayload;
-		updateResult(card -> enricher.enrichSelectApplicationResponsePayload(card, selectApplicationResponse));
 
 		LOGGER.info("Processed 'select application' response");
 
@@ -107,6 +104,8 @@ public class VerifyKeyPairMts7Processor extends AbstractMts7Processor {
 		InternalAuthenticate input = internalAuthenticate;
 		byte[] commandPayload = input.command;
 		byte[] responsePayload = input.response;
+
+		checkChallenge(commandPayload);
 
 		if (LOGGER.isDebugEnabled()) {
 			LOGGER.debug(ByteArrayHexStringConverter.toHexString(responsePayload));

@@ -26,6 +26,7 @@ import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.InsufficientCardCommandsException;
 import no.entur.abt.bob.mts7.core.KeyPairInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.LenientMts7CardFactory;
 import no.entur.abt.bob.mts7.core.Mts7ApduPayloads;
@@ -354,9 +355,10 @@ public class Mts7WarmupTest {
 		private final AtomicInteger calls = new AtomicInteger();
 
 		@Override
-		public void enrichSelectApplicationResponsePayload(Mts7Card card, byte[] selectApplicationResponsePayload) throws InvalidCardMts7Exception {
+		public void enrich(Mts7Card card, byte[] selectApplicationResponsePayload, byte[] applicationRelatedDataPayload)
+				throws InvalidCardMts7Exception, InsufficientCardCommandsException {
 			calls.incrementAndGet();
-			super.enrichSelectApplicationResponsePayload(card, selectApplicationResponsePayload);
+			super.enrich(card, selectApplicationResponsePayload, applicationRelatedDataPayload);
 		}
 	}
 

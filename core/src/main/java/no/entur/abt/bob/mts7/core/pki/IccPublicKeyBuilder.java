@@ -8,6 +8,7 @@ import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
 import no.entur.abt.bob.mts7.core.NonCompliantIccKeyInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.TrustChainInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
 import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
 import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
 import no.entur.abt.bob.mts7.mtb.MobileTicketBundleWriter;
@@ -22,6 +23,9 @@ public class IccPublicKeyBuilder {
 	// the (CBOR encoded) elements of the signed data
 	protected final List<byte[]> signedElements = new ArrayList<>();
 
+	// the signed data as encoded in the bundle, which takes precedence over the elements
+	protected byte[] encodedSignedData;
+
 	protected IssuerPublicKey issuerPublicKey;
 
 	protected byte[] signature;
@@ -33,7 +37,7 @@ public class IccPublicKeyBuilder {
 	}
 
 	public boolean canBuild() {
-		if (signedElements.isEmpty()) {
+		if (signedElements.isEmpty() && encodedSignedData == null) {
 			return false;
 		}
 		if (issuerPublicKey == null) {
@@ -66,6 +70,20 @@ public class IccPublicKeyBuilder {
 		return this;
 	}
 
+	/**
+	 * Set the signed data as encoded in the bundle (see {@linkplain no.entur.abt.bob.mts7.mtb.MobileTicketBundle#getSignedData()}). The issuer signs the
+	 * elements in the representation in which it assembles the bundle (MTS1 section 2.3), which need not be the recommended one which
+	 * {@linkplain #withSignedData(byte[], int, int)} gives. This takes precedence over the elements.
+	 *
+	 * @param signedData the CBOR encoded array of the signed elements
+	 * @return this instance
+	 */
+
+	public IccPublicKeyBuilder withEncodedSignedData(byte[] signedData) {
+		this.encodedSignedData = signedData;
+		return this;
+	}
+
 	public IccPublicKeyBuilder withIssuerPublicKey(IssuerPublicKey issuerPublicKey) {
 		this.issuerPublicKey = issuerPublicKey;
 		return this;
@@ -83,6 +101,7 @@ public class IccPublicKeyBuilder {
 
 	public void reset() {
 		signedElements.clear();
+		encodedSignedData = null;
 
 		signature = null;
 		issuerPublicKey = null;
@@ -106,7 +125,8 @@ public class IccPublicKeyBuilder {
 	 * @throws UnableToConstructIssuerKeyException        if the issuer key is not accepted by the security provider (a problem on our side)
 	 */
 
-	public IccPublicKey build() throws InvalidCardMts7Exception, NoSuchAlgorithmMts7Exception, UnableToConstructIssuerKeyException {
+	public IccPublicKey build()
+			throws InvalidCardMts7Exception, NoSuchAlgorithmMts7Exception, UnableToConstructIssuerKeyException, UnableToConstructIccKeyException {
 		checkAlgorithm();
 
 		byte[] data = getSignedData();
@@ -142,6 +162,9 @@ public class IccPublicKeyBuilder {
 	 */
 
 	protected byte[] getSignedData() {
+		if (encodedSignedData != null) {
+			return encodedSignedData;
+		}
 		return WRITER.writeSignedData(signedElements.toArray(new byte[0][]));
 	}
 

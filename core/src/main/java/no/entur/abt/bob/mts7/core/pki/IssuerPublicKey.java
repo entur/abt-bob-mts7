@@ -5,6 +5,8 @@ import java.security.NoSuchAlgorithmException;
 import java.security.Provider;
 import java.security.PublicKey;
 import java.security.Signature;
+import java.security.SignatureException;
+import java.util.Objects;
 
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.crypto.impl.ECDSA;
@@ -83,6 +85,9 @@ public class IssuerPublicKey {
 			throws TrustChainInvalidCardMts7Exception, NoSuchAlgorithmMts7Exception, UnableToConstructIssuerKeyException {
 		// a signature is stateful, so use a new one: it is not shared with anyone, and there is no need to restore it to a known state if something goes
 		// wrong. A problem with the algorithm or the key is on our side, so it is not caught here.
+		Objects.requireNonNull(data, "data");
+		Objects.requireNonNull(sign, "sign");
+
 		Signature signature = newSignature();
 		boolean valid;
 		try {
@@ -90,8 +95,8 @@ public class IssuerPublicKey {
 
 			signature.update(data, offset, length);
 			valid = signature.verify(encoded);
-		} catch (Exception e) {
-			// the data or the signature from the card is malformed
+		} catch (JOSEException | SignatureException e) {
+			// the signature from the card is malformed; anything else (such as a problem with the provider, or a bug) is not caught
 			throw new TrustChainInvalidCardMts7Exception("Malformed issuer signature", e);
 		}
 		if (!valid) {

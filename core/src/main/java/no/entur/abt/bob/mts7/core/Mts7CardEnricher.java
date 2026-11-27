@@ -1,15 +1,18 @@
 package no.entur.abt.bob.mts7.core;
 
-import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
+import java.util.Arrays;
 
+import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.api.MalformedCardResponseException;
+import no.entur.abt.bob.mts7.api.ReaderMts7Exception;
 import no.entur.tlv.parser.LenientTlvPullParser;
 
 /**
- * Enrich a card with the data of the select application response: the application identifier (version, participant identifier and serial), which is required,
- * and the signature counter, the lifecycle status and the maximum APDU lengths, if present.
+ * Enrich a card with its application-related data (6E), from the select application response or from GET DATA of it: the application identifier (version,
+ * participant identifier and serial), which is required, and the signature counter, the lifecycle status and the maximum APDU lengths, if present.
  * <p>
- * The response comes from the card, so anything wrong with it is a problem on the card side: {@linkplain InvalidCardMts7Exception}. The parsing never fails
- * with any other exception.
+ * The data comes from the card, so anything wrong with it is a problem on the card side: {@linkplain InvalidCardMts7Exception}. That there is none is a problem
+ * with the reader, which can always retrieve it: {@linkplain InsufficientCardCommandsException}. The parsing never fails with any other exception.
  * <p>
  * Instances are thread safe, so a single instance can be shared by all threads. The cards are not, so a card must only be enriched by one thread at a time.
  */
@@ -33,67 +36,202 @@ public class Mts7CardEnricher {
 
 	protected static final int APPLICATION_IDENTIFIER_LENGTH = 6 + 1 + 2 + 7;
 
+	// what was found of the application-related data (6E)
+	private static final int NOT_FOUND = 0;
+	private static final int INVALID = 1;
+	private static final int VALID = 2;
+
 	/**
-	 * Enrich the card with the payload of the select application response.
+	 * Enrich the card with its application-related data (6E): from the File Management Data in the select application response, or, as a card need not return
+	 * it there (MTS7 section 4.1.1), from the response to GET DATA of it.
+	 * <p>
+	 * The card is only to blame when its application-related data is malformed, or has no valid application identifier. If the select application response has
+	 * no application-related data, and there is no response to GET DATA of it, the reader did not retrieve it.
+	 *
+	 * @param card                             the card
+	 * @param selectApplicationResponsePayload select application response payload, without the status word, possibly empty
+	 * @param applicationRelatedDataPayload    response payload of GET DATA of the application-related data (6E), without the status word, or null if none
+	 * @throws InvalidCardMts7Exception          if the application-related data of the card is malformed, or has no valid application identifier (a problem on
+	 *                                           the card side)
+	 * @throws InsufficientCardCommandsException if there is no application-related data, as the reader did not retrieve it (a problem with the reader)
+	 */
+
+	public void enrich(Mts7Card card, byte[] selectApplicationResponsePayload, byte[] applicationRelatedDataPayload)
+			throws InvalidCardMts7Exception, InsufficientCardCommandsException {
+		int fromSelect = NOT_FOUND;
+		RuntimeException selectFailure = null;
+		boolean malformedSelect = false;
+		if (selectApplicationResponsePayload != null) {
+			try {
+				fromSelect = parseTemplates(card, newParser(selectApplicationResponsePayload));
+			} catch (RuntimeException e) {
+				// the parsing is lenient, so this is not expected
+				selectFailure = e;
+			}
+			malformedSelect = selectFailure != null || !isWellFormed(selectApplicationResponsePayload);
+		}
+		if (fromSelect == VALID) {
+			return;
+		}
+		if (fromSelect == INVALID) {
+			throw new InvalidCardMts7Exception("Missing or malformed application identifier in the select application response");
+		}
+		if (applicationRelatedDataPayload != null) {
+			// the response is the TLV coded 6E (MTS7 section 4.1.2)
+			if (parse(card, applicationRelatedDataPayload, "application-related data") != VALID) {
+				throw new InvalidCardMts7Exception("Missing or malformed application identifier in the application-related data");
+			}
+			return;
+		}
+		if (malformedSelect) {
+			// whatever is wrong with the response, it came from the card
+			throw new InvalidCardMts7Exception("Malformed select application response", selectFailure);
+		}
+		// empty, or without the application-related data, which the card need not return here
+		throw new InsufficientCardCommandsException(
+				"No application-related data (6E) in the select application response, and no GET DATA of it (MTS7 section 4.1.1)");
+	}
+
+	/**
+	 * Enrich the card with the payload of the select application response alone.
 	 *
 	 * @param card                             the card
 	 * @param selectApplicationResponsePayload response payload, without the status word
-	 * @throws InvalidCardMts7Exception if the response is malformed, or has no valid application identifier (a problem on the card side)
+	 * @throws InvalidCardMts7Exception          if the application-related data in the response is malformed, or has no valid application identifier (a problem
+	 *                                           on the card side)
+	 * @throws InsufficientCardCommandsException if the response has no application-related data, which the reader then should have retrieved with GET DATA
 	 */
 
-	public void enrichSelectApplicationResponsePayload(Mts7Card card, byte[] selectApplicationResponsePayload) throws InvalidCardMts7Exception {
-		enrich(card, selectApplicationResponsePayload, false);
+	public void enrichSelectApplicationResponsePayload(Mts7Card card, byte[] selectApplicationResponsePayload)
+			throws InvalidCardMts7Exception, InsufficientCardCommandsException {
+		enrich(card, selectApplicationResponsePayload, null);
 	}
 
 	/**
-	 * Enrich the card with the select application response.
+	 * Enrich the card with the select application response alone.
 	 *
 	 * @param card                      the card
 	 * @param selectApplicationResponse response APDU, with the status word
-	 * @throws InvalidCardMts7Exception if the response is malformed, or has no valid application identifier (a problem on the card side)
+	 * @throws InvalidCardMts7Exception if the application-related data in the response is malformed, or has no valid application identifier (a problem on the
+	 *                                  card side)
+	 * @throws ReaderMts7Exception      if the response has no application-related data, which the reader then should have retrieved with GET DATA
+	 *                                  ({@linkplain InsufficientCardCommandsException}), or is shorter than its status word
+	 *                                  ({@linkplain MalformedCardResponseException})
 	 */
 
-	public void enrichSelectApplicationResponseApdu(Mts7Card card, byte[] selectApplicationResponse) throws InvalidCardMts7Exception {
-		enrich(card, selectApplicationResponse, true);
-	}
-
-	protected void enrich(Mts7Card card, byte[] response, boolean apdu) throws InvalidCardMts7Exception {
-		boolean applicationIdentifier;
-		try {
-			// the parser is stateful, and cheap to create
-			LenientTlvPullParser pullParser = new LenientTlvPullParser();
-			if (apdu) {
-				pullParser.setResponseApduPayload(response);
-			} else {
-				pullParser.setBuffer(response);
-			}
-			applicationIdentifier = parse(card, pullParser);
-		} catch (RuntimeException e) {
-			// the parsing is lenient, so this is not expected; whatever is wrong with the response, it came from the card
-			throw new InvalidCardMts7Exception("Malformed select application response", e);
+	public void enrichSelectApplicationResponseApdu(Mts7Card card, byte[] selectApplicationResponse) throws InvalidCardMts7Exception, ReaderMts7Exception {
+		if (selectApplicationResponse == null || selectApplicationResponse.length < 2) {
+			// a card always responds with a status word
+			throw new MalformedCardResponseException(
+					"Malformed select application response: " + (selectApplicationResponse == null ? "missing" : selectApplicationResponse.length + " bytes"));
 		}
-		if (!applicationIdentifier) {
-			throw new InvalidCardMts7Exception("Missing or malformed application identifier in the select application response");
-		}
+		enrich(card, Arrays.copyOf(selectApplicationResponse, selectApplicationResponse.length - 2), null);
 	}
 
 	/**
-	 * @return whether a valid application identifier was found
+	 * @return whether, and how, the application-related data was found
 	 */
 
-	protected boolean parse(Mts7Card card, LenientTlvPullParser pullParser) {
-		boolean applicationIdentifier = false;
+	protected int parse(Mts7Card card, byte[] payload, String what) throws InvalidCardMts7Exception {
+		try {
+			return parseTemplates(card, newParser(payload));
+		} catch (RuntimeException e) {
+			// the parsing is lenient, so this is not expected; whatever is wrong with the response, it came from the card
+			throw new InvalidCardMts7Exception("Malformed " + what, e);
+		}
+	}
+
+	private static LenientTlvPullParser newParser(byte[] payload) {
+		// the parser is stateful, and cheap to create
+		LenientTlvPullParser pullParser = new LenientTlvPullParser();
+		pullParser.setBuffer(payload);
+		return pullParser;
+	}
+
+	/**
+	 * Check that data is a sequence of complete BER-TLV data objects, possibly with padding ('00' or 'FF') before, between or after them (ISO/IEC 7816-4
+	 * section 5.2.2). Only the outermost data objects are checked.
+	 *
+	 * @param data the data
+	 * @return whether the data is well-formed
+	 */
+
+	static boolean isWellFormed(byte[] data) {
+		int i = 0;
+		while (i < data.length) {
+			int b = data[i++] & 0xFF;
+			if (b == 0x00 || b == 0xFF) {
+				// padding
+				continue;
+			}
+			if ((b & 0x1F) == 0x1F) {
+				// subsequent tag bytes, the last one with b8 = 0
+				do {
+					if (i >= data.length) {
+						return false;
+					}
+					b = data[i++] & 0xFF;
+				} while ((b & 0x80) != 0);
+			}
+			if (i >= data.length) {
+				return false;
+			}
+			int first = data[i++] & 0xFF;
+			long length;
+			if (first < 0x80) {
+				length = first;
+			} else {
+				int count = first & 0x7F;
+				if (count == 0 || count > 4 || count > data.length - i) {
+					return false;
+				}
+				length = 0;
+				for (int k = 0; k < count; k++) {
+					length = (length << 8) | (data[i++] & 0xFF);
+				}
+			}
+			if (length > data.length - i) {
+				return false;
+			}
+			i += (int) length;
+		}
+		return true;
+	}
+
+	/**
+	 * Parse the File Management Data (64) with the application-related data (6E) in it, or the application-related data itself.
+	 *
+	 * @return whether, and how, the application-related data was found
+	 */
+
+	protected int parseTemplates(Mts7Card card, LenientTlvPullParser pullParser) {
+		int status = NOT_FOUND;
 		do {
 			int tag = pullParser.nextTag();
 			if (tag == -1) {
 				break;
 			}
-
 			if (tag == FILE_MANAGEMENT_TEMPLATE) {
-				applicationIdentifier |= parseFileManagementData(card, pullParser.parseTagLengthValuePayload());
+				status = Math.max(status, parseFileManagementTemplate(card, pullParser.parseTagLengthValuePayload()));
+			} else if (tag == APPLICATION_RELATED_DATA) {
+				status = Math.max(status, parseApplicationRelatedData(card, pullParser.parseTagLengthValuePayload()) ? VALID : INVALID);
 			}
 		} while (true);
-		return applicationIdentifier;
+		return status;
+	}
+
+	private int parseFileManagementTemplate(Mts7Card card, LenientTlvPullParser payloadParser) {
+		int status = NOT_FOUND;
+		do {
+			int tag = payloadParser.nextTag();
+			if (tag == -1) {
+				break;
+			}
+			if (tag == APPLICATION_RELATED_DATA) {
+				status = Math.max(status, parseApplicationRelatedData(card, payloadParser.parseTagLengthValuePayload()) ? VALID : INVALID);
+			}
+		} while (true);
+		return status;
 	}
 
 	/**

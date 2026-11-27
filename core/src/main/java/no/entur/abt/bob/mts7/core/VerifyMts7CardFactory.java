@@ -3,11 +3,13 @@ package no.entur.abt.bob.mts7.core;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.security.Provider;
+import java.util.Objects;
 
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
 import no.entur.abt.bob.mts7.api.InfrastructureMts7Exception;
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.api.ReaderMts7Exception;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyBuilder;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
@@ -42,6 +44,7 @@ public class VerifyMts7CardFactory {
 	protected final ThumbprintFactory thumbprintFactory;
 	protected final ParticipantPublicKeys participantPublicKeys;
 	protected final boolean trustUnknownRootKeys;
+	protected final UnknownIssuerKeyPolicy unknownIssuerKeyPolicy;
 
 	public VerifyMts7CardFactory(ParticipantPublicKeys participantPublicKeys) throws NoSuchAlgorithmException {
 		this(participantPublicKeys, null);
@@ -57,6 +60,21 @@ public class VerifyMts7CardFactory {
 
 	public VerifyMts7CardFactory(ParticipantPublicKeys participantPublicKeys, Provider provider) throws NoSuchAlgorithmException {
 		this(participantPublicKeys, provider, false);
+	}
+
+	/**
+	 * Constructor.
+	 *
+	 * @param participantPublicKeys  issuer keys, shared with other factories and threads
+	 * @param provider               security provider (for signatures and digests), or null for the default
+	 * @param unknownIssuerKeyPolicy who is to blame for a card whose issuer key is not among the issuer keys
+	 * @throws NoSuchAlgorithmException if the digest algorithm is not available
+	 */
+
+	public VerifyMts7CardFactory(ParticipantPublicKeys participantPublicKeys, Provider provider, UnknownIssuerKeyPolicy unknownIssuerKeyPolicy)
+			throws NoSuchAlgorithmException {
+		this(participantPublicKeys, false, unknownIssuerKeyPolicy, new IccPublicKeyFactory(provider), new Mts7CardEnricher(), new CBORMapper(),
+				new ThumbprintFactory(provider));
 	}
 
 	/**
@@ -101,8 +119,26 @@ public class VerifyMts7CardFactory {
 
 	public VerifyMts7CardFactory(ParticipantPublicKeys participantPublicKeys, boolean trustUnknownRootKeys, IccPublicKeyFactory iccPublicKeyFactory,
 			Mts7CardEnricher enricher, CBORMapper cborMapper, ThumbprintFactory thumbprintFactory) {
+		this(participantPublicKeys, trustUnknownRootKeys, UnknownIssuerKeyPolicy.blameCard(), iccPublicKeyFactory, enricher, cborMapper, thumbprintFactory);
+	}
+
+	/**
+	 * Constructor for sharing the helpers with other factories. All of the helpers must be thread safe.
+	 *
+	 * @param participantPublicKeys  issuer keys, shared with other factories and threads
+	 * @param trustUnknownRootKeys   whether to accept a card whose root key is not among the issuer keys, if it proves that it has the private key
+	 * @param unknownIssuerKeyPolicy who is to blame for a card whose issuer key is not among the issuer keys (unless trustUnknownRootKeys)
+	 * @param iccPublicKeyFactory    factory for the public key of the card
+	 * @param enricher               card enricher
+	 * @param cborMapper             CBOR mapper
+	 * @param thumbprintFactory      thumbprint factory
+	 */
+
+	public VerifyMts7CardFactory(ParticipantPublicKeys participantPublicKeys, boolean trustUnknownRootKeys, UnknownIssuerKeyPolicy unknownIssuerKeyPolicy,
+			IccPublicKeyFactory iccPublicKeyFactory, Mts7CardEnricher enricher, CBORMapper cborMapper, ThumbprintFactory thumbprintFactory) {
 		this.participantPublicKeys = participantPublicKeys;
 		this.trustUnknownRootKeys = trustUnknownRootKeys;
+		this.unknownIssuerKeyPolicy = Objects.requireNonNull(unknownIssuerKeyPolicy, "unknownIssuerKeyPolicy");
 		this.iccPublicKeyFactory = iccPublicKeyFactory;
 		this.enricher = enricher;
 		this.cborMapper = cborMapper;
@@ -116,6 +152,14 @@ public class VerifyMts7CardFactory {
 
 	public boolean isTrustUnknownRootKeys() {
 		return trustUnknownRootKeys;
+	}
+
+	/**
+	 * @return who is to blame for a card whose issuer key is not among the issuer keys
+	 */
+
+	public UnknownIssuerKeyPolicy getUnknownIssuerKeyPolicy() {
+		return unknownIssuerKeyPolicy;
 	}
 
 	/**
@@ -171,18 +215,27 @@ public class VerifyMts7CardFactory {
 	 * @throws NoSuchAlgorithmMts7Exception               if a signature algorithm is not available from the security provider (a problem on our side)
 	 * @throws UnableToConstructThumbprintKeyException    if the thumbprint of the public key of the card could not be created, although the key could (a
 	 *                                                    problem on our side)
+	 * @throws ReaderMts7Exception                        if the input is incomplete or malformed, as it was not read as MTS7 specifies (a problem with the
+	 *                                                    reader)
 	 * @throws InfrastructureMts7Exception                if the card could not be verified because of a problem on our side. This is also the superclass of the
 	 *                                                    three above, so catch it for any problem on our side.
 	 */
 
-	public Mts7Card create(Mts7ApduPayloads card) throws InvalidCardMts7Exception, InfrastructureMts7Exception {
+	public Mts7Card create(Mts7ApduPayloads card) throws InvalidCardMts7Exception, ReaderMts7Exception, InfrastructureMts7Exception {
 		Mts7Card result = new Mts7Card();
 
+		// what is missing was not read, which is not the fault of the card
 		if (!card.hasSelectApplicationOutput() || !card.hasGetDataOutput() || !card.hasInternalAuthenticateOutput()) {
-			throw new InvalidCardMts7Exception("Missing response from the card");
+			throw new MissingCardCommandsException("Missing response from the card");
+		}
+		byte[] challenge = card.getInternalAuthenticateInput();
+		if (challenge == null || challenge.length != Mts7ApduPayloadsFactory.CHALLENGE_LENGTH) {
+			// a SHA-256 hash (MTS7 section 4.1.4)
+			throw new MalformedCardCommandException("Challenge for internal authenticate of " + (challenge == null ? 0 : challenge.length) + " bytes, not "
+					+ Mts7ApduPayloadsFactory.CHALLENGE_LENGTH);
 		}
 
-		enricher.enrichSelectApplicationResponsePayload(result, card.getSelectApplicationOutput());
+		enricher.enrich(result, card.getSelectApplicationOutput(), card.getApplicationRelatedDataOutput());
 
 		MobileTicketBundle mobileTicketBundle;
 		try {
@@ -215,9 +268,7 @@ public class VerifyMts7CardFactory {
 		IssuerPublicKey issuerPublicKey = participantPublicKeys.getIssuerPublicKey(iid, header.getKid());
 		if (issuerPublicKey != null) {
 			IccPublicKeyBuilder iccPublicKeyBuilder = new IccPublicKeyBuilder(iccPublicKeyFactory);
-			for (byte[] value : mobileTicketBundle.getSignedElements()) {
-				iccPublicKeyBuilder.withSignedData(value, 0, value.length);
-			}
+			iccPublicKeyBuilder.withEncodedSignedData(mobileTicketBundle.getSignedData());
 			iccPublicKeyBuilder.withSignature(mobileTicketBundle.getSignature());
 			iccPublicKeyBuilder.withIssuerSignatureProtectedHeader(header);
 			iccPublicKeyBuilder.withIssuerPublicKey(issuerPublicKey);
@@ -232,8 +283,11 @@ public class VerifyMts7CardFactory {
 			// the card from the certificate as it is, and only check that the card has the private key for it (door 3), as
 			// VerifyKeyPairMts7CardFactory does. This does not say who issued the card, so the trust chain stays not verified.
 			iccPublicKey = iccPublicKeyFactory.create(header);
-		} else {
+		} else if (unknownIssuerKeyPolicy.isCardToBlame(iid, header.getKid(), participantPublicKeys)) {
 			throw new UnknownIssuerKeyInvalidCardMts7Exception(iid, header.getKid());
+		} else {
+			// our keys may be out of date
+			throw new OutdatedIssuerKeysException(iid, header.getKid());
 		}
 
 		// from the same token public key as the public key of the card, which could be created, so a problem here is expected to be on our side

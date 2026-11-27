@@ -339,6 +339,36 @@ public class VerifyMts7CardFactoryIssuerSignatureTest {
 	// cards which are correctly signed by an issuer we know
 
 	@Test
+	public void testCardWithIndefiniteLengthBundleIsTrusted() throws Exception {
+		// MTS1 section 2.3: the issuer signs the array in the representation in which it assembles the bundle, which the verifier must detect
+		KeyPair tokenKeyPair = generateEc();
+		KeyPair issuerKeyPair = generateEc();
+
+		byte[] header = cbor.writeValueAsBytes(header("77", "77:test", tokenKeyPair));
+		byte[] second = cbor.writeValueAsBytes(genuineSecondElement);
+
+		ByteArrayOutputStream signed = new ByteArrayOutputStream();
+		signed.write(0x9F);
+		signed.write(header);
+		signed.write(second);
+		signed.write(0xFF);
+		byte[] signature = cbor.writeValueAsBytes(signEc(issuerKeyPair.getPrivate(), signed.toByteArray()));
+
+		ByteArrayOutputStream p = new ByteArrayOutputStream();
+		p.write(0x9F);
+		p.write(header);
+		p.write(second);
+		p.write(signature);
+		p.write(0xFF);
+
+		Map<String, Object> outer = new LinkedHashMap<>();
+		outer.put("v", new byte[] { 0x61, 0x31 });
+		outer.put("p", p.toByteArray());
+
+		assertTrusted(ecIssuer(77, "77:test", issuerKeyPair), payloads(cbor.writeValueAsBytes(outer), internalAuthenticate(tokenKeyPair)));
+	}
+
+	@Test
 	public void testCardSignedByEcIssuerIsTrusted() throws Exception {
 		KeyPair tokenKeyPair = generateEc();
 		KeyPair issuerKeyPair = generateEc();

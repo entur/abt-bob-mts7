@@ -59,15 +59,26 @@ public class VerifyKeyPairMts7CardFactoryTest {
 	}
 
 	@Test
-	public void testMissingResponseIsInvalidCard() throws Exception {
+	public void testMissingResponseIsReaderProblem() throws Exception {
+		// what was not read is not the fault of the card
 		VerifyKeyPairMts7CardFactory factory = new VerifyKeyPairMts7CardFactory();
 
 		Mts7ApduPayloads payloads = card(GET_NEXT_DATA_RESPONSE, SIGNATURE_RESPONSE);
 		payloads.setInternalAuthenticateOutput(null);
 
-		InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class, () -> factory.create(payloads));
+		assertThrows(MissingCardCommandsException.class, () -> factory.create(payloads));
+	}
 
-		assertFalse(e instanceof KeyPairInvalidCardMts7Exception);
+	@Test
+	public void testChallengeWhichIsNotASha256HashIsReaderProblem() throws Exception {
+		VerifyKeyPairMts7CardFactory factory = new VerifyKeyPairMts7CardFactory();
+
+		for (byte[] challenge : new byte[][] { null, new byte[0], new byte[16], new byte[33] }) {
+			Mts7ApduPayloads payloads = card(GET_NEXT_DATA_RESPONSE, SIGNATURE_RESPONSE);
+			payloads.setInternalAuthenticateInput(challenge);
+
+			assertThrows(MalformedCardCommandException.class, () -> factory.create(payloads));
+		}
 	}
 
 	@Test

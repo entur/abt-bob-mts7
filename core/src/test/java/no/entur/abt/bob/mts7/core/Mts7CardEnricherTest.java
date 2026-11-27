@@ -1,7 +1,9 @@
 package no.entur.abt.bob.mts7.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -9,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.Test;
 
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.api.MalformedCardResponseException;
 import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
 import no.entur.tlv.parser.LenientTlvPullParser;
 
@@ -69,7 +72,7 @@ public class Mts7CardEnricherTest {
 
 		try {
 			new Mts7CardEnricher().enrichSelectApplicationResponsePayload(card, ByteArrayHexStringConverter.hexStringToByteArray(hex));
-		} catch (InvalidCardMts7Exception e) {
+		} catch (InvalidCardMts7Exception | InsufficientCardCommandsException e) {
 			// rejected: the card as far as it was enriched
 		}
 
@@ -141,9 +144,9 @@ public class Mts7CardEnricherTest {
 
 	@Test
 	public void testMissingApplicationIdentifierIsInvalidCard() throws Exception {
-		// with the status word, as for enrichSelectApplicationResponseApdu
-		String[] responses = { "9000", "FFFFFFFFFF9000", "64056E038A01009000", "6E124F10" + AID + "9000", "640B6E094F07A00000078101019000", "6429" + "9000",
-				"648480000000" + "6E124F10" + AID + "9000", "64086E064F84800000009000", "90" };
+		// with the status word, as for enrichSelectApplicationResponseApdu: application-related data without a valid application identifier, or malformed
+		String[] responses = { "64056E038A01009000", "640B6E094F07A00000078101019000", "6429" + "9000", "648480000000" + "6E124F10" + AID + "9000",
+				"64086E064F84800000009000", "01020304059000" };
 
 		for (String response : responses) {
 			Mts7Card card = new Mts7Card();
@@ -151,17 +154,67 @@ public class Mts7CardEnricherTest {
 					() -> new Mts7CardEnricher().enrichSelectApplicationResponseApdu(card, ByteArrayHexStringConverter.hexStringToByteArray(response)),
 					response);
 
-			assertTrue(e.getMessage().contains("application identifier"), e.getMessage());
+			assertTrue(e.getMessage().contains("application identifier") || e.getMessage().startsWith("Malformed"), e.getMessage());
 			assertNull(card.getSerial());
 		}
 	}
 
 	@Test
-	public void testNullResponseIsInvalidCard() throws Exception {
-		InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class,
-				() -> new Mts7CardEnricher().enrichSelectApplicationResponsePayload(new Mts7Card(), null));
+	public void testNoApplicationRelatedDataIsReaderProblem() throws Exception {
+		// the card need not return the application-related data (MTS7 section 4.1.1): empty, padding (ISO/IEC 7816-4 section 5.2.2), or another template
+		String[] responses = { "9000", "FFFFFFFFFF9000", "00009000", "6F038401009000" };
 
-		assertInstanceOf(NullPointerException.class, e.getCause());
+		for (String response : responses) {
+			Mts7Card card = new Mts7Card();
+			assertThrows(InsufficientCardCommandsException.class,
+					() -> new Mts7CardEnricher().enrichSelectApplicationResponseApdu(card, ByteArrayHexStringConverter.hexStringToByteArray(response)),
+					response);
+			assertNull(card.getSerial());
+		}
+		assertThrows(InsufficientCardCommandsException.class, () -> new Mts7CardEnricher().enrichSelectApplicationResponsePayload(new Mts7Card(), null));
+	}
+
+	@Test
+	public void testResponseWithoutStatusWordIsReaderProblem() throws Exception {
+		assertThrows(MalformedCardResponseException.class,
+				() -> new Mts7CardEnricher().enrichSelectApplicationResponseApdu(new Mts7Card(), new byte[] { (byte) 0x90 }));
+		assertThrows(MalformedCardResponseException.class, () -> new Mts7CardEnricher().enrichSelectApplicationResponseApdu(new Mts7Card(), null));
+	}
+
+	@Test
+	public void testApplicationRelatedDataWithoutFileManagementTemplate() throws Exception {
+		Mts7Card card = new Mts7Card();
+		new Mts7CardEnricher().enrichSelectApplicationResponseApdu(card, ByteArrayHexStringConverter.hexStringToByteArray("6E124F10" + AID + "9000"));
+
+		assertNotNull(card.getSerial());
+	}
+
+	@Test
+	public void testApplicationRelatedDataFromGetData() throws Exception {
+		// the select application response does not have it, so it was retrieved with GET DATA
+		for (String select : new String[] { "", "FFFF", "6F03840100", "640080" }) {
+			Mts7Card card = new Mts7Card();
+			new Mts7CardEnricher().enrich(card, ByteArrayHexStringConverter.hexStringToByteArray(select),
+					ByteArrayHexStringConverter.hexStringToByteArray("6E124F10" + AID));
+
+			assertNotNull(card.getSerial(), select);
+		}
+
+		// what GET DATA returns is the card's
+		assertThrows(InvalidCardMts7Exception.class,
+				() -> new Mts7CardEnricher().enrich(new Mts7Card(), new byte[0], ByteArrayHexStringConverter.hexStringToByteArray("6E038A0100")));
+		assertThrows(InvalidCardMts7Exception.class, () -> new Mts7CardEnricher().enrich(new Mts7Card(), new byte[0], new byte[0]));
+	}
+
+	@Test
+	public void testWellFormed() {
+		for (String data : new String[] { "", "FF", "00FF", "6400", "6401AA", "6F03840100", "7F660100", "5F2A0201AA", "4F8110" + "00".repeat(16),
+				"FF6400FF" }) {
+			assertTrue(Mts7CardEnricher.isWellFormed(ByteArrayHexStringConverter.hexStringToByteArray(data)), data);
+		}
+		for (String data : new String[] { "64", "6401", "6402AA", "7F", "7F66", "6480", "6485000000000000", "648480000000", "0102030405" }) {
+			assertFalse(Mts7CardEnricher.isWellFormed(ByteArrayHexStringConverter.hexStringToByteArray(data)), data);
+		}
 	}
 
 	@Test

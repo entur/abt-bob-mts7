@@ -3,6 +3,7 @@ package no.entur.abt.bob.mts7.core;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -13,6 +14,7 @@ import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.api.MalformedCardResponseException;
 import no.entur.abt.bob.mts7.api.Mts7Exception;
 import no.entur.abt.bob.mts7.api.UnexpectedCardResponseException;
 import no.entur.abt.bob.mts7.simple.api.Mts7ApduExchanges;
@@ -370,6 +372,107 @@ public class Mts7ApduPayloadsFactoryTest {
 				exchanges(SELECT_BOB_COMMAND, FILE_NOT_FOUND, GET_DATA_COMMAND, GET_DATA_RESPONSE, INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE)));
 		assertInstanceOf(UnexpectedCardResponseException.class, e);
 		assertEquals("Unexpected response from the card: status word 6A82", e.getMessage());
+	}
+
+	// every command is checked before the response of the card, as the card can only answer the command it got
+
+	@Test
+	public void testSelectOfAnotherApplicationIsReaderProblem() {
+		byte[] selectOther = ByteArrayHexStringConverter.hexStringToByteArray("00A4040007A0000000041010");
+
+		assertThrows(UnexpectedCardCommandException.class, () -> factory
+				.createCard(exchanges(selectOther, FILE_NOT_FOUND, GET_DATA_COMMAND, GET_DATA_RESPONSE, INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE)));
+	}
+
+	@Test
+	public void testSelectOfTheFullApplicationIdentifier() throws Exception {
+		// it starts with the part which MTS7 selects
+		byte[] select = ByteArrayHexStringConverter.hexStringToByteArray("00A4040010A0000007810101000A0000175F96B61D00");
+
+		assertNotNull(factory.createCard(
+				exchanges(select, SELECT_APPLICATION_RESPONSE, GET_DATA_COMMAND, GET_DATA_RESPONSE, INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE)));
+	}
+
+	@Test
+	public void testInternalAuthenticateWithoutLeIsReaderProblem() {
+		// the card would rightly not return the signature
+		byte[] command = ByteArrayHexStringConverter.hexStringToByteArray("0088000020" + "00".repeat(32));
+
+		MalformedCardCommandException e = assertThrows(MalformedCardCommandException.class, () -> factory.createCard(
+				exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE, GET_DATA_COMMAND, GET_DATA_RESPONSE, command, new byte[] { (byte) 0x90, 0x00 })));
+		assertTrue(e.getMessage().contains("without Le"), e.getMessage());
+	}
+
+	@Test
+	public void testGetCommandsWithoutLeOrWithDataAreReaderProblem() {
+		byte[] getDataWithoutLe = ByteArrayHexStringConverter.hexStringToByteArray("00CA7F21");
+		byte[] getDataWithData = ByteArrayHexStringConverter.hexStringToByteArray("00CA7F210101");
+		byte[] getResponseWithoutLe = ByteArrayHexStringConverter.hexStringToByteArray("00C00000");
+
+		assertThrows(MalformedCardCommandException.class, () -> factory.createCard(exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE, getDataWithoutLe,
+				new byte[] { (byte) 0x90, 0x00 }, INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE)));
+		assertThrows(MalformedCardCommandException.class, () -> factory.createCard(exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE, getDataWithData,
+				GET_DATA_RESPONSE, INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE)));
+		assertThrows(MalformedCardCommandException.class, () -> factory.createCard(exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE,
+				GET_NEXT_DATA_COMMAND, firstPart(), getResponseWithoutLe, secondPart(), INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE)));
+	}
+
+	@Test
+	public void testContinueWithoutDataIsMore() throws Exception {
+		// 61xx means that there is more, also with no data in this part of the response
+		Mts7ApduPayloads payloads = factory.createCard(exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE, GET_NEXT_DATA_COMMAND,
+				new byte[] { 0x61, 0x00 }, GET_RESPONSE_COMMAND, GET_DATA_RESPONSE, INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE));
+
+		assertArrayEquals(fromResponseApdu(GET_DATA_RESPONSE), payloads.getGetDataOutput());
+	}
+
+	@Test
+	public void testNoNextMobileTicketBundle() throws Exception {
+		// a reader which looks for more than the first MTB gets referenced data not found (MTS7 section 4.1.2)
+		byte[] notFound = { 0x6A, (byte) 0x88 };
+		Mts7ApduPayloads payloads = factory.createCard(exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE, GET_NEXT_DATA_COMMAND, GET_DATA_RESPONSE,
+				GET_NEXT_DATA_COMMAND, notFound, INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE));
+
+		assertArrayEquals(fromResponseApdu(GET_DATA_RESPONSE), payloads.getGetDataOutput());
+	}
+
+	@Test
+	public void testNoMobileTicketBundleIsCardProblem() {
+		// the card MUST have at least one MTB (MTS7 section 3.1.5)
+		byte[] notFound = { 0x6A, (byte) 0x88 };
+
+		assertThrows(UnexpectedCardResponseException.class, () -> factory.createCard(exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE,
+				GET_NEXT_DATA_COMMAND, notFound, INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE)));
+	}
+
+	@Test
+	public void testFirstMobileTicketBundleIsKept() throws Exception {
+		// the card is authenticated with the public key of the first MTB (MTS7 appendix A)
+		byte[] other = ByteArrayHexStringConverter.hexStringToByteArray("A09000");
+		Mts7ApduPayloads payloads = factory.createCard(exchanges(SELECT_BOB_COMMAND, SELECT_APPLICATION_RESPONSE, GET_NEXT_DATA_COMMAND, GET_DATA_RESPONSE,
+				GET_NEXT_DATA_COMMAND, other, INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE));
+
+		assertArrayEquals(fromResponseApdu(GET_DATA_RESPONSE), payloads.getGetDataOutput());
+	}
+
+	@Test
+	public void testApplicationRelatedDataFromGetData() throws Exception {
+		// the card need not return it in the select application response (MTS7 section 4.1.1)
+		byte[] getApplicationRelatedData = ByteArrayHexStringConverter.hexStringToByteArray("00CA006E00");
+		byte[] applicationRelatedData = ByteArrayHexStringConverter
+				.hexStringToByteArray("6E274F10A0000007810101000A0000175F96B61D7A0593030000248A01007F660802020105020201029000");
+
+		Mts7ApduPayloads payloads = factory.createCard(exchanges(SELECT_BOB_COMMAND, new byte[] { (byte) 0x90, 0x00 }, getApplicationRelatedData,
+				applicationRelatedData, GET_NEXT_DATA_COMMAND, GET_DATA_RESPONSE, INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE));
+
+		assertEquals(0, payloads.getSelectApplicationOutput().length);
+		assertArrayEquals(fromResponseApdu(applicationRelatedData), payloads.getApplicationRelatedDataOutput());
+		assertArrayEquals(fromResponseApdu(GET_DATA_RESPONSE), payloads.getGetDataOutput());
+
+		// which the card must have
+		assertThrows(UnexpectedCardResponseException.class,
+				() -> factory.createCard(exchanges(SELECT_BOB_COMMAND, new byte[] { (byte) 0x90, 0x00 }, getApplicationRelatedData,
+						new byte[] { 0x6A, (byte) 0x88 }, GET_NEXT_DATA_COMMAND, GET_DATA_RESPONSE, INTERNAL_AUTHENTICATE_COMMAND, SIGNATURE_RESPONSE)));
 	}
 
 	public byte[] fromResponseApdu(byte[] response) {

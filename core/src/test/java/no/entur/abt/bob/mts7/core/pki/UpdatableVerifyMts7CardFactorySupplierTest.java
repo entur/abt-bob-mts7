@@ -29,6 +29,7 @@ import com.nimbusds.jose.jwk.gen.ECKeyGenerator;
 import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
 import no.entur.abt.bob.mts7.core.TrustChainInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.UnknownIssuerKeyPolicy;
 import no.entur.abt.bob.mts7.core.VerifyMts7CardFactory;
 
 public class UpdatableVerifyMts7CardFactorySupplierTest {
@@ -202,6 +203,26 @@ public class UpdatableVerifyMts7CardFactorySupplierTest {
 		assertThrows(IllegalArgumentException.class, () -> UpdatableVerifyMts7CardFactorySupplier.newBuilder().withMaximumInvalidKeys(-1).build());
 		assertThrows(IllegalArgumentException.class, () -> UpdatableVerifyMts7CardFactorySupplier.newBuilder().withMinimumParticipants(0).build());
 		assertNotNull(UpdatableVerifyMts7CardFactorySupplier.newBuilder().withMaximumInvalidKeys(0).build());
+	}
+
+	@Test
+	public void testUnknownIssuerKeyPolicy() throws Exception {
+		UnknownIssuerKeyPolicy policy = UnknownIssuerKeyPolicy.blameKeys();
+		UpdatableVerifyMts7CardFactorySupplier supplier = UpdatableVerifyMts7CardFactorySupplier.newBuilder().withUnknownIssuerKeyPolicy(policy).build();
+
+		assertSame(policy, supplier.getUnknownIssuerKeyPolicy());
+		assertSame(policy, supplier.getVerifyMts7CardFactory().getUnknownIssuerKeyPolicy());
+
+		ECKey elevenKey = new ECKeyGenerator(Curve.P_256).keyID("11:1").generate();
+		supplier.update(Arrays.asList(participant(11, "Eleven", elevenKey)));
+		assertSame(policy, supplier.getVerifyMts7CardFactory().getUnknownIssuerKeyPolicy());
+
+		// by default the card
+		assertTrue(UpdatableVerifyMts7CardFactorySupplier.newBuilder()
+				.build()
+				.getVerifyMts7CardFactory()
+				.getUnknownIssuerKeyPolicy()
+				.isCardToBlame(10, "10:1", ParticipantPublicKeys.newBuilder().build()));
 	}
 
 	/**

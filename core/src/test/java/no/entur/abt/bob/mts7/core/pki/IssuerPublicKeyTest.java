@@ -134,9 +134,15 @@ public class IssuerPublicKeyTest {
 		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(DATA, new byte[63]));
 		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(DATA, new byte[64]));
 		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(DATA, new byte[65]));
-		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(DATA, null));
-		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(DATA, 0, DATA.length + 1, signEc(ecKeyPair.getPrivate(), DATA)));
-		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(DATA, -1, 1, signEc(ecKeyPair.getPrivate(), DATA)));
+	}
+
+	@Test
+	public void testMisuseIsNotInvalidCard() throws Exception {
+		// a bug of the caller, which must not be reported as a problem on the card side
+		assertThrows(NullPointerException.class, () -> ecKey().verify(DATA, null));
+		assertThrows(NullPointerException.class, () -> ecKey().verify(null, signEc(ecKeyPair.getPrivate(), DATA)));
+		assertThrows(IllegalArgumentException.class, () -> ecKey().verify(DATA, 0, DATA.length + 1, signEc(ecKeyPair.getPrivate(), DATA)));
+		assertThrows(IllegalArgumentException.class, () -> ecKey().verify(DATA, -1, 1, signEc(ecKeyPair.getPrivate(), DATA)));
 	}
 
 	@Test

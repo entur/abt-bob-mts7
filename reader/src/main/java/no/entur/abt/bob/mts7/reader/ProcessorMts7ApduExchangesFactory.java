@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.util.Random;
 
 import no.entur.abt.bob.mts7.api.Mts7Exception;
-import no.entur.abt.bob.mts7.api.UnableToSelectApplicationException;
 import no.entur.abt.bob.mts7.api.UnexpectedCardResponseException;
 import no.entur.abt.bob.mts7.api.apdu.ResponseAPDU;
 import no.entur.abt.bob.mts7.reader.processor.Mts7Processor;
@@ -47,21 +46,17 @@ public class ProcessorMts7ApduExchangesFactory extends Mts7ApduExchangesFactory 
 	}
 
 	protected void handleSelectApplication(DefaultMts7Exchange mts7Exchange, Mts7Processor processor, byte[] selectApplicationResponse)
-			throws UnableToSelectApplicationException, IOException {
-		if (selectApplicationResponse == null) {
-			selectApplicationResponse = mts7Exchange.transceive(SELECT_BOB_COMMAND); // File Control Information (FCI) Template
-		} else {
-			mts7Exchange.add(SELECT_BOB_COMMAND, selectApplicationResponse);
-		}
+			throws IOException, Mts7Exception {
+		byte[] response = handleSelectApplication(selectApplicationResponse, mts7Exchange);
+		processor.onSelectApplicationResponseApdu(response);
 
-		if (!isSuccess(selectApplicationResponse)) {
-			throw new UnableToSelectApplicationException(SELECT_BOB_COMMAND, selectApplicationResponse);
+		if (!hasApplicationRelatedData(response)) {
+			// the card need not return it in the select application response (MTS7 section 4.1.1)
+			processor.onApplicationRelatedDataResponseApdu(handleGetApplicationRelatedData(mts7Exchange));
 		}
-
-		processor.onSelectApplicationResponseApdu(selectApplicationResponse);
 	}
 
-	protected void handleInternalAuthenticate(Mts7Exchange mts7Exchange, Mts7Processor processor) throws IOException, UnexpectedCardResponseException {
+	protected void handleInternalAuthenticate(Mts7Exchange mts7Exchange, Mts7Processor processor) throws IOException, Mts7Exception {
 
 		byte[] payload = new byte[32]; // random bytes, i.e. same as SHA-256
 		random.nextBytes(payload);
@@ -87,7 +82,7 @@ public class ProcessorMts7ApduExchangesFactory extends Mts7ApduExchangesFactory 
 		System.arraycopy(INTERNAL_AUTHENTICATE_COMMAND_POSTFIX, 0, command, INTERNAL_AUTHENTICATE_COMMAND_PREFIX.length + payload.length,
 				INTERNAL_AUTHENTICATE_COMMAND_POSTFIX.length);
 
-		byte[] internalAuthenticateResponse = mts7Exchange.transceive(command); // File Control Information (FCI) Template
+		byte[] internalAuthenticateResponse = transceive(mts7Exchange, command); // File Control Information (FCI) Template
 		if (!ResponseAPDU.isSuccess(internalAuthenticateResponse)) {
 			throw new UnexpectedCardResponseException(command, internalAuthenticateResponse);
 		}
@@ -99,12 +94,12 @@ public class ProcessorMts7ApduExchangesFactory extends Mts7ApduExchangesFactory 
 
 	}
 
-	protected void handleGetNextData(Mts7Exchange mts7Exchange, Mts7Processor processor) throws IOException, UnexpectedCardResponseException {
+	protected void handleGetNextData(Mts7Exchange mts7Exchange, Mts7Processor processor) throws IOException, Mts7Exception {
 		// optimize for cards which support extended length
 		byte[] getNextDataCommand = GET_NEXT_DATA_COMMAND;
 		byte[] getResponseCommand = GET_RESPONSE_COMMAND;
 
-		byte[] getNextDataResponse = mts7Exchange.transceive(getNextDataCommand); // File Control Information (FCI) Template
+		byte[] getNextDataResponse = transceive(mts7Exchange, getNextDataCommand); // File Control Information (FCI) Template
 
 		if (isWrongLength(getNextDataResponse)) {
 			// The card does not support extended length. Wrong length is a checking error, so the command was not executed (ISO 7816-4 section 5.6) and the
@@ -112,7 +107,7 @@ public class ProcessorMts7ApduExchangesFactory extends Mts7ApduExchangesFactory 
 			getNextDataCommand = GET_NEXT_DATA_SHORT_LENGTH_COMMAND;
 			getResponseCommand = GET_RESPONSE_SHORT_LENGTH_COMMAND;
 
-			getNextDataResponse = mts7Exchange.transceive(getNextDataCommand);
+			getNextDataResponse = transceive(mts7Exchange, getNextDataCommand);
 		}
 
 		/*
@@ -133,7 +128,7 @@ public class ProcessorMts7ApduExchangesFactory extends Mts7ApduExchangesFactory 
 					throw new UnexpectedCardResponseException(getResponseCommand, getResponeRespone);
 				}
 
-				getResponeRespone = mts7Exchange.transceive(getResponseCommand);
+				getResponeRespone = transceive(mts7Exchange, getResponseCommand);
 				if (!isContinue(getResponeRespone)) {
 					bout.write(getResponeRespone); // i.e. including status code
 					break;

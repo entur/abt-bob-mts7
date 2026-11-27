@@ -28,7 +28,6 @@ public class MobileTicketBundleParser {
 
 	protected final ObjectReader mobileTicketBundleReader;
 	protected final ObjectReader majorVersionReader;
-	protected final ObjectReader issuerSignedTicketBundleReader;
 	protected final ObjectReader protectedHeaderReader;
 
 	public MobileTicketBundleParser() {
@@ -40,7 +39,6 @@ public class MobileTicketBundleParser {
 
 		this.mobileTicketBundleReader = cborMapper.readerFor(EncodedMobileTicketBundle.class);
 		this.majorVersionReader = cborMapper.readerFor(String.class);
-		this.issuerSignedTicketBundleReader = cborMapper.readerFor(byte[][].class);
 		this.protectedHeaderReader = cborMapper.readerFor(IssuerSignatureProtectedHeader.class);
 	}
 
@@ -60,22 +58,15 @@ public class MobileTicketBundleParser {
 			majorVersion = majorVersionReader.readValue(encoded.v);
 		}
 
-		byte[][] elements = issuerSignedTicketBundleReader.readValue(encoded.p);
-		if (elements == null || elements.length < 2) {
-			throw new IOException("Expected at least one signed element and the signature in the Issuer Signed Ticket Bundle");
-		}
-		for (byte[] element : elements) {
-			if (element == null) {
-				throw new IOException("Expected byte strings in the Issuer Signed Ticket Bundle, not null");
-			}
-		}
+		// decoded by hand, so that the signed data is in the representation of the bundle (MTS1 section 2.3)
+		IssuerSignedTicketBundleDecoder decoder = new IssuerSignedTicketBundleDecoder(encoded.p);
+		decoder.decode();
+		byte[][] elements = decoder.getElements();
 
 		byte[][] signedElements = new byte[elements.length - 1][];
 		System.arraycopy(elements, 0, signedElements, 0, signedElements.length);
-
 		byte[] signature = elements[elements.length - 1];
-
-		return new MobileTicketBundle(majorVersion, signedElements, signature, parseIssuerSignatureProtectedHeader(signedElements));
+		return new MobileTicketBundle(majorVersion, signedElements, decoder.getSignedData(), signature, parseIssuerSignatureProtectedHeader(signedElements));
 	}
 
 	/**

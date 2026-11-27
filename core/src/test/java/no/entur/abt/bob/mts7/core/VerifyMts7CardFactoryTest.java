@@ -104,6 +104,16 @@ public class VerifyMts7CardFactoryTest {
 	}
 
 	@Test
+	public void testUnknownRootKeyWithOutdatedKeysIsNotInvalidCard() throws Exception {
+		// the policy decides that our keys may be out of date: a problem on our side
+		VerifyMts7CardFactory factory = new VerifyMts7CardFactory(ParticipantPublicKeys.newBuilder().build(), null, UnknownIssuerKeyPolicy.blameKeys());
+
+		OutdatedIssuerKeysException e = assertThrows(OutdatedIssuerKeysException.class, () -> factory.create(card(SIGNATURE_RESPONSE)));
+		assertEquals(10, e.getIssuerId());
+		assertEquals("10:20230213", e.getKeyId());
+	}
+
+	@Test
 	public void testUnknownRootKeyIsRejectedByDefault() throws Exception {
 		VerifyMts7CardFactory factory = new VerifyMts7CardFactory(ParticipantPublicKeys.newBuilder().build());
 

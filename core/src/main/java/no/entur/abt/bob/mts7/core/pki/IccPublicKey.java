@@ -5,12 +5,15 @@ import java.security.NoSuchAlgorithmException;
 import java.security.Provider;
 import java.security.PublicKey;
 import java.security.Signature;
+import java.security.SignatureException;
+import java.util.Objects;
 
+import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.crypto.impl.ECDSA;
 
 import no.entur.abt.bob.mts7.core.KeyPairInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
-import no.entur.abt.bob.mts7.core.NonCompliantIccKeyInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
 
 /**
  * Public key of a single card, for verifying that the card has the private key.
@@ -48,13 +51,12 @@ public class IccPublicKey {
 	 *
 	 * @param data     signed data (the challenge)
 	 * @param expected signature from the card
-	 * @throws KeyPairInvalidCardMts7Exception            if the signature is not valid, or malformed (a problem on the card side)
-	 * @throws NonCompliantIccKeyInvalidCardMts7Exception if the key of the card is not accepted for its algorithm (a problem on the card side)
-	 * @throws NoSuchAlgorithmMts7Exception               if the signature algorithm is not available from the security provider (a problem on our side)
+	 * @throws KeyPairInvalidCardMts7Exception  if the signature is not valid, or malformed (a problem on the card side)
+	 * @throws UnableToConstructIccKeyException if the security provider does not accept the key of the card (a problem on our side)
+	 * @throws NoSuchAlgorithmMts7Exception     if the signature algorithm is not available from the security provider (a problem on our side)
 	 */
 
-	public void verify(byte[] data, byte[] expected)
-			throws KeyPairInvalidCardMts7Exception, NonCompliantIccKeyInvalidCardMts7Exception, NoSuchAlgorithmMts7Exception {
+	public void verify(byte[] data, byte[] expected) throws KeyPairInvalidCardMts7Exception, UnableToConstructIccKeyException, NoSuchAlgorithmMts7Exception {
 		verify(data, 0, data == null ? 0 : data.length, expected);
 	}
 
@@ -65,20 +67,24 @@ public class IccPublicKey {
 	 * @param offset   offset of the signed data in the buffer
 	 * @param length   length of the signed data
 	 * @param expected signature from the card
-	 * @throws KeyPairInvalidCardMts7Exception            if the signature is not valid, or malformed (a problem on the card side)
-	 * @throws NonCompliantIccKeyInvalidCardMts7Exception if the key of the card is not accepted for its algorithm (a problem on the card side)
-	 * @throws NoSuchAlgorithmMts7Exception               if the signature algorithm is not available from the security provider (a problem on our side)
+	 * @throws KeyPairInvalidCardMts7Exception  if the signature is not valid, or malformed (a problem on the card side)
+	 * @throws UnableToConstructIccKeyException if the security provider does not accept the key of the card (a problem on our side)
+	 * @throws NoSuchAlgorithmMts7Exception     if the signature algorithm is not available from the security provider (a problem on our side)
 	 */
 
 	public void verify(byte[] data, int offset, int length, byte[] expected)
-			throws KeyPairInvalidCardMts7Exception, NonCompliantIccKeyInvalidCardMts7Exception, NoSuchAlgorithmMts7Exception {
+			throws KeyPairInvalidCardMts7Exception, UnableToConstructIccKeyException, NoSuchAlgorithmMts7Exception {
 		// a signature is stateful, so use a new one: it is not shared with anyone, and there is no need to restore it to a known state if something goes
 		// wrong. A missing algorithm is a problem on our side, so it is not caught here.
+		Objects.requireNonNull(data, "data");
+		Objects.requireNonNull(expected, "expected");
+
 		Signature signature;
 		try {
 			signature = newSignature();
 		} catch (InvalidKeyException e) {
-			throw new NonCompliantIccKeyInvalidCardMts7Exception("Key of the card is not accepted for " + algorithm, e);
+			// the factory checked that the key is as MTS7 specifies it
+			throw new UnableToConstructIccKeyException("The security provider does not accept the public key of the card", e);
 		}
 
 		boolean valid;
@@ -105,8 +111,8 @@ public class IccPublicKey {
 
 			signature.update(data, offset, length);
 			valid = signature.verify(encoded);
-		} catch (Exception e) {
-			// the data or the signature from the card is malformed
+		} catch (JOSEException | SignatureException e) {
+			// the signature from the card is malformed; anything else (such as a problem with the provider, or a bug) is not caught
 			throw new KeyPairInvalidCardMts7Exception("Malformed signature from the card", e);
 		}
 		if (!valid) {

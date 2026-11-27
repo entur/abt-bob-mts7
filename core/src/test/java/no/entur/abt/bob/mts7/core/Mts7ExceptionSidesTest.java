@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import no.entur.abt.bob.mts7.api.InfrastructureMts7Exception;
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.api.MalformedCardResponseException;
 import no.entur.abt.bob.mts7.api.ReaderMts7Exception;
 import no.entur.abt.bob.mts7.api.UnableToSelectApplicationException;
 import no.entur.abt.bob.mts7.api.UnexpectedCardResponseException;
@@ -49,7 +50,7 @@ public class Mts7ExceptionSidesTest {
 	@Test
 	public void testOurSide() {
 		assertSide(InfrastructureMts7Exception.class, UnableToConstructIssuerKeyException.class, NoSuchAlgorithmMts7Exception.class,
-				UnableToConstructThumbprintKeyException.class);
+				UnableToConstructThumbprintKeyException.class, UnableToConstructIccKeyException.class, OutdatedIssuerKeysException.class);
 	}
 
 }

@@ -7,6 +7,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -16,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
 import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
+import no.entur.abt.bob.mts7.core.UnknownIssuerKeyPolicy;
 import no.entur.abt.bob.mts7.core.VerifyMts7CardFactory;
 import no.entur.abt.bob.mts7.core.VerifyMts7CardFactorySupplier;
 
@@ -72,11 +74,23 @@ public class UpdatableVerifyMts7CardFactorySupplier implements VerifyMts7CardFac
 		private int maximumInvalidKeys = DEFAULT_MAXIMUM_INVALID_KEYS;
 		private int minimumParticipants = DEFAULT_MINIMUM_PARTICIPANTS;
 		private Set<Long> requiredParticipants = new TreeSet<>();
+		private UnknownIssuerKeyPolicy unknownIssuerKeyPolicy = UnknownIssuerKeyPolicy.blameCard();
 
 		/**
 		 * @param provider security provider (for signatures), or null for the default
 		 * @return this builder
 		 */
+
+		/**
+		 * @param unknownIssuerKeyPolicy who is to blame for a card whose issuer key is not among the issuer keys, for example depending on whether the keys
+		 *                               were updated recently (by default the card)
+		 * @return this builder
+		 */
+
+		public Builder withUnknownIssuerKeyPolicy(UnknownIssuerKeyPolicy unknownIssuerKeyPolicy) {
+			this.unknownIssuerKeyPolicy = Objects.requireNonNull(unknownIssuerKeyPolicy, "unknownIssuerKeyPolicy");
+			return this;
+		}
 
 		public Builder withProvider(Provider provider) {
 			this.provider = provider;
@@ -149,7 +163,8 @@ public class UpdatableVerifyMts7CardFactorySupplier implements VerifyMts7CardFac
 			if (minimumParticipants < 1) {
 				throw new IllegalArgumentException("The minimum number of participants must be at least 1, not " + minimumParticipants);
 			}
-			return new UpdatableVerifyMts7CardFactorySupplier(provider, minimumValidKeys, maximumInvalidKeys, minimumParticipants, requiredParticipants);
+			return new UpdatableVerifyMts7CardFactorySupplier(provider, minimumValidKeys, maximumInvalidKeys, minimumParticipants, requiredParticipants,
+					unknownIssuerKeyPolicy);
 		}
 	}
 
@@ -158,6 +173,7 @@ public class UpdatableVerifyMts7CardFactorySupplier implements VerifyMts7CardFac
 	private final int maximumInvalidKeys;
 	private final int minimumParticipants;
 	private final Set<Long> requiredParticipants;
+	private final UnknownIssuerKeyPolicy unknownIssuerKeyPolicy;
 
 	// replaced as a whole, so that the set, the keys and the factory always belong together
 	private volatile Current current;
@@ -169,11 +185,13 @@ public class UpdatableVerifyMts7CardFactorySupplier implements VerifyMts7CardFac
 	 */
 
 	public UpdatableVerifyMts7CardFactorySupplier(Provider provider) {
-		this(provider, DEFAULT_MINIMUM_VALID_KEYS, DEFAULT_MAXIMUM_INVALID_KEYS, DEFAULT_MINIMUM_PARTICIPANTS, Collections.<Long>emptySet());
+		this(provider, DEFAULT_MINIMUM_VALID_KEYS, DEFAULT_MAXIMUM_INVALID_KEYS, DEFAULT_MINIMUM_PARTICIPANTS, Collections.<Long>emptySet(),
+				UnknownIssuerKeyPolicy.blameCard());
 	}
 
 	protected UpdatableVerifyMts7CardFactorySupplier(Provider provider, int minimumValidKeys, int maximumInvalidKeys, int minimumParticipants,
-			Set<Long> requiredParticipants) {
+			Set<Long> requiredParticipants, UnknownIssuerKeyPolicy unknownIssuerKeyPolicy) {
+		this.unknownIssuerKeyPolicy = Objects.requireNonNull(unknownIssuerKeyPolicy, "unknownIssuerKeyPolicy");
 		this.provider = provider;
 		this.minimumValidKeys = minimumValidKeys;
 		this.maximumInvalidKeys = maximumInvalidKeys;
@@ -197,6 +215,14 @@ public class UpdatableVerifyMts7CardFactorySupplier implements VerifyMts7CardFac
 
 	public ParticipantPublicKeys getParticipantPublicKeys() {
 		return current.keys;
+	}
+
+	/**
+	 * @return who is to blame for a card whose issuer key is not among the issuer keys
+	 */
+
+	public UnknownIssuerKeyPolicy getUnknownIssuerKeyPolicy() {
+		return unknownIssuerKeyPolicy;
 	}
 
 	public int getMinimumValidKeys() {
@@ -291,7 +317,7 @@ public class UpdatableVerifyMts7CardFactorySupplier implements VerifyMts7CardFac
 					.withParticipants(withKeysOnly(participants != null ? participants : Collections.<ParticipantMetadata>emptyList()))
 					.build();
 			// never trust unknown root keys, not even before a set has been loaded
-			return new Current(participants, keys, new VerifyMts7CardFactory(keys, provider, false));
+			return new Current(participants, keys, new VerifyMts7CardFactory(keys, provider, unknownIssuerKeyPolicy));
 		} catch (Exception e) {
 			throw new IllegalStateException("Unable to create issuer keys", e);
 		}

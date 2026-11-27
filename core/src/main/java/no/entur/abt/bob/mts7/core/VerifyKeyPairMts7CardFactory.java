@@ -8,6 +8,7 @@ import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
 import no.entur.abt.bob.mts7.api.InfrastructureMts7Exception;
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.api.ReaderMts7Exception;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.Mts1Algorithms;
@@ -80,18 +81,27 @@ public class VerifyKeyPairMts7CardFactory {
 	 *                                                    side)
 	 * @throws UnableToConstructThumbprintKeyException    if the thumbprint of the public key of the card could not be created, although the key could (a
 	 *                                                    problem on our side)
+	 * @throws ReaderMts7Exception                        if the input is incomplete or malformed, as it was not read as MTS7 specifies (a problem with the
+	 *                                                    reader)
 	 * @throws InfrastructureMts7Exception                if the card could not be verified because of a problem on our side. This is also the superclass of the
 	 *                                                    two above, so catch it for any problem on our side.
 	 */
 
-	public Mts7Card create(Mts7ApduPayloads card) throws InvalidCardMts7Exception, InfrastructureMts7Exception {
+	public Mts7Card create(Mts7ApduPayloads card) throws InvalidCardMts7Exception, ReaderMts7Exception, InfrastructureMts7Exception {
 		Mts7Card result = new Mts7Card();
 
+		// what is missing was not read, which is not the fault of the card
 		if (!card.hasSelectApplicationOutput() || !card.hasGetDataOutput() || !card.hasInternalAuthenticateOutput()) {
-			throw new InvalidCardMts7Exception("Missing response from the card");
+			throw new MissingCardCommandsException("Missing response from the card");
+		}
+		byte[] challenge = card.getInternalAuthenticateInput();
+		if (challenge == null || challenge.length != Mts7ApduPayloadsFactory.CHALLENGE_LENGTH) {
+			// a SHA-256 hash (MTS7 section 4.1.4)
+			throw new MalformedCardCommandException("Challenge for internal authenticate of " + (challenge == null ? 0 : challenge.length) + " bytes, not "
+					+ Mts7ApduPayloadsFactory.CHALLENGE_LENGTH);
 		}
 
-		enricher.enrichSelectApplicationResponsePayload(result, card.getSelectApplicationOutput());
+		enricher.enrich(result, card.getSelectApplicationOutput(), card.getApplicationRelatedDataOutput());
 
 		MobileTicketBundle mobileTicketBundle;
 		try {

@@ -1,5 +1,5 @@
 {
-  "description": "Deliberately invalid Mobile Ticket Bundles (GET DATA responses), mostly with a field missing from the Issuer Signature Protected Header, and deliberately invalid select application responses (the cases named 'select: ...', with the valid bundle), with the expected outcome of verifying the trust chain and the key pair: VERIFIED, or the class of the exception. All bundles are signed by the issuer key below (where there is a signature), and the INTERNAL AUTHENTICATE response is from the private key of the token public key, so each case differs from a valid card only as described. A case without a selectApplicationResponse uses the one below. Responses are hex, with the status word.",
+  "description": "Deliberately invalid Mobile Ticket Bundles (GET DATA responses), mostly with a field missing from the Issuer Signature Protected Header, and deliberately invalid select application responses (the cases named 'select: ...', with the valid bundle), with the expected outcome of verifying the trust chain and the key pair: VERIFIED, or the class of the exception. All bundles are signed by the issuer key below (where there is a signature), and the INTERNAL AUTHENTICATE response is from the private key of the token public key, so each case differs from a valid card only as described. A case without a selectApplicationResponse uses the one below. Responses are hex, with the status word. An outcome may also be a problem with the reader (a ReaderMts7Exception), never one on our side. Cases may have a response to GET DATA of the application-related data (6E) for a select application response without it.",
   "issuer": {
     "pid": 77,
     "kid": "77:test",
@@ -210,23 +210,23 @@
     },
     {
       "name": "select: empty",
-      "description": "the select application response has the status word only",
-      "trustChain": "InvalidCardMts7Exception",
-      "keyPair": "InvalidCardMts7Exception",
+      "description": "the select application response has the status word only, which a card may return (MTS7 section 4.1.1), and no GET DATA of the application-related data (6E) follows, so the reader did not retrieve it",
+      "trustChain": "InsufficientCardCommandsException",
+      "keyPair": "InsufficientCardCommandsException",
       "selectApplicationResponse": "9000",
       "getDataResponse": "BF6176426131617058E1835899BF63616C6765455332353663696964623737636B69646737373A74657374636D6976066374706BBF636B74796245436363727665502D3235366178782B53684D4D3663624F4E6855656C4B4B3038666755585F6672566B30774F4E43762D696876644E33666A386B6179782B445F61546468413342687230712D7050773738796C584C545278597170504A2D7A364D5146704E52544673FFFF42BFFF5840BFB414388DA1283A20D072321632B50E25C8952D567E8327FFCBD24A592780D0BCE4544EE4AF55E8205B3F91F9DA520CAC437AFD0224B520A6CEEBE1A8B78B8EFF9000"
     },
     {
-      "name": "select: garbage",
-      "description": "the select application response is not TLV",
-      "trustChain": "InvalidCardMts7Exception",
-      "keyPair": "InvalidCardMts7Exception",
+      "name": "select: padding only",
+      "description": "the select application response is only padding (FF), i.e. no data objects (ISO/IEC 7816-4 section 5.2.2), and no GET DATA of the application-related data (6E) follows",
+      "trustChain": "InsufficientCardCommandsException",
+      "keyPair": "InsufficientCardCommandsException",
       "selectApplicationResponse": "FFFFFFFFFF9000",
       "getDataResponse": "BF6176426131617058E1835899BF63616C6765455332353663696964623737636B69646737373A74657374636D6976066374706BBF636B74796245436363727665502D3235366178782B53684D4D3663624F4E6855656C4B4B3038666755585F6672566B30774F4E43762D696876644E33666A386B6179782B445F61546468413342687230712D7050773738796C584C545278597170504A2D7A364D5146704E52544673FFFF42BFFF5840BFB414388DA1283A20D072321632B50E25C8952D567E8327FFCBD24A592780D0BCE4544EE4AF55E8205B3F91F9DA520CAC437AFD0224B520A6CEEBE1A8B78B8EFF9000"
     },
     {
       "name": "select: truncated",
-      "description": "the select application response is cut in the middle of the application identifier",
+      "description": "the select application response is cut in the middle of the application identifier, so it is not well-formed",
       "trustChain": "InvalidCardMts7Exception",
       "keyPair": "InvalidCardMts7Exception",
       "selectApplicationResponse": "64296E274F10A0000007810101000A0000175F969000",
@@ -234,9 +234,9 @@
     },
     {
       "name": "select: no 64",
-      "description": "the select application response has no File Management Template (64)",
-      "trustChain": "InvalidCardMts7Exception",
-      "keyPair": "InvalidCardMts7Exception",
+      "description": "the application-related data (6E) is not in a File Management Template (64), which is accepted",
+      "trustChain": "VERIFIED",
+      "keyPair": "VERIFIED",
       "selectApplicationResponse": "6E274F10A0000007810101000A0000175F96B61D7A0593030000248A01007F660802020105020201029000",
       "getDataResponse": "BF6176426131617058E1835899BF63616C6765455332353663696964623737636B69646737373A74657374636D6976066374706BBF636B74796245436363727665502D3235366178782B53684D4D3663624F4E6855656C4B4B3038666755585F6672566B30774F4E43762D696876644E33666A386B6179782B445F61546468413342687230712D7050773738796C584C545278597170504A2D7A364D5146704E52544673FFFF42BFFF5840BFB414388DA1283A20D072321632B50E25C8952D567E8327FFCBD24A592780D0BCE4544EE4AF55E8205B3F91F9DA520CAC437AFD0224B520A6CEEBE1A8B78B8EFF9000"
     },
@@ -258,7 +258,7 @@
     },
     {
       "name": "select: 64 length overflow",
-      "description": "the File Management Template has the long-form length 84 80 00 00 00, which overflows an int",
+      "description": "the File Management Template has the long-form length 84 80 00 00 00, which overflows an int and the response, so the response is not well-formed",
       "trustChain": "InvalidCardMts7Exception",
       "keyPair": "InvalidCardMts7Exception",
       "selectApplicationResponse": "6484800000006E274F10A0000007810101000A0000175F96B61D7A0593030000248A01007F660802020105020201029000",
@@ -287,6 +287,49 @@
       "keyPair": "VERIFIED",
       "selectApplicationResponse": "641B6E194F10A0000007810101000A0000175F96B61D7F6684800000009000",
       "getDataResponse": "BF6176426131617058E1835899BF63616C6765455332353663696964623737636B69646737373A74657374636D6976066374706BBF636B74796245436363727665502D3235366178782B53684D4D3663624F4E6855656C4B4B3038666755585F6672566B30774F4E43762D696876644E33666A386B6179782B445F61546468413342687230712D7050773738796C584C545278597170504A2D7A364D5146704E52544673FFFF42BFFF5840BFB414388DA1283A20D072321632B50E25C8952D567E8327FFCBD24A592780D0BCE4544EE4AF55E8205B3F91F9DA520CAC437AFD0224B520A6CEEBE1A8B78B8EFF9000"
+    },
+    {
+      "name": "select: not TLV",
+      "description": "the select application response is not BER-TLV, so it is not well-formed",
+      "trustChain": "InvalidCardMts7Exception",
+      "keyPair": "InvalidCardMts7Exception",
+      "getDataResponse": "BF6176426131617058E1835899BF63616C6765455332353663696964623737636B69646737373A74657374636D6976066374706BBF636B74796245436363727665502D3235366178782B53684D4D3663624F4E6855656C4B4B3038666755585F6672566B30774F4E43762D696876644E33666A386B6179782B445F61546468413342687230712D7050773738796C584C545278597170504A2D7A364D5146704E52544673FFFF42BFFF5840BFB414388DA1283A20D072321632B50E25C8952D567E8327FFCBD24A592780D0BCE4544EE4AF55E8205B3F91F9DA520CAC437AFD0224B520A6CEEBE1A8B78B8EFF9000",
+      "selectApplicationResponse": "01020304059000"
+    },
+    {
+      "name": "select: FCI without 6E",
+      "description": "the select application response is a File Control Information template (6F) without the application-related data (6E), and no GET DATA of it follows",
+      "trustChain": "InsufficientCardCommandsException",
+      "keyPair": "InsufficientCardCommandsException",
+      "getDataResponse": "BF6176426131617058E1835899BF63616C6765455332353663696964623737636B69646737373A74657374636D6976066374706BBF636B74796245436363727665502D3235366178782B53684D4D3663624F4E6855656C4B4B3038666755585F6672566B30774F4E43762D696876644E33666A386B6179782B445F61546468413342687230712D7050773738796C584C545278597170504A2D7A364D5146704E52544673FFFF42BFFF5840BFB414388DA1283A20D072321632B50E25C8952D567E8327FFCBD24A592780D0BCE4544EE4AF55E8205B3F91F9DA520CAC437AFD0224B520A6CEEBE1A8B78B8EFF9000",
+      "selectApplicationResponse": "6F038401009000"
+    },
+    {
+      "name": "select: empty, 6E from GET DATA",
+      "description": "the select application response is empty, and the application-related data (6E) is retrieved with GET DATA (MTS7 section 4.1.1)",
+      "trustChain": "VERIFIED",
+      "keyPair": "VERIFIED",
+      "getDataResponse": "BF6176426131617058E1835899BF63616C6765455332353663696964623737636B69646737373A74657374636D6976066374706BBF636B74796245436363727665502D3235366178782B53684D4D3663624F4E6855656C4B4B3038666755585F6672566B30774F4E43762D696876644E33666A386B6179782B445F61546468413342687230712D7050773738796C584C545278597170504A2D7A364D5146704E52544673FFFF42BFFF5840BFB414388DA1283A20D072321632B50E25C8952D567E8327FFCBD24A592780D0BCE4544EE4AF55E8205B3F91F9DA520CAC437AFD0224B520A6CEEBE1A8B78B8EFF9000",
+      "selectApplicationResponse": "9000",
+      "applicationRelatedDataResponse": "6E274F10A0000007810101000A0000175F96B61D7A0593030000248A01007F660802020105020201029000"
+    },
+    {
+      "name": "select: FCI, 6E from GET DATA",
+      "description": "the select application response has no application-related data (6E), which is retrieved with GET DATA",
+      "trustChain": "VERIFIED",
+      "keyPair": "VERIFIED",
+      "getDataResponse": "BF6176426131617058E1835899BF63616C6765455332353663696964623737636B69646737373A74657374636D6976066374706BBF636B74796245436363727665502D3235366178782B53684D4D3663624F4E6855656C4B4B3038666755585F6672566B30774F4E43762D696876644E33666A386B6179782B445F61546468413342687230712D7050773738796C584C545278597170504A2D7A364D5146704E52544673FFFF42BFFF5840BFB414388DA1283A20D072321632B50E25C8952D567E8327FFCBD24A592780D0BCE4544EE4AF55E8205B3F91F9DA520CAC437AFD0224B520A6CEEBE1A8B78B8EFF9000",
+      "selectApplicationResponse": "6F038401009000",
+      "applicationRelatedDataResponse": "6E274F10A0000007810101000A0000175F96B61D7A0593030000248A01007F660802020105020201029000"
+    },
+    {
+      "name": "select: empty, 6E from GET DATA without AID",
+      "description": "the application-related data (6E) retrieved with GET DATA has no application identifier (4F)",
+      "trustChain": "InvalidCardMts7Exception",
+      "keyPair": "InvalidCardMts7Exception",
+      "getDataResponse": "BF6176426131617058E1835899BF63616C6765455332353663696964623737636B69646737373A74657374636D6976066374706BBF636B74796245436363727665502D3235366178782B53684D4D3663624F4E6855656C4B4B3038666755585F6672566B30774F4E43762D696876644E33666A386B6179782B445F61546468413342687230712D7050773738796C584C545278597170504A2D7A364D5146704E52544673FFFF42BFFF5840BFB414388DA1283A20D072321632B50E25C8952D567E8327FFCBD24A592780D0BCE4544EE4AF55E8205B3F91F9DA520CAC437AFD0224B520A6CEEBE1A8B78B8EFF9000",
+      "selectApplicationResponse": "9000",
+      "applicationRelatedDataResponse": "6E038A01009000"
     }
   ]
 }

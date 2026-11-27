@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
+import no.entur.abt.bob.mts7.api.InfrastructureMts7Exception;
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
@@ -74,8 +75,8 @@ public class LenientMts7CardFactory {
 		try {
 			if (card.hasSelectApplicationOutput()) {
 				try {
-					enricher.enrichSelectApplicationResponsePayload(result, card.getSelectApplicationOutput());
-				} catch (InvalidCardMts7Exception e) {
+					enricher.enrich(result, card.getSelectApplicationOutput(), card.getApplicationRelatedDataOutput());
+				} catch (InvalidCardMts7Exception | InsufficientCardCommandsException e) {
 					// lenient: carry on with the rest of the card
 					LOGGER.info("Unable to enrich the card with the select application response", e);
 				}
@@ -91,7 +92,7 @@ public class LenientMts7CardFactory {
 				if (header != null) {
 					try {
 						iccPublicKey = iccPublicKeyFactory.create(header);
-					} catch (NonCompliantIccKeyInvalidCardMts7Exception | NoSuchAlgorithmMts7Exception e) {
+					} catch (InvalidCardMts7Exception | InfrastructureMts7Exception e) {
 						LOGGER.info("Unable to create ICC public key", e);
 					}
 

@@ -2,6 +2,7 @@ package no.entur.abt.bob.mts7.reader;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -14,10 +15,12 @@ import java.util.Random;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import no.entur.abt.bob.mts7.api.MalformedCardResponseException;
 import no.entur.abt.bob.mts7.api.UnexpectedCardResponseException;
 import no.entur.abt.bob.mts7.core.LenientMts7ApduPayloadsFactory;
 import no.entur.abt.bob.mts7.core.Mts7ApduPayloads;
 import no.entur.abt.bob.mts7.core.Mts7ApduPayloadsFactory;
+import no.entur.abt.bob.mts7.core.Mts7Card;
 import no.entur.abt.bob.mts7.core.VerifyKeyPairMts7CardFactory;
 import no.entur.abt.bob.mts7.reader.processor.Mts7Processor;
 import no.entur.abt.bob.mts7.reader.processor.VerifyKeyPairMts7ProcessorFactory;
@@ -30,6 +33,7 @@ import no.entur.abt.bob.mts7.test.record.CardRecording;
 import no.entur.abt.bob.mts7.test.record.CardRecordingFactory;
 import no.entur.abt.bob.mts7.test.record.TransceiveInvocation;
 import no.entur.abt.bob.mts7.test.util.MockRandomFactory;
+import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
 
 /**
  * The reader sends GET NEXT DATA with an extended Le, which saves GET RESPONSE round trips for cards which support extended length. Extended length support is
@@ -230,4 +234,105 @@ public class ApduLengthTest extends AbstractExecutorTest {
 		assertEquals(2, processorCard.getCommands().size());
 	}
 
+	/**
+	 * A card which does not return its application-related data (6E) in the select application response, as it need not (MTS7 section 4.1.1), but in the
+	 * response to GET DATA of it.
+	 */
+
+	private static class ApplicationRelatedDataCard extends SimulatedCard {
+
+		private final byte[] applicationRelatedData;
+
+		public ApplicationRelatedDataCard(byte[] selectApplicationResponse) {
+			super(selectApplicationResponse, true, 1024, mtb(participant10), lastResponse(participant10));
+			// the 6E nested in the 64 of the recorded select application response, with the status word
+			byte[] recorded = getResponse(participant10, 0);
+			this.applicationRelatedData = Arrays.copyOfRange(recorded, 2, recorded.length);
+		}
+
+		@Override
+		public byte[] transceive(byte[] command) throws IOException {
+			if (Arrays.equals(command, Mts7ApduExchangesFactory.GET_APPLICATION_RELATED_DATA_COMMAND)) {
+				getCommands().add(command);
+				return applicationRelatedData;
+			}
+			return super.transceive(command);
+		}
+	}
+
+	private static byte[] mtb(CardRecording recording) {
+		byte[] getNextDataResponse = getResponse(recording, 1);
+		return Arrays.copyOf(getNextDataResponse, getNextDataResponse.length - 2);
+	}
+
+	private static byte[] lastResponse(CardRecording recording) {
+		List<TransceiveInvocation> invocations = recording.getTransceiveInvocations();
+		return invocations.get(invocations.size() - 1).getResponse();
+	}
+
+	@Test
+	public void testCardWithoutFileManagementData() throws Exception {
+		// an empty response, and a File Control Information template without the application-related data
+		for (String select : new String[] { "9000", "6F038401009000" }) {
+			ApplicationRelatedDataCard card = new ApplicationRelatedDataCard(ByteArrayHexStringConverter.hexStringToByteArray(select));
+			Mts7ApduExchanges exchanges = read(new DefaultMts7Card(card), MockRandomFactory.newInstance(participant10.getRandomValue()));
+
+			assertArrayEquals(Mts7ApduExchangesFactory.GET_APPLICATION_RELATED_DATA_COMMAND, card.getCommands().get(1), select);
+			Mts7ApduPayloads payloads = new Mts7ApduPayloadsFactory().createCard(exchanges);
+			Mts7Card verified = new VerifyKeyPairMts7CardFactory().create(payloads);
+			assertTrue(verified.isVerifiedPrivateKeyPresent(), select);
+			assertEquals(10, verified.getParticipantIdentifier(), select);
+
+			// and with the processor, which gets the application-related data before the MTB
+			ApplicationRelatedDataCard processorCard = new ApplicationRelatedDataCard(ByteArrayHexStringConverter.hexStringToByteArray(select));
+			Mts7Processor processor = new VerifyKeyPairMts7ProcessorFactory(executor).create();
+			processor.start();
+			try {
+				new ProcessorMts7ApduExchangesFactory(MockRandomFactory.newInstance(participant10.getRandomValue())).create(new DefaultMts7Card(processorCard),
+						processor, null);
+				Mts7Card processed = processor.waitForVerify(0);
+				assertTrue(processed.isVerifiedPrivateKeyPresent(), select);
+				assertEquals(10, processed.getParticipantIdentifier(), select);
+			} finally {
+				processor.close();
+			}
+		}
+	}
+
+	@Test
+	public void testCardWithFileManagementDataIsNotAskedForIt() throws Exception {
+		// the recorded cards return it in the select application response, so the reader does not ask for it
+		SimulatedCard card = new SimulatedCard(participant10, true, 1024, mtb(participant10));
+		read(new DefaultMts7Card(card), random());
+
+		for (byte[] command : card.getCommands()) {
+			assertFalse(Arrays.equals(command, Mts7ApduExchangesFactory.GET_APPLICATION_RELATED_DATA_COMMAND));
+		}
+	}
+
+	/**
+	 * A reader whose responses are shorter than a status word, which no card returns.
+	 */
+
+	private static class ShortResponseCard extends SimulatedCard {
+
+		public ShortResponseCard() {
+			super(participant10, true, 1024, mtb(participant10));
+		}
+
+		@Override
+		public byte[] transceive(byte[] command) throws IOException {
+			if ((command[1] & 0xFF) == 0xCC) {
+				getCommands().add(command);
+				return new byte[] { (byte) 0x90 };
+			}
+			return super.transceive(command);
+		}
+	}
+
+	@Test
+	public void testResponseWithoutStatusWordIsReaderProblem() throws Exception {
+		assertThrows(MalformedCardResponseException.class, () -> read(new DefaultMts7Card(new ShortResponseCard()), random()));
+		assertThrows(MalformedCardResponseException.class, () -> readWithProcessor(new DefaultMts7Card(new ShortResponseCard()), random()));
+	}
 }

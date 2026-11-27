@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.security.SecureRandom;
 import java.util.Random;
 
+import no.entur.abt.bob.mts7.api.MalformedCardResponseException;
 import no.entur.abt.bob.mts7.api.Mts7Exception;
 import no.entur.abt.bob.mts7.api.UnableToSelectApplicationException;
 import no.entur.abt.bob.mts7.api.UnexpectedCardResponseException;
@@ -21,7 +22,10 @@ import no.entur.abt.bob.mts7.simple.api.Mts7ApduExchanges;
 
 public class Mts7ApduExchangesFactory {
 
-	public static final byte[] SELECT_BOB_COMMAND = new byte[] { 0x00, (byte) 0xA4, 0x04, 0x00, 0x06, (byte) 0xA0, 0x00, 0x00, 0x07, (byte) 0x81, 0x01 };
+	// with Le, so that a card which can returns its File Management Data (MTS7 section 4.1.1)
+	public static final byte[] SELECT_BOB_COMMAND = new byte[] { 0x00, (byte) 0xA4, 0x04, 0x00, 0x06, (byte) 0xA0, 0x00, 0x00, 0x07, (byte) 0x81, 0x01, 0x00 };
+	// GET DATA of the application-related data (6E), for a card whose select application response does not have it (MTS7 section 4.1.1)
+	public static final byte[] GET_APPLICATION_RELATED_DATA_COMMAND = new byte[] { 0x00, (byte) 0xCA, 0x00, 0x6E, 0x00 };
 	public static final byte[] GET_DATA_COMMAND = new byte[] { 0x00, (byte) 0xCA, 0x7F, 0x21, 0x00, 0x00, 0x00 };
 	public static final byte[] GET_NEXT_DATA_COMMAND = new byte[] { 0x00, (byte) 0xCC, 0x7F, 0x21, 0x00, 0x00, 0x00 };
 	public static final byte[] GET_RESPONSE_COMMAND = new byte[] { 0x00, (byte) 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00 };
@@ -53,7 +57,10 @@ public class Mts7ApduExchangesFactory {
 	public Mts7ApduExchanges createCard(Mts7Exchange mts7Exchange, byte[] selectApplicationResponse) throws IOException, Mts7Exception {
 		DefaultMts7Exchange card = new DefaultMts7Exchange(mts7Exchange);
 
-		handleSelectApplication(selectApplicationResponse, card);
+		byte[] selectApplication = handleSelectApplication(selectApplicationResponse, card);
+		if (!hasApplicationRelatedData(selectApplication)) {
+			handleGetApplicationRelatedData(card);
+		}
 
 		handleGetNextData(card);
 
@@ -62,7 +69,7 @@ public class Mts7ApduExchangesFactory {
 		return card;
 	}
 
-	protected void handleInternalAuthenticate(DefaultMts7Exchange card) throws IOException, UnexpectedCardResponseException {
+	protected void handleInternalAuthenticate(DefaultMts7Exchange card) throws IOException, Mts7Exception {
 		// 4.1.4. INTERNAL AUTHENTICATE
 		// The INTERNAL AUTHENTICATE command is used to authenticate the PICC to the terminal using the
 		// cardholder private key.
@@ -76,19 +83,19 @@ public class Mts7ApduExchangesFactory {
 		// otherwise reject the operation.
 
 		byte[] internalAuthenticateCommand = createInternalAuthenticateCommand();
-		byte[] internalAuthenticateResponse = card.transceive(internalAuthenticateCommand); // File Control Information (FCI) Template
+		byte[] internalAuthenticateResponse = transceive(card, internalAuthenticateCommand); // File Control Information (FCI) Template
 		if (!isSuccess(internalAuthenticateResponse)) {
 			// TODO we might have sent an illegal command - handle encoding for RSA
 			throw new UnexpectedCardResponseException(internalAuthenticateCommand, internalAuthenticateResponse);
 		}
 	}
 
-	protected void handleGetNextData(DefaultMts7Exchange card) throws IOException, UnexpectedCardResponseException {
+	protected void handleGetNextData(DefaultMts7Exchange card) throws IOException, Mts7Exception {
 		// optimize for cards which support extended length
 		byte[] getNextDataCommand = GET_NEXT_DATA_COMMAND;
 		byte[] getResponseCommand = GET_RESPONSE_COMMAND;
 
-		byte[] getNextDataResponse = card.transceive(getNextDataCommand); // File Control Information (FCI) Template
+		byte[] getNextDataResponse = transceive(card, getNextDataCommand); // File Control Information (FCI) Template
 
 		if (isWrongLength(getNextDataResponse)) {
 			// The card does not support extended length. Wrong length is a checking error, so the command was not executed (ISO 7816-4 section 5.6) and the
@@ -96,7 +103,7 @@ public class Mts7ApduExchangesFactory {
 			getNextDataCommand = GET_NEXT_DATA_SHORT_LENGTH_COMMAND;
 			getResponseCommand = GET_RESPONSE_SHORT_LENGTH_COMMAND;
 
-			getNextDataResponse = card.transceive(getNextDataCommand);
+			getNextDataResponse = transceive(card, getNextDataCommand);
 		}
 
 		/**
@@ -108,7 +115,7 @@ public class Mts7ApduExchangesFactory {
 			byte[] previousResponse = getNextDataResponse;
 
 			for (int i = 0; i < MAX_GET_RESPONSE_COMMANDS; i++) {
-				byte[] getResponseResponse = card.transceive(getResponseCommand);
+				byte[] getResponseResponse = transceive(card, getResponseCommand);
 
 				if (isContinue(getResponseResponse)) {
 					previousResponse = getResponseResponse;
@@ -132,14 +139,138 @@ public class Mts7ApduExchangesFactory {
 
 	}
 
-	protected void handleSelectApplication(byte[] selectApplicationResponse, DefaultMts7Exchange card) throws IOException, UnableToSelectApplicationException {
+	protected byte[] handleSelectApplication(byte[] selectApplicationResponse, DefaultMts7Exchange card) throws IOException, Mts7Exception {
 		if (selectApplicationResponse == null) {
-			selectApplicationResponse = card.transceive(SELECT_BOB_COMMAND); // File Control Information (FCI) Template
+			selectApplicationResponse = transceive(card, SELECT_BOB_COMMAND); // File Management Data, if the card returns it
 		} else {
+			checkResponse(selectApplicationResponse);
 			card.add(SELECT_BOB_COMMAND, selectApplicationResponse);
 		}
 		if (!isSuccess(selectApplicationResponse)) {
 			throw new UnableToSelectApplicationException(SELECT_BOB_COMMAND, selectApplicationResponse);
+		}
+		return selectApplicationResponse;
+	}
+
+	/**
+	 * Get the application-related data (6E), for a card whose select application response does not have it (MTS7 section 4.1.1).
+	 *
+	 * @param card the card
+	 * @return the response, with the status word
+	 * @throws IOException   if the card cannot be reached
+	 * @throws Mts7Exception if the card does not respond with success (a problem on the card side), or the response is shorter than a status word (a problem
+	 *                       with the reader)
+	 */
+
+	protected byte[] handleGetApplicationRelatedData(Mts7Exchange card) throws IOException, Mts7Exception {
+		byte[] response = transceive(card, GET_APPLICATION_RELATED_DATA_COMMAND);
+		if (isContinue(response)) {
+			// response chaining (MTS7 section 2.1)
+			ByteArrayOutputStream bout = new ByteArrayOutputStream();
+			bout.write(response, 0, response.length - 2);
+			for (int i = 0;; i++) {
+				if (i >= MAX_GET_RESPONSE_COMMANDS) {
+					// still more data
+					throw new UnexpectedCardResponseException(GET_RESPONSE_SHORT_LENGTH_COMMAND, response);
+				}
+				response = transceive(card, GET_RESPONSE_SHORT_LENGTH_COMMAND);
+				if (!isContinue(response)) {
+					// with the status word
+					bout.write(response, 0, response.length);
+					break;
+				}
+				bout.write(response, 0, response.length - 2);
+			}
+			response = bout.toByteArray();
+		}
+		if (!isSuccess(response)) {
+			throw new UnexpectedCardResponseException(GET_APPLICATION_RELATED_DATA_COMMAND, response);
+		}
+		return response;
+	}
+
+	/**
+	 * Whether a select application response has the application-related data (6E), as such or in File Management Data (64). When in doubt, it has not, so that
+	 * the reader rather retrieves it once too often.
+	 *
+	 * @param selectApplicationResponse the response, with the status word
+	 * @return true if the application-related data is there
+	 */
+
+	protected static boolean hasApplicationRelatedData(byte[] selectApplicationResponse) {
+		return hasApplicationRelatedData(selectApplicationResponse, 0, selectApplicationResponse.length - 2, true);
+	}
+
+	private static boolean hasApplicationRelatedData(byte[] data, int offset, int end, boolean outer) {
+		int i = offset;
+		while (i < end) {
+			int tag = data[i++] & 0xFF;
+			if (tag == 0x00 || tag == 0xFF) {
+				// padding
+				continue;
+			}
+			if ((tag & 0x1F) == 0x1F) {
+				// a tag of more than one byte, which is neither of those looked for
+				int b;
+				do {
+					if (i >= end) {
+						return false;
+					}
+					b = data[i++] & 0xFF;
+				} while ((b & 0x80) != 0);
+				tag = -1;
+			}
+			if (i >= end) {
+				return false;
+			}
+			int first = data[i++] & 0xFF;
+			long length;
+			if (first < 0x80) {
+				length = first;
+			} else {
+				int count = first & 0x7F;
+				if (count == 0 || count > 4 || count > end - i) {
+					return false;
+				}
+				length = 0;
+				for (int k = 0; k < count; k++) {
+					length = (length << 8) | (data[i++] & 0xFF);
+				}
+			}
+			if (length > end - i) {
+				return false;
+			}
+			if (tag == 0x6E) {
+				return true;
+			}
+			if (outer && tag == 0x64 && hasApplicationRelatedData(data, i, i + (int) length, false)) {
+				return true;
+			}
+			i += (int) length;
+		}
+		return false;
+	}
+
+	/**
+	 * Send a command to the card.
+	 *
+	 * @param card    the card
+	 * @param command the command
+	 * @return the response, which has at least a status word
+	 * @throws IOException                    if the card cannot be reached
+	 * @throws MalformedCardResponseException if the response is shorter than a status word, which no card returns (a problem with the reader)
+	 */
+
+	protected static byte[] transceive(Mts7Exchange card, byte[] command) throws IOException, MalformedCardResponseException {
+		byte[] response = card.transceive(command);
+		checkResponse(response);
+		return response;
+	}
+
+	protected static void checkResponse(byte[] response) throws MalformedCardResponseException {
+		if (response == null || response.length < 2) {
+			throw new MalformedCardResponseException(
+					"Response " + (response == null ? "missing" : "of " + response.length + " bytes") + ", without a status word");
 		}
 	}
 
@@ -157,7 +288,8 @@ public class Mts7ApduExchangesFactory {
 	}
 
 	protected static boolean isContinue(byte[] response) {
-		return response.length > 2 && (response[response.length - 2] & 0xFF) == 0x61;
+		// with or without data in this part of the response
+		return response.length >= 2 && (response[response.length - 2] & 0xFF) == 0x61;
 	}
 
 	protected static boolean isWrongLength(byte[] response) {

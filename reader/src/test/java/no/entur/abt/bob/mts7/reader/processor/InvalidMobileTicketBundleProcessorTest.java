@@ -22,6 +22,7 @@ import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.api.ReaderMts7Exception;
 import no.entur.abt.bob.mts7.api.apdu.CommandAPDU;
 import no.entur.abt.bob.mts7.core.Mts7Card;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
@@ -138,15 +139,20 @@ public class InvalidMobileTicketBundleProcessorTest {
 			assertEquals(trustChain, card.isVerifiedTrustChain());
 			assertTrue(card.hasThumprint());
 		} else {
-			// always a problem on the card side
-			InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class, verification::verify);
+			// a problem on the card side, or with the reader, never ours
+			Exception e = assertThrows(Exception.class, verification::verify);
 
 			assertEquals(expected, e.getClass().getSimpleName(), e.getMessage());
+			assertTrue(e instanceof InvalidCardMts7Exception || e instanceof ReaderMts7Exception, e.getClass().getName());
 		}
 	}
 
 	private static Mts7Card process(Mts7Processor processor, InvalidMobileTicketBundles.Case c) throws Exception {
-		processor.onSelectApplication(bundles.selectApplicationResponseApdu(c));
+		processor.onSelectApplicationResponseApdu(bundles.selectApplicationResponseApdu(c));
+		if (c.applicationRelatedDataResponse != null) {
+			// before the MTB, as the reader sends it
+			processor.onApplicationRelatedDataResponseApdu(c.applicationRelatedDataResponseApdu());
+		}
 		processor.onGetDataResponseApdu(c.getDataResponseApdu());
 		processor.onInternalAuthenticateApdu(new CommandAPDU(0, 0, 0, 0, bundles.challengeBytes()).getBytes(), bundles.internalAuthenticateResponseApdu());
 		processor.run();
