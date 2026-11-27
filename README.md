@@ -160,11 +160,11 @@ Implementation:
  * Call on `InFlightMts7Card.getMts7Card(timeout)` (in milliseconds; zero waits until the processing has finished) to obtain a `Mts7Card`
  * Process card details (thumbprint, serial etc) locally
 
-`getMts7Card(..)` tells whose problem it is when a card is not verified: the card's, the reader's or the verifier's (see [Who is to blame](#who-is-to-blame) for every problem).
+`getMts7Card(..)` tells whose problem it is when a card is not verified: the card's, the reader's or the verifier's (see [Who is to blame](docs/WHO_IS_TO_BLAME.md) for every problem).
 
  * `InvalidCardMts7Exception` if the card cannot be trusted (a problem on the card side). For the details of such a card, use `LenientMts7CardFactory` (see below).
    * `TrustChainInvalidCardMts7Exception` (trust chain only) if the card certificate was not signed by a known issuer: the issuer signature is not valid or malformed, its algorithm (`alg` in the header) does not match the issuer key, or the issuer key is not among the public keys (unless the factory was created with `trustUnknownRootKeys`).
-     * `UnknownIssuerKeyInvalidCardMts7Exception` (a subclass) if the issuer key is not among the public keys, with `getIssuerId()` and `getKeyId()`, and the `UnknownIssuerKeyPolicy` blames the card (see below).
+     * `UnknownIssuerKeyInvalidCardMts7Exception` (a subclass) if the issuer key is not among the public keys, with `getIssuerId()` and `getKeyId()`, and the `UnknownIssuerKeyPolicy` blames the card (see [Unknown issuer keys](docs/WHO_IS_TO_BLAME.md#unknown-issuer-keys)).
    * `KeyPairInvalidCardMts7Exception` if the card did not prove that it has the private key, as for a cloned card, or its signature is malformed.
    * `NonCompliantIccKeyInvalidCardMts7Exception` if the public key of the card (`tpk` in its certificate) is not as MTS7 specifies it: missing, of a type which is not in MTS7 (EC with P-256, or RSA with a modulus of 2048 bits), or malformed.
    * `InvalidCardMts7Exception` itself if what the card returned is malformed: an issuer signature algorithm `alg` which is missing or not `ES256` or `RS256` (checked by all factories and processors before the issuer key is looked up), or application-related data (6E) without a valid application identifier, which has the serial and the participant identifier.
@@ -278,67 +278,11 @@ try {
 ```
 </details>
 
-The card factories (`create(..)`) and the processors tell the sides apart in the same way, see [Who is to blame](#who-is-to-blame). The factories throw a problem with the verifier as it is, on the calling thread. Their constructors still throw `NoSuchAlgorithmException`, as the digest algorithm is checked when they are created. A verified card always has a thumbprint.
+The card factories (`create(..)`) and the processors tell the sides apart in the same way, see [Who is to blame](docs/WHO_IS_TO_BLAME.md). The factories throw a problem with the verifier as it is, on the calling thread. Their constructors still throw `NoSuchAlgorithmException`, as the digest algorithm is checked when they are created. A verified card always has a thumbprint.
 
 ## Who is to blame
 
-Every problem is the problem of one side, and is reported with one of three exceptions in `api`:
-
-| Side | Exception | A service may report it as |
-| --- | --- | --- |
-| The card | `InvalidCardMts7Exception` | an invalid card (token) |
-| The reader which read the card and sent the exchanges, such as a control client | `ReaderMts7Exception` | an invalid request |
-| The verifier, which checks the card on the device or in the backend: its issuer keys, its security provider, its configuration | `VerifierMts7Exception` | an internal error |
-
-The card is only blamed when it is at fault. Every command is checked to be as MTS7 specifies it before the response of the card to it, so a card which rejects a command which is not as specified is not to blame. The processors throw the problems of the card and of the reader as they are, and a problem with the verifier as the cause of an `ExecutionException`.
-
-A card which is not valid is to blame for that, whatever else it did, so that it cannot shift the blame to the reader by making the reader fail where it can. The card is checked as far as it can be before a problem with the reader is reported:
-
- * The application-related data is read after door 2 and door 3, as it is not needed for them. If the rest of the select application response or the application-related data could not be retrieved, the readers read the card on, and `Mts7ApduPayloadsFactory` keeps the problem in the payloads (`getReaderProblem()`), so that the card factories report it only if the card passes both doors.
- * The same goes for an incomplete response to INTERNAL AUTHENTICATE, which only stops door 3: the card is still checked at door 2.
- * If `InFlightMts7CardFactory` cannot read the card completely, as it stops responding (`IOException`) or makes the reader fail (`ReaderMts7Exception`), but what was read of it shows that it is not valid, it throws that problem on the card side instead, with the other one suppressed.
-
-The exceptions in the order in which they can first occur: reading the card, sorting out the exchanges, what the card returned, door 2 and door 3. For the same problems one command at a time, see [Who is to blame, command by command](docs/BLAME_BY_COMMAND.md).
-
-| Exception | Description | Card | Reader | Verifier |
-| --- | --- | :---: | :---: | :---: |
-| `MalformedCardResponseException` | A response without a status word in the exchanges, which may not be as the card sent it. On the device, which reads the card as it is, a response shorter than a status word is the card's problem (`UnexpectedCardResponseException`) | | ✅ | |
-| `UnableToSelectApplicationException` | The card does not respond with success to SELECT, while it is read on the device | ✅ | | |
-| `MissingCardCommandsException` | Commands or responses are missing: fewer than three exchanges, no GET (NEXT) DATA of an MTB, a missing exchange, or a card which was not completely read before the processor was closed or within its lifetime | | ✅ | |
-| `MalformedCardCommandException` | A command which is not as MTS7 specifies it: shorter than its header or otherwise malformed, GET (NEXT) DATA or GET RESPONSE without Le or with data, or INTERNAL AUTHENTICATE without Le or with a challenge which is not a SHA-256 hash of 32 bytes (MTS7 4.1.4). Also a command which the card rejects, as it need not support it: SELECT of a longer application identifier than `A0 00 00 07 81 01` (MTS7 4.1.1), or INTERNAL AUTHENTICATE with an Le for less than the 256 bytes of an RSA signature, unless the card asked for that Le | | ✅ | |
-| `UnexpectedCardCommandException` | A command which MTS7 does not have at that point: not SELECT first, not INTERNAL AUTHENTICATE last (followed by GET RESPONSE if the card has more), something else than GET (NEXT) DATA or GET DATA of `6E` in between, GET RESPONSE after a complete response, or SELECT of another application than `A0 00 00 07 81 01` | | ✅ | |
-| `UnexpectedCardResponseException` | The card does not respond with success to a command as MTS7 specifies it, such as `6A82` to SELECT (not an MTS7 card), `6A88` to the first GET NEXT DATA (no MTB, MTS7 3.1.5), `6700` (wrong length) to SELECT or INTERNAL AUTHENTICATE with the lengths of their examples in MTS7, `61xx` still after 256 GET RESPONSE commands, `6Cxx` or `6700` to the Le which the card asked for, or, on the device, a response shorter than a status word | ✅ | | |
-| `InsufficientCardCommandsException` | The reader did not retrieve what the card has: the rest of a response after `61xx`, to any command (MTS7 2.1 and 4.1.3), a command which the card asked for again with other lengths (`6Cxx`, or `6700` to other lengths than in an example in MTS7 which every card must accept, also when the reader has no other lengths to send it with), or the application-related data (`6E`) with GET DATA, when the select application response has none, as it need not (MTS7 4.1.1). Reported only once the card has passed the doors which the missing response is not needed for | | ✅ | |
-| `InvalidCardMts7Exception` | What the card returned is malformed: a select application response which is not well-formed BER-TLV, application-related data (`6E`) without a valid application identifier, a GET DATA response which is not a Mobile Ticket Bundle or has no Issuer Signature Protected Header, an `alg` which is missing or not `ES256` or `RS256` (MTS1 2.4), or an `iid` which is not a number | ✅ | | |
-| `UnableToConstructIssuerKeyException` | Door 2: the issuer key is among the issuer keys, but cannot be created, is not supported, or is not accepted by the security provider | | | ✅ |
-| `UnknownIssuerKeyInvalidCardMts7Exception` | Door 2: the issuer key is not among the issuer keys, and the `UnknownIssuerKeyPolicy` blames the card | ✅ | | |
-| `OutdatedIssuerKeysException` | Door 2: the issuer key is not among the issuer keys, and the `UnknownIssuerKeyPolicy` blames the keys, which may be out of date | | | ✅ |
-| `TrustChainInvalidCardMts7Exception` | Door 2: the issuer signature is not valid or malformed, or `alg` does not match the issuer key | ✅ | | |
-| `NoSuchAlgorithmMts7Exception` | Door 2 or 3: the security provider does not have a key or signature algorithm | | | ✅ |
-| `NonCompliantIccKeyInvalidCardMts7Exception` | Door 3: the public key of the card (`tpk`) is missing, not EC with P-256 or RSA with a modulus of 2048 bits (MTS7 2.1), or malformed | ✅ | | |
-| `UnableToConstructIccKeyException` | Door 3: the public key of the card is as MTS7 specifies it, but the security provider does not accept it | | | ✅ |
-| `UnableToConstructThumbprintKeyException` | Door 3: the thumbprint of the public key of the card cannot be created, although the key can | | | ✅ |
-| `KeyPairInvalidCardMts7Exception` | Door 3: the signature of the card is not valid or malformed, as for a cloned card | ✅ | | |
-
-Not a problem of any side:
-
- * `TimeoutException` from `waitForVerify(..)` or `getMts7Card(..)`: the processing did not finish within the timeout, and goes on. A processor which is closed after the input has arrived still verifies the card.
- * `6700` (wrong length) to a command with other lengths than in an example in MTS7 which every card must accept, such as GET NEXT DATA with an extended Le, which the card need not support (MTS7 3.1.4), or `6Cxx` (wrong Le, ISO/IEC 7816-4 5.6): the reader sends the command again with other lengths. The card is only to blame for `6700` to SELECT with a short Le of `00` (MTS7 4.1.1) or without Le (appendix A), and to INTERNAL AUTHENTICATE with a short Le of `00` (MTS7 4.1.4). The examples of GET (NEXT) DATA and GET RESPONSE have an extended Le, and GET DATA of `6E` has none.
- * `61xx`, also without data and to any command: more of the response follows, which the reader retrieves with GET RESPONSE (MTS7 2.1).
- * No application-related data in the select application response: the readers retrieve it with GET DATA (`00 CA 00 6E`).
- * `6A88` to GET NEXT DATA after the first MTB: there are no more MTBs. The card is authenticated with the public key of its first MTB (MTS7 appendix A).
- * An Issuer Signed Ticket Bundle in another CBOR representation than the recommended one: it is verified as it is encoded (MTS1 2.3).
-
-A bug, not to be reported as the problem of any side: a `RuntimeException`, such as a `NullPointerException` or an `IllegalArgumentException` for a missing or out of range argument, or an `IllegalStateException` from `waitForVerify(..)` of a processor which was never started.
-
-### Unknown issuer keys
-
-A card whose issuer key is not among the public keys may be forged, or genuine while the issuer keys are out of date, for example because the participant metadata could not be updated after the issuer started to use a new key. The card alone does not tell, so who is to blame is decided by an `UnknownIssuerKeyPolicy`, which is given to `VerifyMts7CardFactory`, `VerifyTrustChainMts7ProcessorFactory` or `UpdatableVerifyMts7CardFactorySupplier.newBuilder().withUnknownIssuerKeyPolicy(..)`:
-
- * `UnknownIssuerKeyPolicy.blameCard()` (the default): `UnknownIssuerKeyInvalidCardMts7Exception`.
- * `UnknownIssuerKeyPolicy.blameKeys()`: `OutdatedIssuerKeysException`, a problem with the verifier.
- * `UnknownIssuerKeyPolicy.blameCardIfConfirmedWithin(maximumAge, confirmedAt, clock)`: the card only if the keys were confirmed to be up to date (for example when the participant metadata was last downloaded or found unchanged) within the maximum age.
- * Your own, as the policy is a functional interface; policies can be combined with `and(..)`.
+Every problem is the problem of one side: the card (`InvalidCardMts7Exception`), the reader which read the card and sent the exchanges (`ReaderMts7Exception`), or the verifier, which checks the card (`VerifierMts7Exception`). See [Who is to blame](docs/WHO_IS_TO_BLAME.md) for every problem, also command by command, and for [unknown issuer keys](docs/WHO_IS_TO_BLAME.md#unknown-issuer-keys).
 
 ## Trust chain
 
