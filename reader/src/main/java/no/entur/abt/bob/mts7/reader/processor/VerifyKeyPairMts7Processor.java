@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
+import no.entur.abt.bob.mts7.core.IccKeyInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.KeyPairInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
@@ -88,7 +89,7 @@ public class VerifyKeyPairMts7Processor extends AbstractMts7Processor {
 		try {
 			iccPublicKey = iccSignatureFactory.create(header);
 		} catch (UnableToConstructIccKeyException e) {
-			throw new InvalidCardMts7Exception("Unable to create ICC public key", result, e);
+			throw new IccKeyInvalidCardMts7Exception(result, e);
 		}
 
 		// from the same token public key as the public key of the card, which could be created, so a problem here is on our side

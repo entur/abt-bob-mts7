@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
+import no.entur.abt.bob.mts7.core.IccKeyInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.KeyPairInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
@@ -126,7 +127,7 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 			} catch (SignatureException e) {
 				throw new TrustChainInvalidCardMts7Exception("Issuer signature is not valid", result);
 			} catch (UnableToConstructIccKeyException e) {
-				throw new InvalidCardMts7Exception("Unable to create ICC public key", result, e);
+				throw new IccKeyInvalidCardMts7Exception(result, e);
 			}
 
 			LOGGER.info("Verified ICC trust chain");
@@ -142,7 +143,7 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 			try {
 				iccPublicKey = iccSignatureFactory.create(header);
 			} catch (UnableToConstructIccKeyException e) {
-				throw new InvalidCardMts7Exception("Unable to create ICC public key", result, e);
+				throw new IccKeyInvalidCardMts7Exception(result, e);
 			}
 		} else {
 			throw new UnknownIssuerKeyInvalidCardMts7Exception(iid, header.getKid(), result);

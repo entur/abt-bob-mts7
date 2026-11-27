@@ -159,6 +159,7 @@ public class VerifyMts7CardFactory {
 	 * @throws TrustChainInvalidCardMts7Exception       if the certificate of the card was not signed by a known issuer (door 2): the issuer signature is not
 	 *                                                  valid, or (as the subclass above) the issuer key is unknown (a problem on the card side)
 	 * @throws KeyPairInvalidCardMts7Exception          if the card did not prove that it has the private key (door 3; a problem on the card side)
+	 * @throws IccKeyInvalidCardMts7Exception           if the public key of the card in its certificate is missing or not valid (a problem on the card side)
 	 * @throws InvalidCardMts7Exception                 if a response from the card is missing or malformed (a problem on the card side). This is also the
 	 *                                                  superclass of the above, so catch it for any problem on the card side.
 	 * @throws UnableToConstructIssuerKeyException      if the issuer key of the card is known, but could not be created, is not supported, or is not accepted
@@ -214,7 +215,7 @@ public class VerifyMts7CardFactory {
 			} catch (SignatureException e) {
 				throw new TrustChainInvalidCardMts7Exception("Issuer signature is not valid", result);
 			} catch (UnableToConstructIccKeyException e) {
-				throw new InvalidCardMts7Exception("Unable to create ICC public key", result, e);
+				throw new IccKeyInvalidCardMts7Exception(result, e);
 			}
 			result.setVerifiedTrustChain(true);
 		} else if (participantPublicKeys.hasIssuerPublicKey(iid, header.getKid())) {
@@ -227,7 +228,7 @@ public class VerifyMts7CardFactory {
 			try {
 				iccPublicKey = iccPublicKeyFactory.create(header);
 			} catch (UnableToConstructIccKeyException e) {
-				throw new InvalidCardMts7Exception("Unable to create ICC public key", result, e);
+				throw new IccKeyInvalidCardMts7Exception(result, e);
 			}
 		} else {
 			throw new UnknownIssuerKeyInvalidCardMts7Exception(iid, header.getKid(), result);

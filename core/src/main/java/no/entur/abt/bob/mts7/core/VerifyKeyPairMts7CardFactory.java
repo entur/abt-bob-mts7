@@ -69,8 +69,9 @@ public class VerifyKeyPairMts7CardFactory {
 	 * @param card the payloads read from the card
 	 * @return the verified card
 	 * @throws KeyPairInvalidCardMts7Exception         if the card did not prove that it has the private key (a problem on the card side)
+	 * @throws IccKeyInvalidCardMts7Exception          if the public key of the card in its certificate is missing or not valid (a problem on the card side)
 	 * @throws InvalidCardMts7Exception                if a response from the card is missing or malformed (a problem on the card side). This is also the
-	 *                                                 superclass of {@linkplain KeyPairInvalidCardMts7Exception}, so catch it for any problem on the card side.
+	 *                                                 superclass of the above, so catch it for any problem on the card side.
 	 * @throws NoSuchAlgorithmException                if the signature algorithm of the card is not available from the security provider (a problem on our
 	 *                                                 side)
 	 * @throws UnableToConstructThumbprintKeyException if the thumbprint of the public key of the card could not be created, although the key could (a problem
@@ -102,7 +103,7 @@ public class VerifyKeyPairMts7CardFactory {
 		try {
 			iccPublicKey = iccPublicKeyFactory.create(header);
 		} catch (UnableToConstructIccKeyException e) {
-			throw new InvalidCardMts7Exception("Unable to create ICC public key", result, e);
+			throw new IccKeyInvalidCardMts7Exception(result, e);
 		}
 
 		// from the same token public key as the public key of the card, which could be created, so a problem here is on our side
