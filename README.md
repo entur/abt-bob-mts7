@@ -292,41 +292,27 @@ Every problem is the problem of one side, and is reported with one of three exce
 
 The card is only blamed when it is at fault. Every command is checked to be as MTS7 specifies it before the response of the card to it, so a card which rejects a command which is not as specified is not to blame. The processors throw the problems of the card and of the reader as they are, and a problem on our side as the cause of an `ExecutionException`.
 
-| Problem | Card | Reader | Us |
-| --- | --- | --- | --- |
-| **Reading the card** (`Mts7ApduPayloadsFactory`, and the readers on the device) | | | |
-| Fewer than three exchanges, no GET (NEXT) DATA of an MTB, or a missing exchange | | `MissingCardCommandsException` | |
-| A command which MTS7 does not have at that point: not SELECT first, not INTERNAL AUTHENTICATE last, something else than GET (NEXT) DATA, GET DATA of `6E` or GET RESPONSE in between, or GET RESPONSE after a complete response | | `UnexpectedCardCommandException` | |
-| SELECT of another application than `A0 00 00 07 81 01` (MTS7 3.1.1) | | `UnexpectedCardCommandException` | |
-| A command shorter than its header, or a malformed APDU | | `MalformedCardCommandException` | |
-| GET (NEXT) DATA or GET RESPONSE without Le, or with data | | `MalformedCardCommandException` | |
-| INTERNAL AUTHENTICATE without Le, or with a challenge which is not a SHA-256 hash of 32 bytes (MTS7 4.1.4) | | `MalformedCardCommandException` | |
-| A response without a status word | | `MalformedCardResponseException` | |
-| The card says that there is more of its response (`61xx`), but no GET RESPONSE follows (MTS7 4.1.3) | | `InsufficientCardCommandsException` | |
-| The card does not respond with success to a command as MTS7 specifies it, such as `6A82` to SELECT (not an MTS7 card) or an error to INTERNAL AUTHENTICATE | `UnexpectedCardResponseException` (`UnableToSelectApplicationException` for SELECT on the device) | | |
-| The card has no MTB: `6A88` to the first GET NEXT DATA (MTS7 3.1.5) | `UnexpectedCardResponseException` | | |
-| **What the card returned** (the card factories and the processors) | | | |
-| A response is missing: the card was not completely read | | `MissingCardCommandsException` | |
-| The card was not completely read before the processor was closed, or within its lifetime | | `MissingCardCommandsException` | |
-| No application-related data (`6E`): the select application response has none, as it need not (MTS7 4.1.1), and no GET DATA of it followed | | `InsufficientCardCommandsException` | |
-| A select application response which is not well-formed BER-TLV | `InvalidCardMts7Exception` | | |
-| Application-related data (`6E`) without a valid application identifier (version, participant and serial) | `InvalidCardMts7Exception` | | |
-| A GET DATA response which is not a Mobile Ticket Bundle, or one without an Issuer Signature Protected Header (`iid` and `kid`) | `InvalidCardMts7Exception` | | |
-| `alg` is missing, or not `ES256` or `RS256` (MTS1 2.4) | `InvalidCardMts7Exception` | | |
-| `iid` is not a number | `InvalidCardMts7Exception` | | |
-| **Door 2: the trust chain** (`VerifyMts7CardFactory`, `VerifyTrustChainMts7ProcessorFactory`) | | | |
-| `alg` does not match the issuer key | `TrustChainInvalidCardMts7Exception` | | |
-| The issuer signature is not valid, or malformed | `TrustChainInvalidCardMts7Exception` | | |
-| The issuer key is not among the issuer keys, and the `UnknownIssuerKeyPolicy` blames the card | `UnknownIssuerKeyInvalidCardMts7Exception` | | |
-| The issuer key is not among the issuer keys, and the `UnknownIssuerKeyPolicy` blames the keys, which may be out of date | | | `OutdatedIssuerKeysException` |
-| The issuer key is among the issuer keys, but cannot be created, is not supported, or is not accepted by the security provider | | | `UnableToConstructIssuerKeyException` |
-| **Door 3: the key pair** (all factories and processors) | | | |
-| The public key of the card (`tpk`) is missing, not EC with P-256 or RSA with a modulus of 2048 bits (MTS7 2.1), or malformed | `NonCompliantIccKeyInvalidCardMts7Exception` | | |
-| The public key of the card is as MTS7 specifies it, but the security provider does not accept it | | | `UnableToConstructIccKeyException` |
-| The signature of the card is not valid, or malformed, as for a cloned card | `KeyPairInvalidCardMts7Exception` | | |
-| **Anywhere** | | | |
-| The security provider does not have a key or signature algorithm | | | `NoSuchAlgorithmMts7Exception` |
-| The thumbprint of the public key of the card cannot be created, although the key can | | | `UnableToConstructThumbprintKeyException` |
+The exceptions in the order in which they can first occur: reading the card, sorting out the exchanges, what the card returned, door 2 and door 3.
+
+| Exception | Description | Card | Reader | Us |
+| --- | --- | :---: | :---: | :---: |
+| `MalformedCardResponseException` | A response without a status word, which no card returns | | ✅ | |
+| `UnableToSelectApplicationException` | The card does not respond with success to SELECT, while it is read on the device | ✅ | | |
+| `MissingCardCommandsException` | Commands or responses are missing: fewer than three exchanges, no GET (NEXT) DATA of an MTB, a missing exchange, or a card which was not completely read before the processor was closed or within its lifetime | | ✅ | |
+| `MalformedCardCommandException` | A command which is not as MTS7 specifies it: shorter than its header or otherwise malformed, GET (NEXT) DATA or GET RESPONSE without Le or with data, or INTERNAL AUTHENTICATE without Le or with a challenge which is not a SHA-256 hash of 32 bytes (MTS7 4.1.4) | | ✅ | |
+| `UnexpectedCardCommandException` | A command which MTS7 does not have at that point: not SELECT first, not INTERNAL AUTHENTICATE last, something else than GET (NEXT) DATA, GET DATA of `6E` or GET RESPONSE in between, GET RESPONSE after a complete response, or SELECT of another application than `A0 00 00 07 81 01` | | ✅ | |
+| `UnexpectedCardResponseException` | The card does not respond with success to a command as MTS7 specifies it, such as `6A82` to SELECT (not an MTS7 card), or `6A88` to the first GET NEXT DATA (no MTB, MTS7 3.1.5) | ✅ | | |
+| `InsufficientCardCommandsException` | The reader did not retrieve what the card has: the rest of a response after `61xx` (MTS7 4.1.3), or the application-related data (`6E`) with GET DATA, when the select application response has none, as it need not (MTS7 4.1.1) | | ✅ | |
+| `InvalidCardMts7Exception` | What the card returned is malformed: a select application response which is not well-formed BER-TLV, application-related data (`6E`) without a valid application identifier, a GET DATA response which is not a Mobile Ticket Bundle or has no Issuer Signature Protected Header, an `alg` which is missing or not `ES256` or `RS256` (MTS1 2.4), or an `iid` which is not a number | ✅ | | |
+| `UnableToConstructIssuerKeyException` | Door 2: the issuer key is among the issuer keys, but cannot be created, is not supported, or is not accepted by the security provider | | | ✅ |
+| `UnknownIssuerKeyInvalidCardMts7Exception` | Door 2: the issuer key is not among the issuer keys, and the `UnknownIssuerKeyPolicy` blames the card | ✅ | | |
+| `OutdatedIssuerKeysException` | Door 2: the issuer key is not among the issuer keys, and the `UnknownIssuerKeyPolicy` blames the keys, which may be out of date | | | ✅ |
+| `TrustChainInvalidCardMts7Exception` | Door 2: the issuer signature is not valid or malformed, or `alg` does not match the issuer key | ✅ | | |
+| `NoSuchAlgorithmMts7Exception` | Door 2 or 3: the security provider does not have a key or signature algorithm | | | ✅ |
+| `NonCompliantIccKeyInvalidCardMts7Exception` | Door 3: the public key of the card (`tpk`) is missing, not EC with P-256 or RSA with a modulus of 2048 bits (MTS7 2.1), or malformed | ✅ | | |
+| `UnableToConstructIccKeyException` | Door 3: the public key of the card is as MTS7 specifies it, but the security provider does not accept it | | | ✅ |
+| `UnableToConstructThumbprintKeyException` | Door 3: the thumbprint of the public key of the card cannot be created, although the key can | | | ✅ |
+| `KeyPairInvalidCardMts7Exception` | Door 3: the signature of the card is not valid or malformed, as for a cloned card | ✅ | | |
 
 Not a problem of any side:
 
