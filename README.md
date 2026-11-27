@@ -160,7 +160,7 @@ Implementation:
  * Call on `InFlightMts7Card.getMts7Card(timeout)` (in milliseconds; zero waits until the processing has finished) to obtain a `Mts7Card`
  * Process card details (thumbprint, serial etc) locally
 
-`getMts7Card(..)` tells whose problem it is when a card is not verified: the card's, the reader's or ours.
+`getMts7Card(..)` tells whose problem it is when a card is not verified: the card's, the reader's or ours (see [Who is to blame](#who-is-to-blame) for every problem).
 
  * `InvalidCardMts7Exception` if the card cannot be trusted (a problem on the card side). For the details of such a card, use `LenientMts7CardFactory` (see below).
    * `TrustChainInvalidCardMts7Exception` (trust chain only) if the card certificate was not signed by a known issuer: the issuer signature is not valid or malformed, its algorithm (`alg` in the header) does not match the issuer key, or the issuer key is not among the public keys (unless the factory was created with `trustUnknownRootKeys`).
@@ -278,20 +278,66 @@ try {
 ```
 </details>
 
-Each problem is reported as the problem of one side, with one of three exceptions in `api`: `InvalidCardMts7Exception` for the card, `ReaderMts7Exception` for the reader which sent the exchanges with the card, and `InfrastructureMts7Exception` for us. A card is only blamed when the card itself is at fault: every command is checked to be as MTS7 specifies it before the response of the card to it, so a card which rejects a malformed command is not to blame.
+The card factories (`create(..)`) and the processors tell the sides apart in the same way, see [Who is to blame](#who-is-to-blame). The factories throw a problem on our side as it is, on the calling thread. Their constructors still throw `NoSuchAlgorithmException`, as the digest algorithm is checked when they are created. A verified card always has a thumbprint.
 
-`Mts7ApduPayloadsFactory.createCard(..)` throws
+## Who is to blame
 
- * `ReaderMts7Exception` if the exchanges are not as a reader following MTS7 sends them: commands are missing (`MissingCardCommandsException`), too few to retrieve all of a response which the card said has more (61xx, `InsufficientCardCommandsException`), unexpected, such as a select of another application (`UnexpectedCardCommandException`), or malformed, such as a command without Le or a challenge which is not a SHA-256 hash of 32 bytes (`MalformedCardCommandException`), or a response without a status word (`MalformedCardResponseException`),
- * `UnexpectedCardResponseException`, an `InvalidCardMts7Exception`, if the card did not respond with success to a command as MTS7 specifies it.
+Every problem is the problem of one side, and is reported with one of three exceptions in `api`:
 
-It also follows MTS7 where cards differ:
+| Side | Exception | A service may report it as |
+| --- | --- | --- |
+| The card | `InvalidCardMts7Exception` | an invalid card (token) |
+| The reader which read the card and sent the exchanges, such as a control client | `ReaderMts7Exception` | an invalid request |
+| Us: the issuer keys, the security provider, the configuration | `InfrastructureMts7Exception` | an internal error |
 
- * A card need not return its application-related data (6E) in the select application response (MTS7 section 4.1.1). The readers of this library then retrieve it with GET DATA (`00 CA 00 6E`), which the factories and processors accept. If neither has it, the reader is to blame (`InsufficientCardCommandsException`); if it is there, but without a valid application identifier, the card is.
- * The card is authenticated with the public key of its first MTB (MTS7 appendix A). A reader may look for more: referenced data not found (6A88) after the first MTB is the end of the MTBs, not an error.
- * The issuer signs the Issuer Signed Ticket Bundle in the representation in which it assembles it, which need not be the recommended one (MTS1 section 2.3), so the signed data is verified as it is encoded in the bundle.
+The card is only blamed when it is at fault. Every command is checked to be as MTS7 specifies it before the response of the card to it, so a card which rejects a command which is not as specified is not to blame. The processors throw the problems of the card and of the reader as they are, and a problem on our side as the cause of an `ExecutionException`.
 
-The card factories (`create(..)` throws `InvalidCardMts7Exception`, `ReaderMts7Exception` and `InfrastructureMts7Exception`) tell the sides apart as the processors do (see above), but throw a problem on our side as it is, on the calling thread. The constructors of the factories still throw `NoSuchAlgorithmException`, as the digest algorithm is checked when they are created. A verified card always has a thumbprint. Anything else, such as a `RuntimeException`, is a bug.
+| Problem | Card | Reader | Us |
+| --- | --- | --- | --- |
+| **Reading the card** (`Mts7ApduPayloadsFactory`, and the readers on the device) | | | |
+| Fewer than three exchanges, no GET (NEXT) DATA of an MTB, or a missing exchange | | `MissingCardCommandsException` | |
+| A command which MTS7 does not have at that point: not SELECT first, not INTERNAL AUTHENTICATE last, something else than GET (NEXT) DATA, GET DATA of `6E` or GET RESPONSE in between, or GET RESPONSE after a complete response | | `UnexpectedCardCommandException` | |
+| SELECT of another application than `A0 00 00 07 81 01` (MTS7 3.1.1) | | `UnexpectedCardCommandException` | |
+| A command shorter than its header, or a malformed APDU | | `MalformedCardCommandException` | |
+| GET (NEXT) DATA or GET RESPONSE without Le, or with data | | `MalformedCardCommandException` | |
+| INTERNAL AUTHENTICATE without Le, or with a challenge which is not a SHA-256 hash of 32 bytes (MTS7 4.1.4) | | `MalformedCardCommandException` | |
+| A response without a status word | | `MalformedCardResponseException` | |
+| The card says that there is more of its response (`61xx`), but no GET RESPONSE follows (MTS7 4.1.3) | | `InsufficientCardCommandsException` | |
+| The card does not respond with success to a command as MTS7 specifies it, such as `6A82` to SELECT (not an MTS7 card) or an error to INTERNAL AUTHENTICATE | `UnexpectedCardResponseException` (`UnableToSelectApplicationException` for SELECT on the device) | | |
+| The card has no MTB: `6A88` to the first GET NEXT DATA (MTS7 3.1.5) | `UnexpectedCardResponseException` | | |
+| **What the card returned** (the card factories and the processors) | | | |
+| A response is missing: the card was not completely read | | `MissingCardCommandsException` | |
+| The card was not completely read before the processor was closed, or within its lifetime | | `MissingCardCommandsException` | |
+| No application-related data (`6E`): the select application response has none, as it need not (MTS7 4.1.1), and no GET DATA of it followed | | `InsufficientCardCommandsException` | |
+| A select application response which is not well-formed BER-TLV | `InvalidCardMts7Exception` | | |
+| Application-related data (`6E`) without a valid application identifier (version, participant and serial) | `InvalidCardMts7Exception` | | |
+| A GET DATA response which is not a Mobile Ticket Bundle, or one without an Issuer Signature Protected Header (`iid` and `kid`) | `InvalidCardMts7Exception` | | |
+| `alg` is missing, or not `ES256` or `RS256` (MTS1 2.4) | `InvalidCardMts7Exception` | | |
+| `iid` is not a number | `InvalidCardMts7Exception` | | |
+| **Door 2: the trust chain** (`VerifyMts7CardFactory`, `VerifyTrustChainMts7ProcessorFactory`) | | | |
+| `alg` does not match the issuer key | `TrustChainInvalidCardMts7Exception` | | |
+| The issuer signature is not valid, or malformed | `TrustChainInvalidCardMts7Exception` | | |
+| The issuer key is not among the issuer keys, and the `UnknownIssuerKeyPolicy` blames the card | `UnknownIssuerKeyInvalidCardMts7Exception` | | |
+| The issuer key is not among the issuer keys, and the `UnknownIssuerKeyPolicy` blames the keys, which may be out of date | | | `OutdatedIssuerKeysException` |
+| The issuer key is among the issuer keys, but cannot be created, is not supported, or is not accepted by the security provider | | | `UnableToConstructIssuerKeyException` |
+| **Door 3: the key pair** (all factories and processors) | | | |
+| The public key of the card (`tpk`) is missing, not EC with P-256 or RSA with a modulus of 2048 bits (MTS7 2.1), or malformed | `NonCompliantIccKeyInvalidCardMts7Exception` | | |
+| The public key of the card is as MTS7 specifies it, but the security provider does not accept it | | | `UnableToConstructIccKeyException` |
+| The signature of the card is not valid, or malformed, as for a cloned card | `KeyPairInvalidCardMts7Exception` | | |
+| **Anywhere** | | | |
+| The security provider does not have a key or signature algorithm | | | `NoSuchAlgorithmMts7Exception` |
+| The thumbprint of the public key of the card cannot be created, although the key can | | | `UnableToConstructThumbprintKeyException` |
+
+Not a problem of any side:
+
+ * `TimeoutException` from `waitForVerify(..)` or `getMts7Card(..)`: the processing did not finish within the timeout, and goes on. A processor which is closed after the input has arrived still verifies the card.
+ * `6700` (wrong length) to GET NEXT DATA with an extended Le: the reader repeats it with a short Le, and retrieves the rest with GET RESPONSE.
+ * `61xx` without data: more of the response follows.
+ * No application-related data in the select application response: the readers retrieve it with GET DATA (`00 CA 00 6E`).
+ * `6A88` to GET NEXT DATA after the first MTB: there are no more MTBs. The card is authenticated with the public key of its first MTB (MTS7 appendix A).
+ * An Issuer Signed Ticket Bundle in another CBOR representation than the recommended one: it is verified as it is encoded (MTS1 2.3).
+
+A bug, not to be reported as the problem of any side: a `RuntimeException`, such as a `NullPointerException` or an `IllegalArgumentException` for a missing or out of range argument, or an `IllegalStateException` from `waitForVerify(..)` of a processor which was never started.
 
 ### Unknown issuer keys
 
