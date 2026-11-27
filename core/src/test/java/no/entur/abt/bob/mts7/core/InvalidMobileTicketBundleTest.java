@@ -96,6 +96,21 @@ public class InvalidMobileTicketBundleTest {
 	}
 
 	@Test
+	public void testThumbprintOfAnInvalidKeyIsInvalidCard() throws Exception {
+		// a thumbprint which cannot be created because of the public key of the card is a problem on the card side (not expected after the key itself could
+		// be created)
+		ThumbprintFactory thumbprintFactory = cardSideFailingThumbprintFactory();
+		Mts7ApduPayloads payloads = payloads(bundle("valid"));
+
+		assertThrows(IccKeyInvalidCardMts7Exception.class,
+				() -> new VerifyMts7CardFactory(issuers, new IccPublicKeyFactory(), new Mts7CardEnricher(), new CBORMapper(), thumbprintFactory)
+						.create(payloads));
+		assertThrows(IccKeyInvalidCardMts7Exception.class,
+				() -> new VerifyKeyPairMts7CardFactory(new IccPublicKeyFactory(), new Mts7CardEnricher(), new CBORMapper(), thumbprintFactory)
+						.create(payloads));
+	}
+
+	@Test
 	public void testCardSideProblemIsReportedBeforeTheThumbprint() throws Exception {
 		// without a token public key, neither the public key of the card nor the thumbprint can be created: the card is to blame
 		ThumbprintFactory thumbprintFactory = failingThumbprintFactory();
@@ -144,6 +159,16 @@ public class InvalidMobileTicketBundleTest {
 			@Override
 			public byte[] create(IssuerSignatureProtectedHeader header) throws UnableToConstructThumbprintKeyException {
 				throw new UnableToConstructThumbprintKeyException("Broken");
+			}
+		};
+	}
+
+	// fails as with a problem with the public key of the card
+	private static ThumbprintFactory cardSideFailingThumbprintFactory() throws Exception {
+		return new ThumbprintFactory(null) {
+			@Override
+			public byte[] create(IssuerSignatureProtectedHeader header) throws UnableToConstructIccKeyException {
+				throw new UnableToConstructIccKeyException("Broken");
 			}
 		};
 	}

@@ -157,7 +157,13 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 		}
 
 		// from the same token public key as the public key of the card, which could be created, so a problem here is on our side
-		byte[] thumbprint = thumbprintFactory.create(header);
+		byte[] thumbprint;
+		try {
+			thumbprint = thumbprintFactory.create(header);
+		} catch (UnableToConstructIccKeyException e) {
+			// not after the key could be created, but the card is to blame
+			throw new IccKeyInvalidCardMts7Exception(result, e);
+		}
 		updateResult(card -> card.setThumbprint(thumbprint));
 
 		LOGGER.info("Processed 'get (next) data' response");

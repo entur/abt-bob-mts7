@@ -10,7 +10,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.security.NoSuchAlgorithmException;
 import java.security.Provider;
 import java.time.Instant;
 import java.util.Arrays;
@@ -245,7 +244,7 @@ public class VerifyMts7CardFactoryTest {
 		VerifyMts7CardFactory factory = new VerifyMts7CardFactory(participantPublicKeys(), new IccPublicKeyFactory(empty), new Mts7CardEnricher(),
 				new CBORMapper(), new ThumbprintFactory(null));
 
-		assertThrows(NoSuchAlgorithmException.class, () -> factory.create(card(SIGNATURE_RESPONSE)));
+		assertThrows(NoSuchAlgorithmMts7Exception.class, () -> factory.create(card(SIGNATURE_RESPONSE)));
 	}
 
 	@Test

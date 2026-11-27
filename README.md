@@ -168,7 +168,12 @@ Implementation:
    * `KeyPairInvalidCardMts7Exception` if the card did not prove that it has the private key, as for a cloned card.
    * `IccKeyInvalidCardMts7Exception` if the public key of the card (`tpk` in its certificate) is missing, of a type which is not in MTS1 (EC with P-256, or RSA), or malformed. The cause is the `UnableToConstructIccKeyException`.
    * `InvalidCardMts7Exception` itself if what the card returned is malformed (including an issuer signature algorithm `alg` which is missing or not `ES256` or `RS256`, checked by all factories and processors before the issuer key is looked up, a select application response without a valid application identifier, which has the serial and the participant identifier), or if the card was not completely read and processed (the card was closed or not read in time, or the timeout expired).
- * `ExecutionException` if the processing failed because of a problem on our side, which is the cause: for example `UnableToConstructIssuerKeyException` if the issuer key of the card is among the public keys but cannot be created, is of a type which is not supported, or is not accepted by the security provider, `NoSuchAlgorithmException` if the security provider does not have a signature algorithm, `UnableToConstructThumbprintKeyException` if the thumbprint of the card's public key cannot be created although the key can, or `RejectedExecutionException` if the executor did not run the processor.
+ * `ExecutionException` if the processing failed because of a problem on our side, which is the cause: an `InfrastructureMts7Exception`, namely
+   * `UnableToConstructIssuerKeyException` if the issuer key of the card is among the public keys but cannot be created, is of a type which is not supported, or is not accepted by the security provider,
+   * `NoSuchAlgorithmMts7Exception` if the security provider does not have a signature algorithm (the cause is the `NoSuchAlgorithmException`), or
+   * `UnableToConstructThumbprintKeyException` if the thumbprint of the card's public key cannot be created although the key can;
+
+   or a `RejectedExecutionException` if the executor did not run the processor. Anything else, such as a `RuntimeException`, is a bug.
 
 <details>
   <summary>Code example (backend, participantMetadataJson and useLocally are your own code)</summary>
@@ -258,13 +263,13 @@ try {
 } catch (InvalidCardMts7Exception e) {
     // a problem on the card side: it does not have the private key, was not issued by one of the issuers of the keys, or returned something malformed;
     // e.getResult() has the card as far as it was read
-} catch (UnableToConstructIssuerKeyException | NoSuchAlgorithmException | UnableToConstructThumbprintKeyException e) {
+} catch (InfrastructureMts7Exception e) {
     // a problem on our side: an issuer key which cannot be created, a security provider without a signature algorithm, or a thumbprint which cannot be created
 }
 ```
 </details>
 
-The card factories tell problems on the card side from problems on our side, as the processors do (see above). `InvalidCardMts7Exception` is for the card side: the card returned something which is missing or malformed (`IccKeyInvalidCardMts7Exception` for the public key of the card), or did not pass verification, which is reported by its subclasses `TrustChainInvalidCardMts7Exception` (door 2, see [TRUST_CHAIN.md](docs/TRUST_CHAIN.md), with the subclass `UnknownIssuerKeyInvalidCardMts7Exception` for an unknown issuer key) and `KeyPairInvalidCardMts7Exception` (door 3). Problems on our side are reported with other exceptions, as they are thrown on the calling thread: `UnableToConstructIssuerKeyException` if the issuer key of the card is among the public keys but cannot be created, is of a type which is not supported, or is not accepted by the security provider, `NoSuchAlgorithmException` if the security provider does not have a signature algorithm, and `UnableToConstructThumbprintKeyException` if the thumbprint of the card's public key cannot be created although the key can. A verified card always has a thumbprint. Anything else, such as a `RuntimeException`, is a bug.
+The card factories tell problems on the card side from problems on our side, as the processors do (see above). `InvalidCardMts7Exception` is for the card side: the card returned something which is missing or malformed (`IccKeyInvalidCardMts7Exception` for the public key of the card), or did not pass verification, which is reported by its subclasses `TrustChainInvalidCardMts7Exception` (door 2, see [TRUST_CHAIN.md](docs/TRUST_CHAIN.md), with the subclass `UnknownIssuerKeyInvalidCardMts7Exception` for an unknown issuer key) and `KeyPairInvalidCardMts7Exception` (door 3). Problems on our side are reported with `InfrastructureMts7Exception`, as they are thrown on the calling thread: its subclasses `UnableToConstructIssuerKeyException` if the issuer key of the card is among the public keys but cannot be created, is of a type which is not supported, or is not accepted by the security provider, `NoSuchAlgorithmMts7Exception` if the security provider does not have a signature algorithm, and `UnableToConstructThumbprintKeyException` if the thumbprint of the card's public key cannot be created although the key can. A thumbprint which cannot be created because of the card's public key is the card's problem: `IccKeyInvalidCardMts7Exception`. The constructors of the factories still throw `NoSuchAlgorithmException`, as the digest algorithm is checked when they are created. A verified card always has a thumbprint. Anything else, such as a `RuntimeException`, is a bug.
 
 ## Trust chain
 

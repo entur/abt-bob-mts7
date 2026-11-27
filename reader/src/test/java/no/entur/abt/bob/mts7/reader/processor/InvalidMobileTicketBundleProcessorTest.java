@@ -23,9 +23,11 @@ import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
 import no.entur.abt.bob.mts7.api.apdu.CommandAPDU;
+import no.entur.abt.bob.mts7.core.IccKeyInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.Mts7Card;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
+import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
 import no.entur.abt.bob.mts7.core.UnableToConstructThumbprintKeyException;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
@@ -96,6 +98,22 @@ public class InvalidMobileTicketBundleProcessorTest {
 	}
 
 	@Test
+	public void testThumbprintOfAnInvalidKeyIsInvalidCard() throws Exception {
+		// a thumbprint which cannot be created because of the public key of the card is a problem on the card side (not expected after the key itself could
+		// be created)
+		ThumbprintFactory thumbprintFactory = cardSideFailingThumbprintFactory();
+		InvalidMobileTicketBundles.Case valid = bundle("valid");
+
+		assertThrows(IccKeyInvalidCardMts7Exception.class, () -> process(new VerifyTrustChainMts7ProcessorFactory(issuers, new IccPublicKeyFactory(),
+				new Mts7CardEnricher(), new CBORMapper(), thumbprintFactory, executor).create(), valid));
+		assertThrows(IccKeyInvalidCardMts7Exception.class,
+				() -> process(
+						new VerifyKeyPairMts7ProcessorFactory(new IccPublicKeyFactory(), new Mts7CardEnricher(), new CBORMapper(), thumbprintFactory, executor)
+								.create(),
+						valid));
+	}
+
+	@Test
 	public void testCardSideProblemIsReportedBeforeTheThumbprint() throws Exception {
 		// without a token public key, neither the public key of the card nor the thumbprint can be created: the card is to blame
 		ThumbprintFactory thumbprintFactory = failingThumbprintFactory();
@@ -144,6 +162,16 @@ public class InvalidMobileTicketBundleProcessorTest {
 			@Override
 			public byte[] create(IssuerSignatureProtectedHeader header) throws UnableToConstructThumbprintKeyException {
 				throw new UnableToConstructThumbprintKeyException("Broken");
+			}
+		};
+	}
+
+	// fails as with a problem with the public key of the card
+	private static ThumbprintFactory cardSideFailingThumbprintFactory() throws Exception {
+		return new ThumbprintFactory(null) {
+			@Override
+			public byte[] create(IssuerSignatureProtectedHeader header) throws UnableToConstructIccKeyException {
+				throw new UnableToConstructIccKeyException("Broken");
 			}
 		};
 	}

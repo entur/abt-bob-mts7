@@ -34,8 +34,9 @@ import no.entur.abt.bob.mts7.core.Mts7Card;
  *
  * <p>
  * The processing reports a problem on the card side by throwing an {@linkplain InvalidCardMts7Exception} (or a subclass) from {@linkplain #process()}, which
- * {@linkplain #waitForVerify(long)} then throws as it is. Anything else which it throws is a problem on our side, which {@linkplain #waitForVerify(long)}
- * throws as the cause of an {@linkplain ExecutionException}.
+ * {@linkplain #waitForVerify(long)} then throws as it is. A problem on our side is an {@linkplain no.entur.abt.bob.mts7.core.InfrastructureMts7Exception} (or a
+ * subclass), which {@linkplain #waitForVerify(long)} throws as the cause of an {@linkplain ExecutionException}, as it does anything else, such as a
+ * {@linkplain java.util.concurrent.RejectedExecutionException} if the executor did not run the processor, or a {@linkplain RuntimeException}, which is a bug.
  */
 
 public abstract class AbstractMts7Processor implements Mts7Processor {
@@ -232,7 +233,8 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 	 * @throws InterruptedException     if interrupted while waiting
 	 * @throws InvalidCardMts7Exception if the card is not valid, or could not be verified (a problem on the card side), or if the card was not completely read
 	 *                                  and processed (because the processor was closed, the card was not read in time, or the timeout expired)
-	 * @throws ExecutionException       if the processing failed because of a problem on our side, which is the cause
+	 * @throws ExecutionException       if the processing failed because of a problem on our side, which is the cause: an
+	 *                                  {@linkplain no.entur.abt.bob.mts7.core.InfrastructureMts7Exception} (or a subclass), or anything else (see above)
 	 */
 
 	@Override
@@ -355,7 +357,8 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 	 * card has passed all of the checks.
 	 *
 	 * @throws InvalidCardMts7Exception if the card is not valid, or could not be verified (a problem on the card side)
-	 * @throws Exception                if the processing failed because of a problem on our side
+	 * @throws Exception                if the processing failed because of a problem on our side: an
+	 *                                  {@linkplain no.entur.abt.bob.mts7.core.InfrastructureMts7Exception} (or a subclass)
 	 */
 
 	protected abstract void process() throws Exception;

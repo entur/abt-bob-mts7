@@ -2,6 +2,7 @@ package no.entur.abt.bob.mts7.core.pki;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.Test;
 
 import com.nimbusds.jose.crypto.impl.ECDSA;
 
+import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
 import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
 import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
 import no.entur.abt.bob.mts7.mtb.TokenPublicKey;
@@ -295,7 +297,9 @@ public class IccPublicKeyTest {
 		});
 
 		byte[] signature = signEc(ecKeyPair.getPrivate(), CHALLENGE);
-		assertThrows(NoSuchAlgorithmException.class, () -> key.verify(CHALLENGE, signature));
+		NoSuchAlgorithmMts7Exception e = assertThrows(NoSuchAlgorithmMts7Exception.class, () -> key.verify(CHALLENGE, signature));
+		assertInstanceOf(NoSuchAlgorithmException.class, e.getCause());
+		assertEquals("NoneWithECDSA", e.getAlgorithm());
 	}
 
 	@Test

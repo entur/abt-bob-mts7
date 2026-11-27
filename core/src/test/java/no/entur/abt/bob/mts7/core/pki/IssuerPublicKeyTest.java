@@ -2,6 +2,7 @@ package no.entur.abt.bob.mts7.core.pki;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -21,6 +22,8 @@ import org.junit.jupiter.api.Test;
 
 import com.nimbusds.jose.crypto.impl.ECDSA;
 
+import no.entur.abt.bob.mts7.core.InfrastructureMts7Exception;
+import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
 import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
 
 public class IssuerPublicKeyTest {
@@ -151,7 +154,10 @@ public class IssuerPublicKeyTest {
 		});
 
 		byte[] signature = signEc(ecKeyPair.getPrivate(), DATA);
-		assertThrows(NoSuchAlgorithmException.class, () -> key.verify(DATA, signature));
+		NoSuchAlgorithmMts7Exception e = assertThrows(NoSuchAlgorithmMts7Exception.class, () -> key.verify(DATA, signature));
+		assertInstanceOf(NoSuchAlgorithmException.class, e.getCause());
+		assertEquals("SHA256withECDSA", e.getAlgorithm());
+		assertInstanceOf(InfrastructureMts7Exception.class, e);
 	}
 
 	@Test

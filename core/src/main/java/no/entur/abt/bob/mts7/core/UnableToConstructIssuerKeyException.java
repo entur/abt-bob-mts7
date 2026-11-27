@@ -1,8 +1,11 @@
 package no.entur.abt.bob.mts7.core;
 
-import no.entur.abt.bob.mts7.api.Mts7Exception;
+/**
+ * An issuer key which is among the public keys cannot be used: it cannot be created, is of a type which is not supported, or is not accepted by the security
+ * provider (a problem on our side).
+ */
 
-public class UnableToConstructIssuerKeyException extends Mts7Exception {
+public class UnableToConstructIssuerKeyException extends InfrastructureMts7Exception {
 
 	private static final long serialVersionUID = 1L;
 

@@ -11,6 +11,8 @@ import org.slf4j.LoggerFactory;
 
 import com.nimbusds.jose.crypto.impl.ECDSA;
 
+import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
+
 /**
  * Public key of a single card, for verifying that the card has the private key.
  * <p>
@@ -51,10 +53,10 @@ public class IccPublicKey {
 	 * @param expected signature from the card
 	 * @return whether the signature is valid; false also if the data or the signature is malformed, or the key of the card is not accepted (a problem on the
 	 *         card side)
-	 * @throws NoSuchAlgorithmException if the signature algorithm is not available from the security provider (a problem on our side)
+	 * @throws NoSuchAlgorithmMts7Exception if the signature algorithm is not available from the security provider (a problem on our side)
 	 */
 
-	public boolean verify(byte[] data, byte[] expected) throws NoSuchAlgorithmException {
+	public boolean verify(byte[] data, byte[] expected) throws NoSuchAlgorithmMts7Exception {
 		return verify(data, 0, data == null ? 0 : data.length, expected);
 	}
 
@@ -67,10 +69,10 @@ public class IccPublicKey {
 	 * @param expected signature from the card
 	 * @return whether the signature is valid; false also if the data or the signature is malformed, or the key of the card is not accepted (a problem on the
 	 *         card side)
-	 * @throws NoSuchAlgorithmException if the signature algorithm is not available from the security provider (a problem on our side)
+	 * @throws NoSuchAlgorithmMts7Exception if the signature algorithm is not available from the security provider (a problem on our side)
 	 */
 
-	public boolean verify(byte[] data, int offset, int length, byte[] expected) throws NoSuchAlgorithmException {
+	public boolean verify(byte[] data, int offset, int length, byte[] expected) throws NoSuchAlgorithmMts7Exception {
 		// a signature is stateful, so use a new one: it is not shared with anyone, and there is no need to restore it to a known state if something goes
 		// wrong. A missing algorithm is a problem on our side, so it is not caught here.
 		Signature signature;
@@ -116,16 +118,20 @@ public class IccPublicKey {
 	 * Create a signature which is initialized for verification with the key.
 	 *
 	 * @return a new signature
-	 * @throws NoSuchAlgorithmException if the algorithm is not available
-	 * @throws InvalidKeyException      if the key is not accepted
+	 * @throws NoSuchAlgorithmMts7Exception if the algorithm is not available (a problem on our side)
+	 * @throws InvalidKeyException          if the key is not accepted (a problem on the card side)
 	 */
 
-	Signature newSignature() throws NoSuchAlgorithmException, InvalidKeyException {
+	Signature newSignature() throws NoSuchAlgorithmMts7Exception, InvalidKeyException {
 		Signature signature;
-		if (provider != null) {
-			signature = Signature.getInstance(algorithm, provider);
-		} else {
-			signature = Signature.getInstance(algorithm);
+		try {
+			if (provider != null) {
+				signature = Signature.getInstance(algorithm, provider);
+			} else {
+				signature = Signature.getInstance(algorithm);
+			}
+		} catch (NoSuchAlgorithmException e) {
+			throw new NoSuchAlgorithmMts7Exception(algorithm, provider, e);
 		}
 		signature.initVerify(publicKey);
 		return signature;

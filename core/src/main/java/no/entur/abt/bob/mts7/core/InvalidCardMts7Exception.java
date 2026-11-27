@@ -8,7 +8,7 @@ import no.entur.abt.bob.mts7.api.Mts7Exception;
  * {@linkplain TrustChainInvalidCardMts7Exception}) the card did not pass verification.
  * <p>
  * Problems on our side, such as an issuer key which cannot be constructed or a signature algorithm which the security provider does not have, are reported with
- * other exceptions.
+ * {@linkplain InfrastructureMts7Exception}.
  */
 
 public class InvalidCardMts7Exception extends Mts7Exception {

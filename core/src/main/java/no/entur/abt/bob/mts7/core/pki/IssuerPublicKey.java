@@ -9,6 +9,7 @@ import java.security.Signature;
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.crypto.impl.ECDSA;
 
+import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
 import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
 
 /**
@@ -57,11 +58,11 @@ public class IssuerPublicKey {
 	 * @param data signed data
 	 * @param sign signature
 	 * @return whether the signature is valid; false also if the data or the signature is malformed (a problem on the card side)
-	 * @throws NoSuchAlgorithmException            if the signature algorithm is not available from the security provider (a problem on our side)
+	 * @throws NoSuchAlgorithmMts7Exception        if the signature algorithm is not available from the security provider (a problem on our side)
 	 * @throws UnableToConstructIssuerKeyException if the key is not accepted by the security provider (a problem on our side)
 	 */
 
-	public boolean verify(byte[] data, byte[] sign) throws NoSuchAlgorithmException, UnableToConstructIssuerKeyException {
+	public boolean verify(byte[] data, byte[] sign) throws NoSuchAlgorithmMts7Exception, UnableToConstructIssuerKeyException {
 		return verify(data, 0, data == null ? 0 : data.length, sign);
 	}
 
@@ -73,11 +74,11 @@ public class IssuerPublicKey {
 	 * @param length length of the signed data
 	 * @param sign   signature
 	 * @return whether the signature is valid; false also if the data or the signature is malformed (a problem on the card side)
-	 * @throws NoSuchAlgorithmException            if the signature algorithm is not available from the security provider (a problem on our side)
+	 * @throws NoSuchAlgorithmMts7Exception        if the signature algorithm is not available from the security provider (a problem on our side)
 	 * @throws UnableToConstructIssuerKeyException if the key is not accepted by the security provider (a problem on our side)
 	 */
 
-	public boolean verify(byte[] data, int offset, int length, byte[] sign) throws NoSuchAlgorithmException, UnableToConstructIssuerKeyException {
+	public boolean verify(byte[] data, int offset, int length, byte[] sign) throws NoSuchAlgorithmMts7Exception, UnableToConstructIssuerKeyException {
 		// a signature is stateful, so use a new one: it is not shared with anyone, and there is no need to restore it to a known state if something goes
 		// wrong. A problem with the algorithm or the key is on our side, so it is not caught here.
 		Signature signature = newSignature();
@@ -92,12 +93,16 @@ public class IssuerPublicKey {
 		}
 	}
 
-	private Signature newSignature() throws NoSuchAlgorithmException, UnableToConstructIssuerKeyException {
+	private Signature newSignature() throws NoSuchAlgorithmMts7Exception, UnableToConstructIssuerKeyException {
 		Signature signature;
-		if (provider != null) {
-			signature = Signature.getInstance(algorithm, provider);
-		} else {
-			signature = Signature.getInstance(algorithm);
+		try {
+			if (provider != null) {
+				signature = Signature.getInstance(algorithm, provider);
+			} else {
+				signature = Signature.getInstance(algorithm);
+			}
+		} catch (NoSuchAlgorithmException e) {
+			throw new NoSuchAlgorithmMts7Exception(algorithm, provider, e);
 		}
 		try {
 			signature.initVerify(publicKey);

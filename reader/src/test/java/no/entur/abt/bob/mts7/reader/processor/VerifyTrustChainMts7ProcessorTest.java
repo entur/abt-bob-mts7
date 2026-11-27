@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.IOException;
-import java.security.NoSuchAlgorithmException;
 import java.security.Provider;
 import java.util.HashMap;
 import java.util.Map;
@@ -25,6 +24,7 @@ import no.entur.abt.bob.mts7.core.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.KeyPairInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.Mts7Card;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
+import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
 import no.entur.abt.bob.mts7.core.TrustChainInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
 import no.entur.abt.bob.mts7.core.UnknownIssuerKeyInvalidCardMts7Exception;
@@ -257,7 +257,7 @@ public class VerifyTrustChainMts7ProcessorTest extends AbstractTest {
 		ExecutionException e = assertThrows(ExecutionException.class,
 				() -> process(factory.create(), GET_NEXT_DATA_RESPONSE, SIGNATURE_RESPONSE).waitForVerify(0));
 
-		assertInstanceOf(NoSuchAlgorithmException.class, e.getCause());
+		assertInstanceOf(NoSuchAlgorithmMts7Exception.class, e.getCause());
 	}
 
 	// the root key of the card is among the issuer keys, but its type is not supported

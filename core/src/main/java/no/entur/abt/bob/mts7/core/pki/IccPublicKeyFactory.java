@@ -1,7 +1,6 @@
 package no.entur.abt.bob.mts7.core.pki;
 
 import java.security.Key;
-import java.security.NoSuchAlgorithmException;
 import java.security.Provider;
 import java.security.PublicKey;
 import java.security.interfaces.ECPublicKey;
@@ -17,6 +16,7 @@ import com.nimbusds.jose.jwk.KeyType;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.util.Base64URL;
 
+import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
 import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
 import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
 import no.entur.abt.bob.mts7.mtb.TokenPublicKey;
@@ -54,10 +54,10 @@ public class IccPublicKeyFactory {
 	 * @return the public key of the card
 	 * @throws UnableToConstructIccKeyException if the token public key of the card is missing, of a type which is not in MTS1 (EC with P-256, or RSA), or
 	 *                                          invalid (a problem on the card side)
-	 * @throws NoSuchAlgorithmException         if the signature algorithm is not available from the security provider (a problem on our side)
+	 * @throws NoSuchAlgorithmMts7Exception     if the signature algorithm is not available from the security provider (a problem on our side)
 	 */
 
-	public IccPublicKey create(IssuerSignatureProtectedHeader header) throws UnableToConstructIccKeyException, NoSuchAlgorithmException {
+	public IccPublicKey create(IssuerSignatureProtectedHeader header) throws UnableToConstructIccKeyException, NoSuchAlgorithmMts7Exception {
 		TokenPublicKey tpk = header.getTpk();
 
 		try {
@@ -81,7 +81,7 @@ public class IccPublicKeyFactory {
 				return create((RSAPublicKey) key, "NONEwithRSA");
 			}
 			throw new UnableToConstructIccKeyException("Unknown key type " + key.getAlgorithm());
-		} catch (UnableToConstructIccKeyException | NoSuchAlgorithmException e) {
+		} catch (UnableToConstructIccKeyException | NoSuchAlgorithmMts7Exception e) {
 			throw e;
 		} catch (Exception e) {
 			throw new UnableToConstructIccKeyException(e);

@@ -1,11 +1,11 @@
 package no.entur.abt.bob.mts7.core.pki;
 
-import java.security.NoSuchAlgorithmException;
 import java.security.SignatureException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
 import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
 import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
 import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
@@ -98,11 +98,11 @@ public class IccPublicKeyBuilder {
 	 * @throws SignatureException                  if the issuer signature is not valid, or its algorithm is missing, not as in MTS1, or does not match the
 	 *                                             issuer key (a problem on the card side)
 	 * @throws UnableToConstructIccKeyException    if the ICC public key could not be created from the certificate of the card (a problem on the card side)
-	 * @throws NoSuchAlgorithmException            if a signature algorithm is not available from the security provider (a problem on our side)
+	 * @throws NoSuchAlgorithmMts7Exception        if a signature algorithm is not available from the security provider (a problem on our side)
 	 * @throws UnableToConstructIssuerKeyException if the issuer key is not accepted by the security provider (a problem on our side)
 	 */
 
-	public IccPublicKey build() throws SignatureException, UnableToConstructIccKeyException, NoSuchAlgorithmException, UnableToConstructIssuerKeyException {
+	public IccPublicKey build() throws SignatureException, UnableToConstructIccKeyException, NoSuchAlgorithmMts7Exception, UnableToConstructIssuerKeyException {
 		checkAlgorithm();
 
 		byte[] data = getSignedData();

@@ -10,7 +10,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.math.BigInteger;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
-import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
 import java.security.Provider;
 import java.security.Signature;
@@ -27,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 import com.nimbusds.jose.crypto.impl.ECDSA;
 
+import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
 import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
 
 public class IccPublicKeyBuilderTest {
@@ -304,7 +304,7 @@ public class IccPublicKeyBuilderTest {
 		// the card is as in the specification, so a problem when verifying is on our side
 		IccPublicKeyBuilder builder = signedBuilder(header(), issuerKeyWithoutAlgorithms());
 
-		assertThrows(NoSuchAlgorithmException.class, builder::build);
+		assertThrows(NoSuchAlgorithmMts7Exception.class, builder::build);
 	}
 
 	@Test

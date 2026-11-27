@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
-import java.security.NoSuchAlgorithmException;
 import java.security.Provider;
 
 import org.junit.jupiter.api.Test;
@@ -86,7 +85,7 @@ public class VerifyKeyPairMts7CardFactoryTest {
 		VerifyKeyPairMts7CardFactory factory = new VerifyKeyPairMts7CardFactory(new IccPublicKeyFactory(empty), new Mts7CardEnricher(), new CBORMapper(),
 				new ThumbprintFactory(null));
 
-		assertThrows(NoSuchAlgorithmException.class, () -> factory.create(card(GET_NEXT_DATA_RESPONSE, SIGNATURE_RESPONSE)));
+		assertThrows(NoSuchAlgorithmMts7Exception.class, () -> factory.create(card(GET_NEXT_DATA_RESPONSE, SIGNATURE_RESPONSE)));
 	}
 
 	private static Mts7ApduPayloads card(String getNextDataResponse, String signatureResponse) {

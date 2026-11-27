@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.security.NoSuchAlgorithmException;
 import java.security.Provider;
 import java.util.concurrent.ExecutionException;
 
@@ -19,6 +18,7 @@ import no.entur.abt.bob.mts7.api.apdu.CommandAPDU;
 import no.entur.abt.bob.mts7.core.KeyPairInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.Mts7Card;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
+import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
 import no.entur.abt.bob.mts7.reader.AbstractExecutorTest;
@@ -89,7 +89,7 @@ public class VerifyKeyPairMts7ProcessorTest extends AbstractExecutorTest {
 
 		ExecutionException e = assertThrows(ExecutionException.class, () -> process(factory.create(), SIGNATURE_RESPONSE).waitForVerify(0));
 
-		assertInstanceOf(NoSuchAlgorithmException.class, e.getCause());
+		assertInstanceOf(NoSuchAlgorithmMts7Exception.class, e.getCause());
 	}
 
 	private static Mts7Processor process(Mts7Processor processor, String signatureResponse) {
