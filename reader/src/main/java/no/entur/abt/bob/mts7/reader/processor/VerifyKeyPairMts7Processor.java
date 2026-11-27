@@ -9,7 +9,6 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
-import no.entur.abt.bob.mts7.core.KeyPairInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
@@ -114,9 +113,7 @@ public class VerifyKeyPairMts7Processor extends AbstractMts7Processor {
 		}
 
 		// process signature - the only time-critical part of the logic here
-		if (!iccPublicKey.verify(commandPayload, responsePayload)) {
-			throw new KeyPairInvalidCardMts7Exception();
-		}
+		iccPublicKey.verify(commandPayload, responsePayload);
 		LOGGER.info("Verified ICC private key");
 
 		// last, as the card has passed all of the checks

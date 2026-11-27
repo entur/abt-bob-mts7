@@ -1,10 +1,9 @@
 package no.entur.abt.bob.mts7.core.pki;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.math.BigInteger;
 import java.security.KeyPair;
@@ -24,8 +23,9 @@ import org.junit.jupiter.api.Test;
 
 import com.nimbusds.jose.crypto.impl.ECDSA;
 
-import no.entur.abt.bob.mts7.core.IccKeyInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.KeyPairInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
+import no.entur.abt.bob.mts7.core.NonCompliantIccKeyInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
 import no.entur.abt.bob.mts7.mtb.TokenPublicKey;
 import no.entur.abt.bob.mts7.test.util.ConcurrentRunner;
@@ -92,7 +92,7 @@ public class IccPublicKeyTest {
 
 	@Test
 	public void testEcSignature() throws Exception {
-		assertTrue(ecKey().verify(CHALLENGE, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
+		assertDoesNotThrow(() -> ecKey().verify(CHALLENGE, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
 	}
 
 	@Test
@@ -100,45 +100,46 @@ public class IccPublicKeyTest {
 		byte[] buffer = new byte[CHALLENGE.length + 10];
 		System.arraycopy(CHALLENGE, 0, buffer, 3, CHALLENGE.length);
 
-		assertTrue(ecKey().verify(buffer, 3, CHALLENGE.length, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
-		assertFalse(ecKey().verify(buffer, 0, CHALLENGE.length, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
+		assertDoesNotThrow(() -> ecKey().verify(buffer, 3, CHALLENGE.length, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
+		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> ecKey().verify(buffer, 0, CHALLENGE.length, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
 	}
 
 	@Test
 	public void testEcSignatureForOtherDataIsNotValid() throws Exception {
-		assertFalse(ecKey().verify(OTHER_CHALLENGE, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
+		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> ecKey().verify(OTHER_CHALLENGE, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
 	}
 
 	@Test
 	public void testEcSignatureFromOtherKeyIsNotValid() throws Exception {
-		assertFalse(ecKey().verify(CHALLENGE, signEc(otherEcKeyPair.getPrivate(), CHALLENGE)));
+		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> ecKey().verify(CHALLENGE, signEc(otherEcKeyPair.getPrivate(), CHALLENGE)));
 	}
 
 	@Test
 	public void testRsaSignature() throws Exception {
-		assertTrue(rsaKey().verify(CHALLENGE, signRsa(rsaKeyPair.getPrivate(), CHALLENGE)));
-		assertFalse(rsaKey().verify(OTHER_CHALLENGE, signRsa(rsaKeyPair.getPrivate(), CHALLENGE)));
+		assertDoesNotThrow(() -> rsaKey().verify(CHALLENGE, signRsa(rsaKeyPair.getPrivate(), CHALLENGE)));
+		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> rsaKey().verify(OTHER_CHALLENGE, signRsa(rsaKeyPair.getPrivate(), CHALLENGE)));
 	}
 
 	@Test
 	public void testRsaSignatureWithEcSignature() throws Exception {
-		assertFalse(rsaKey().verify(CHALLENGE, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
-		assertFalse(ecKey().verify(CHALLENGE, signRsa(rsaKeyPair.getPrivate(), CHALLENGE)));
+		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> rsaKey().verify(CHALLENGE, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
+		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> ecKey().verify(CHALLENGE, signRsa(rsaKeyPair.getPrivate(), CHALLENGE)));
 	}
 
 	@Test
 	public void testMalformedInputIsNotValid() throws Exception {
-		assertFalse(ecKey().verify(CHALLENGE, new byte[0]));
-		assertFalse(ecKey().verify(CHALLENGE, new byte[63]));
-		assertFalse(ecKey().verify(CHALLENGE, new byte[64]));
-		assertFalse(ecKey().verify(CHALLENGE, new byte[65]));
-		assertFalse(ecKey().verify(CHALLENGE, null));
-		assertFalse(ecKey().verify(null, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
-		assertFalse(ecKey().verify(CHALLENGE, 0, CHALLENGE.length + 1, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
-		assertFalse(ecKey().verify(CHALLENGE, -1, 1, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
+		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> ecKey().verify(CHALLENGE, new byte[0]));
+		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> ecKey().verify(CHALLENGE, new byte[63]));
+		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> ecKey().verify(CHALLENGE, new byte[64]));
+		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> ecKey().verify(CHALLENGE, new byte[65]));
+		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> ecKey().verify(CHALLENGE, null));
+		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> ecKey().verify(null, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
+		assertThrows(KeyPairInvalidCardMts7Exception.class,
+				() -> ecKey().verify(CHALLENGE, 0, CHALLENGE.length + 1, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
+		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> ecKey().verify(CHALLENGE, -1, 1, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
 
-		assertFalse(rsaKey().verify(CHALLENGE, new byte[0]));
-		assertFalse(rsaKey().verify(CHALLENGE, null));
+		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> rsaKey().verify(CHALLENGE, new byte[0]));
+		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> rsaKey().verify(CHALLENGE, null));
 	}
 
 	@Test
@@ -147,11 +148,11 @@ public class IccPublicKeyTest {
 		IccPublicKey key = ecKey();
 		byte[] valid = signEc(ecKeyPair.getPrivate(), CHALLENGE);
 
-		assertTrue(key.verify(CHALLENGE, valid));
-		assertFalse(key.verify(CHALLENGE, new byte[64]));
-		assertFalse(key.verify(CHALLENGE, new byte[3]));
-		assertFalse(key.verify(OTHER_CHALLENGE, valid));
-		assertTrue(key.verify(CHALLENGE, valid));
+		assertDoesNotThrow(() -> key.verify(CHALLENGE, valid));
+		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> key.verify(CHALLENGE, new byte[64]));
+		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> key.verify(CHALLENGE, new byte[3]));
+		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> key.verify(OTHER_CHALLENGE, valid));
+		assertDoesNotThrow(() -> key.verify(CHALLENGE, valid));
 	}
 
 	@Test
@@ -160,8 +161,8 @@ public class IccPublicKeyTest {
 		byte[] signature = signEc(ecKeyPair.getPrivate(), CHALLENGE);
 
 		List<Throwable> failures = ConcurrentRunner.run(THREADS, 300, (thread, iteration) -> {
-			assertTrue(key.verify(CHALLENGE, signature));
-			assertFalse(key.verify(OTHER_CHALLENGE, signature));
+			assertDoesNotThrow(() -> key.verify(CHALLENGE, signature));
+			assertThrows(KeyPairInvalidCardMts7Exception.class, () -> key.verify(OTHER_CHALLENGE, signature));
 		});
 
 		assertEquals(0, failures.size(), "Unexpected failures: " + failures);
@@ -173,8 +174,8 @@ public class IccPublicKeyTest {
 		byte[] signature = signRsa(rsaKeyPair.getPrivate(), CHALLENGE);
 
 		List<Throwable> failures = ConcurrentRunner.run(THREADS, 100, (thread, iteration) -> {
-			assertTrue(key.verify(CHALLENGE, signature));
-			assertFalse(key.verify(OTHER_CHALLENGE, signature));
+			assertDoesNotThrow(() -> key.verify(CHALLENGE, signature));
+			assertThrows(KeyPairInvalidCardMts7Exception.class, () -> key.verify(OTHER_CHALLENGE, signature));
 		});
 
 		assertEquals(0, failures.size(), "Unexpected failures: " + failures);
@@ -208,8 +209,8 @@ public class IccPublicKeyTest {
 		IccPublicKey key = new IccPublicKeyFactory().create(ecHeader((ECPublicKey) ecKeyPair.getPublic()));
 
 		assertEquals("EC", key.getAlgorithm());
-		assertTrue(key.verify(CHALLENGE, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
-		assertFalse(key.verify(CHALLENGE, signEc(otherEcKeyPair.getPrivate(), CHALLENGE)));
+		assertDoesNotThrow(() -> key.verify(CHALLENGE, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
+		assertThrows(KeyPairInvalidCardMts7Exception.class, () -> key.verify(CHALLENGE, signEc(otherEcKeyPair.getPrivate(), CHALLENGE)));
 	}
 
 	@Test
@@ -228,7 +229,7 @@ public class IccPublicKeyTest {
 		IccPublicKey key = new IccPublicKeyFactory().create(header);
 
 		assertEquals("RSA", key.getAlgorithm());
-		assertTrue(key.verify(CHALLENGE, signRsa(rsaKeyPair.getPrivate(), CHALLENGE)));
+		assertDoesNotThrow(() -> key.verify(CHALLENGE, signRsa(rsaKeyPair.getPrivate(), CHALLENGE)));
 	}
 
 	@Test
@@ -243,7 +244,7 @@ public class IccPublicKeyTest {
 		tpk.setY("AAAA");
 		header.setTpk(tpk);
 
-		assertThrows(IccKeyInvalidCardMts7Exception.class, () -> new IccPublicKeyFactory().create(header));
+		assertThrows(NonCompliantIccKeyInvalidCardMts7Exception.class, () -> new IccPublicKeyFactory().create(header));
 	}
 
 	@Test
@@ -256,7 +257,7 @@ public class IccPublicKeyTest {
 			IccPublicKey key = new IccPublicKeyFactory().create(header);
 
 			assertEquals("EC", key.getAlgorithm(), alg);
-			assertTrue(key.verify(CHALLENGE, signEc(ecKeyPair.getPrivate(), CHALLENGE)), alg);
+			assertDoesNotThrow(() -> key.verify(CHALLENGE, signEc(ecKeyPair.getPrivate(), CHALLENGE)), alg);
 		}
 	}
 
@@ -277,7 +278,8 @@ public class IccPublicKeyTest {
 		header.setAlg("ES256");
 		header.setTpk(tpk);
 
-		IccKeyInvalidCardMts7Exception e = assertThrows(IccKeyInvalidCardMts7Exception.class, () -> new IccPublicKeyFactory().create(header));
+		NonCompliantIccKeyInvalidCardMts7Exception e = assertThrows(NonCompliantIccKeyInvalidCardMts7Exception.class,
+				() -> new IccPublicKeyFactory().create(header));
 		assertEquals("Curve P-384 is not P-256", e.getMessage());
 	}
 
@@ -286,7 +288,7 @@ public class IccPublicKeyTest {
 		IssuerSignatureProtectedHeader header = ecHeader((ECPublicKey) ecKeyPair.getPublic());
 		header.getTpk().setKty("oct");
 
-		assertThrows(IccKeyInvalidCardMts7Exception.class, () -> new IccPublicKeyFactory().create(header));
+		assertThrows(NonCompliantIccKeyInvalidCardMts7Exception.class, () -> new IccPublicKeyFactory().create(header));
 	}
 
 	@Test
@@ -303,11 +305,11 @@ public class IccPublicKeyTest {
 	}
 
 	@Test
-	public void testKeyNotAcceptedIsNotValid() throws Exception {
+	public void testKeyNotAcceptedIsNonCompliant() throws Exception {
 		// a problem on the card side: the key of the card does not fit its algorithm
 		IccPublicKey key = new IccPublicKey(rsaKeyPair.getPublic(), "NoneWithECDSA", null);
 
-		assertFalse(key.verify(CHALLENGE, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
+		assertThrows(NonCompliantIccKeyInvalidCardMts7Exception.class, () -> key.verify(CHALLENGE, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
 	}
 
 }

@@ -35,7 +35,7 @@ public class Mts7ExceptionSidesTest {
 
 	@Test
 	public void testCardSide() {
-		assertSide(InvalidCardMts7Exception.class, IccKeyInvalidCardMts7Exception.class, KeyPairInvalidCardMts7Exception.class,
+		assertSide(InvalidCardMts7Exception.class, NonCompliantIccKeyInvalidCardMts7Exception.class, KeyPairInvalidCardMts7Exception.class,
 				TrustChainInvalidCardMts7Exception.class, UnknownIssuerKeyInvalidCardMts7Exception.class, UnexpectedCardResponseException.class,
 				UnableToSelectApplicationException.class);
 	}

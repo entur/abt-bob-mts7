@@ -5,8 +5,8 @@ import java.util.Arrays;
 import java.util.List;
 
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
-import no.entur.abt.bob.mts7.core.IccKeyInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
+import no.entur.abt.bob.mts7.core.NonCompliantIccKeyInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.TrustChainInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
 import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
@@ -96,13 +96,14 @@ public class IccPublicKeyBuilder {
 	 * issuer key. A card which is not as in the specification is to blame, whatever happens on our side when verifying.
 	 *
 	 * @return the ICC public key
-	 * @throws TrustChainInvalidCardMts7Exception  if the issuer signature is not valid, or its algorithm does not match the issuer key (a problem on the card
-	 *                                             side)
-	 * @throws IccKeyInvalidCardMts7Exception      if the ICC public key could not be created from the certificate of the card (a problem on the card side)
-	 * @throws InvalidCardMts7Exception            if the algorithm of the issuer signature is missing or not as in MTS1 (a problem on the card side). This is
-	 *                                             also the superclass of the above.
-	 * @throws NoSuchAlgorithmMts7Exception        if a signature algorithm is not available from the security provider (a problem on our side)
-	 * @throws UnableToConstructIssuerKeyException if the issuer key is not accepted by the security provider (a problem on our side)
+	 * @throws TrustChainInvalidCardMts7Exception         if the issuer signature is not valid, or its algorithm does not match the issuer key (a problem on the
+	 *                                                    card side)
+	 * @throws NonCompliantIccKeyInvalidCardMts7Exception if the ICC public key could not be created from the certificate of the card (a problem on the card
+	 *                                                    side)
+	 * @throws InvalidCardMts7Exception                   if the algorithm of the issuer signature is missing or not as in MTS1 (a problem on the card side).
+	 *                                                    This is also the superclass of the above.
+	 * @throws NoSuchAlgorithmMts7Exception               if a signature algorithm is not available from the security provider (a problem on our side)
+	 * @throws UnableToConstructIssuerKeyException        if the issuer key is not accepted by the security provider (a problem on our side)
 	 */
 
 	public IccPublicKey build() throws InvalidCardMts7Exception, NoSuchAlgorithmMts7Exception, UnableToConstructIssuerKeyException {

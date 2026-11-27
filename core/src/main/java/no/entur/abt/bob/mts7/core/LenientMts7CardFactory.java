@@ -91,25 +91,30 @@ public class LenientMts7CardFactory {
 				if (header != null) {
 					try {
 						iccPublicKey = iccPublicKeyFactory.create(header);
-					} catch (IccKeyInvalidCardMts7Exception | NoSuchAlgorithmMts7Exception e) {
+					} catch (NonCompliantIccKeyInvalidCardMts7Exception | NoSuchAlgorithmMts7Exception e) {
 						LOGGER.info("Unable to create ICC public key", e);
 					}
 
 					try {
 						result.setThumbprint(thumbprintFactory.create(header));
-					} catch (IccKeyInvalidCardMts7Exception | UnableToConstructThumbprintKeyException e) {
+					} catch (NonCompliantIccKeyInvalidCardMts7Exception | UnableToConstructThumbprintKeyException e) {
 						LOGGER.info("Unable to construct thumbprint", e);
 					}
 				}
 			}
 
-			if (iccPublicKey != null && card.hasInternalAuthenticateOutput()
-					&& iccPublicKey.verify(card.getInternalAuthenticateInput(), card.getInternalAuthenticateOutput())) {
-				result.setVerifiedPrivateKeyPresent(true);
+			boolean verified = false;
+			if (iccPublicKey != null && card.hasInternalAuthenticateOutput()) {
+				try {
+					iccPublicKey.verify(card.getInternalAuthenticateInput(), card.getInternalAuthenticateOutput());
+					verified = true;
+				} catch (InvalidCardMts7Exception e) {
+					LOGGER.info("Unable to verify ICC private key", e);
+				}
 			} else {
 				LOGGER.info("Unable to verify ICC private key");
-				result.setVerifiedPrivateKeyPresent(false);
 			}
+			result.setVerifiedPrivateKeyPresent(verified);
 		} catch (Exception e) {
 			LOGGER.info("Problem processing files", e);
 		}

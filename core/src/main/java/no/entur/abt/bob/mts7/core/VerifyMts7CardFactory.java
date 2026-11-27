@@ -155,24 +155,24 @@ public class VerifyMts7CardFactory {
 	 *
 	 * @param card the payloads read from the card
 	 * @return the verified card
-	 * @throws UnknownIssuerKeyInvalidCardMts7Exception if the issuer key of the certificate of the card is unknown (door 2, unless
-	 *                                                  <code>trustUnknownRootKeys</code>; a problem on the card side, or the participant metadata is out of
-	 *                                                  date)
-	 * @throws TrustChainInvalidCardMts7Exception       if the certificate of the card was not signed by a known issuer (door 2): the issuer signature is not
-	 *                                                  valid, its algorithm does not match the issuer key, or (as the subclass above) the issuer key is unknown
-	 *                                                  (a problem on the card side)
-	 * @throws KeyPairInvalidCardMts7Exception          if the card did not prove that it has the private key (door 3; a problem on the card side)
-	 * @throws IccKeyInvalidCardMts7Exception           if the public key of the card in its certificate is missing or not valid (a problem on the card side)
-	 * @throws InvalidCardMts7Exception                 if a response from the card is missing or malformed, including an issuer signature algorithm which is
-	 *                                                  missing or not as in MTS1 (a problem on the card side). This is also the superclass of the above, so
-	 *                                                  catch it for any problem on the card side.
-	 * @throws UnableToConstructIssuerKeyException      if the issuer key of the card is known, but could not be created, is not supported, or is not accepted
-	 *                                                  by the security provider (a problem on our side)
-	 * @throws NoSuchAlgorithmMts7Exception             if a signature algorithm is not available from the security provider (a problem on our side)
-	 * @throws UnableToConstructThumbprintKeyException  if the thumbprint of the public key of the card could not be created, although the key could (a problem
-	 *                                                  on our side)
-	 * @throws InfrastructureMts7Exception              if the card could not be verified because of a problem on our side. This is also the superclass of the
-	 *                                                  three above, so catch it for any problem on our side.
+	 * @throws UnknownIssuerKeyInvalidCardMts7Exception   if the issuer key of the certificate of the card is unknown (door 2, unless
+	 *                                                    <code>trustUnknownRootKeys</code>; a problem on the card side, or the participant metadata is out of
+	 *                                                    date)
+	 * @throws TrustChainInvalidCardMts7Exception         if the certificate of the card was not signed by a known issuer (door 2): the issuer signature is not
+	 *                                                    valid, its algorithm does not match the issuer key, or (as the subclass above) the issuer key is
+	 *                                                    unknown (a problem on the card side)
+	 * @throws KeyPairInvalidCardMts7Exception            if the card did not prove that it has the private key (door 3; a problem on the card side)
+	 * @throws NonCompliantIccKeyInvalidCardMts7Exception if the public key of the card in its certificate is missing or not valid (a problem on the card side)
+	 * @throws InvalidCardMts7Exception                   if a response from the card is missing or malformed, including an issuer signature algorithm which is
+	 *                                                    missing or not as in MTS1 (a problem on the card side). This is also the superclass of the above, so
+	 *                                                    catch it for any problem on the card side.
+	 * @throws UnableToConstructIssuerKeyException        if the issuer key of the card is known, but could not be created, is not supported, or is not accepted
+	 *                                                    by the security provider (a problem on our side)
+	 * @throws NoSuchAlgorithmMts7Exception               if a signature algorithm is not available from the security provider (a problem on our side)
+	 * @throws UnableToConstructThumbprintKeyException    if the thumbprint of the public key of the card could not be created, although the key could (a
+	 *                                                    problem on our side)
+	 * @throws InfrastructureMts7Exception                if the card could not be verified because of a problem on our side. This is also the superclass of the
+	 *                                                    three above, so catch it for any problem on our side.
 	 */
 
 	public Mts7Card create(Mts7ApduPayloads card) throws InvalidCardMts7Exception, InfrastructureMts7Exception {
@@ -239,9 +239,7 @@ public class VerifyMts7CardFactory {
 		// from the same token public key as the public key of the card, which could be created, so a problem here is expected to be on our side
 		result.setThumbprint(thumbprintFactory.create(header));
 
-		if (!iccPublicKey.verify(card.getInternalAuthenticateInput(), card.getInternalAuthenticateOutput())) {
-			throw new KeyPairInvalidCardMts7Exception();
-		}
+		iccPublicKey.verify(card.getInternalAuthenticateInput(), card.getInternalAuthenticateOutput());
 		result.setVerifiedPrivateKeyPresent(true);
 
 		return result;

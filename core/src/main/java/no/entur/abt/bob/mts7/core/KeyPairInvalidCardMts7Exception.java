@@ -18,4 +18,8 @@ public class KeyPairInvalidCardMts7Exception extends InvalidCardMts7Exception {
 		super(message);
 	}
 
+	public KeyPairInvalidCardMts7Exception(String message, Throwable cause) {
+		super(message, cause);
+	}
+
 }

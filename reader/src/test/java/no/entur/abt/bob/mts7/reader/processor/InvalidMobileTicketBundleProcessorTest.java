@@ -23,9 +23,9 @@ import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.api.apdu.CommandAPDU;
-import no.entur.abt.bob.mts7.core.IccKeyInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.Mts7Card;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
+import no.entur.abt.bob.mts7.core.NonCompliantIccKeyInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.UnableToConstructThumbprintKeyException;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
@@ -102,9 +102,9 @@ public class InvalidMobileTicketBundleProcessorTest {
 		ThumbprintFactory thumbprintFactory = cardSideFailingThumbprintFactory();
 		InvalidMobileTicketBundles.Case valid = bundle("valid");
 
-		assertThrows(IccKeyInvalidCardMts7Exception.class, () -> process(new VerifyTrustChainMts7ProcessorFactory(issuers, new IccPublicKeyFactory(),
-				new Mts7CardEnricher(), new CBORMapper(), thumbprintFactory, executor).create(), valid));
-		assertThrows(IccKeyInvalidCardMts7Exception.class,
+		assertThrows(NonCompliantIccKeyInvalidCardMts7Exception.class, () -> process(new VerifyTrustChainMts7ProcessorFactory(issuers,
+				new IccPublicKeyFactory(), new Mts7CardEnricher(), new CBORMapper(), thumbprintFactory, executor).create(), valid));
+		assertThrows(NonCompliantIccKeyInvalidCardMts7Exception.class,
 				() -> process(
 						new VerifyKeyPairMts7ProcessorFactory(new IccPublicKeyFactory(), new Mts7CardEnricher(), new CBORMapper(), thumbprintFactory, executor)
 								.create(),
@@ -167,8 +167,8 @@ public class InvalidMobileTicketBundleProcessorTest {
 	private static ThumbprintFactory cardSideFailingThumbprintFactory() throws Exception {
 		return new ThumbprintFactory(null) {
 			@Override
-			public byte[] create(IssuerSignatureProtectedHeader header) throws IccKeyInvalidCardMts7Exception {
-				throw new IccKeyInvalidCardMts7Exception("Broken");
+			public byte[] create(IssuerSignatureProtectedHeader header) throws NonCompliantIccKeyInvalidCardMts7Exception {
+				throw new NonCompliantIccKeyInvalidCardMts7Exception("Broken");
 			}
 		};
 	}

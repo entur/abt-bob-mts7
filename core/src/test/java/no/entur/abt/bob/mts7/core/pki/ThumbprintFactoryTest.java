@@ -9,7 +9,7 @@ import java.util.Arrays;
 
 import org.junit.jupiter.api.Test;
 
-import no.entur.abt.bob.mts7.core.IccKeyInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.NonCompliantIccKeyInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
 import no.entur.abt.bob.mts7.mtb.TokenPublicKey;
 
@@ -45,7 +45,7 @@ public class ThumbprintFactoryTest {
 
 	@Test
 	public void testMissingTokenPublicKeyIsCardSide() throws Exception {
-		assertThrows(IccKeyInvalidCardMts7Exception.class, () -> new ThumbprintFactory(null).create(header(null)));
+		assertThrows(NonCompliantIccKeyInvalidCardMts7Exception.class, () -> new ThumbprintFactory(null).create(header(null)));
 	}
 
 	@Test
@@ -53,7 +53,7 @@ public class ThumbprintFactoryTest {
 		TokenPublicKey tpk = ecKey("x");
 		tpk.setKty("oct");
 
-		assertThrows(IccKeyInvalidCardMts7Exception.class, () -> new ThumbprintFactory(null).create(header(tpk)));
+		assertThrows(NonCompliantIccKeyInvalidCardMts7Exception.class, () -> new ThumbprintFactory(null).create(header(tpk)));
 	}
 
 }
