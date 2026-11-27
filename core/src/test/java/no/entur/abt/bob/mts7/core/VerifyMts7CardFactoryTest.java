@@ -48,6 +48,8 @@ public class VerifyMts7CardFactoryTest {
 	private static final String SIGNATURE_RESPONSE = "DCC5F055C2B689A3D5FBAE8ABB9892FF6B0228D05AAA69BBA435324F1E9A6D900C2B6F8DC7D43DD2D9DF47847C7ADF786E99474102E2EA1E19EDF0177221FE349000";
 	// as from a cloned card, which does not have the private key
 	private static final String OTHER_SIGNATURE_RESPONSE = SIGNATURE_RESPONSE.replace("DCC5", "DCC6");
+	// the genuine card with alg HS256 instead of ES256, which is not in MTS1 (the issuer signature is then not valid either)
+	private static final String HS256_GET_NEXT_DATA_RESPONSE = GET_NEXT_DATA_RESPONSE.replace("616C67654553323536", "616C67654853323536");
 
 	@Test
 	public void testHelpersCanBeSharedWithOtherFactories() throws Exception {
@@ -200,6 +202,28 @@ public class VerifyMts7CardFactoryTest {
 	}
 
 	@Test
+	public void testAlgorithmNotInTheSpecificationIsBlamedOnTheCardBeforeTheIssuerKey() throws Exception {
+		// the issuer key of the card is known but cannot be used (our side), but the card is not as in the specification, so it is to blame
+		IssuerSignatureFactory broken = new IssuerSignatureFactory() {
+			@Override
+			public IssuerPublicKey createIssuerPublicKey(long pid, MtbJwkPublic jwkPublic) throws UnableToConstructIssuerKeyException {
+				throw new UnableToConstructIssuerKeyException("Broken");
+			}
+		};
+		for (ParticipantPublicKeys keys : new ParticipantPublicKeys[] { unsupportedRootKey(), rootKey(broken) }) {
+			VerifyMts7CardFactory factory = new VerifyMts7CardFactory(keys);
+
+			InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class,
+					() -> factory.create(card(HS256_GET_NEXT_DATA_RESPONSE, SIGNATURE_RESPONSE)));
+			assertEquals(InvalidCardMts7Exception.class, e.getClass());
+			assertEquals("Issuer signature algorithm HS256 is not ES256 or RS256", e.getMessage());
+
+			// as in the specification, so the problem is on our side
+			assertThrows(UnableToConstructIssuerKeyException.class, () -> factory.create(card(SIGNATURE_RESPONSE)));
+		}
+	}
+
+	@Test
 	public void testIssuerKeyWhichCannotBeCreatedIsNotInvalidCard() throws Exception {
 		// a problem on our side: the root key of the card is among the issuer keys, but it cannot be created
 		VerifyMts7CardFactory factory = new VerifyMts7CardFactory(rootKey(new IssuerSignatureFactory() {
@@ -274,9 +298,13 @@ public class VerifyMts7CardFactoryTest {
 	}
 
 	private Mts7ApduPayloads card(String signatureResponse) {
+		return card(GET_NEXT_DATA_RESPONSE, signatureResponse);
+	}
+
+	private Mts7ApduPayloads card(String getNextDataResponse, String signatureResponse) {
 		Mts7ApduPayloads card = new Mts7ApduPayloads();
 		card.setSelectApplicationOutput(fromResponseApdu(ByteArrayHexStringConverter.hexStringToByteArray(SELECT_APPLICATION_RESPONSE)));
-		card.setGetDataOutput(fromResponseApdu(ByteArrayHexStringConverter.hexStringToByteArray(GET_NEXT_DATA_RESPONSE)));
+		card.setGetDataOutput(fromResponseApdu(ByteArrayHexStringConverter.hexStringToByteArray(getNextDataResponse)));
 		card.setInternalAuthenticateInput(new byte[32]);
 		card.setInternalAuthenticateOutput(fromResponseApdu(ByteArrayHexStringConverter.hexStringToByteArray(signatureResponse)));
 		return card;

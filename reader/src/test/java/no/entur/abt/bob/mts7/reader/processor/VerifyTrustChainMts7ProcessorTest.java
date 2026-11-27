@@ -44,6 +44,8 @@ public class VerifyTrustChainMts7ProcessorTest extends AbstractTest {
 	private static final String SIGNATURE_RESPONSE = "DCC5F055C2B689A3D5FBAE8ABB9892FF6B0228D05AAA69BBA435324F1E9A6D900C2B6F8DC7D43DD2D9DF47847C7ADF786E99474102E2EA1E19EDF0177221FE349000";
 	// as from a cloned card, which does not have the private key
 	private static final String OTHER_SIGNATURE_RESPONSE = SIGNATURE_RESPONSE.replace("DCC5", "DCC6");
+	// the genuine card with alg HS256 instead of ES256, which is not in MTS1 (the issuer signature is then not valid either)
+	private static final String HS256_GET_NEXT_DATA_RESPONSE = GET_NEXT_DATA_RESPONSE.replace("616C67654553323536", "616C67654853323536");
 
 	private VerifyTrustChainMts7ProcessorFactory processorFactory;
 
@@ -217,6 +219,30 @@ public class VerifyTrustChainMts7ProcessorTest extends AbstractTest {
 				() -> process(factory.create(), GET_NEXT_DATA_RESPONSE, SIGNATURE_RESPONSE).waitForVerify(0));
 
 		assertInstanceOf(UnableToConstructIssuerKeyException.class, e.getCause());
+	}
+
+	@Test
+	public void testAlgorithmNotInTheSpecificationIsBlamedOnTheCardBeforeTheIssuerKey() throws Exception {
+		// the issuer key of the card is known but cannot be used (our side), but the card is not as in the specification, so it is to blame
+		IssuerSignatureFactory broken = new IssuerSignatureFactory() {
+			@Override
+			public IssuerPublicKey createIssuerPublicKey(long pid, MtbJwkPublic jwkPublic) throws UnableToConstructIssuerKeyException {
+				throw new UnableToConstructIssuerKeyException("Broken");
+			}
+		};
+		for (ParticipantPublicKeys keys : new ParticipantPublicKeys[] { unsupportedRootKey(), rootKey(broken) }) {
+			VerifyTrustChainMts7ProcessorFactory factory = new VerifyTrustChainMts7ProcessorFactory(keys, executor);
+
+			InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class,
+					() -> process(factory.create(), HS256_GET_NEXT_DATA_RESPONSE, SIGNATURE_RESPONSE).waitForVerify(0));
+			assertEquals(InvalidCardMts7Exception.class, e.getClass());
+			assertEquals("Issuer signature algorithm HS256 is not ES256 or RS256", e.getMessage());
+
+			// as in the specification, so the problem is on our side
+			ExecutionException ours = assertThrows(ExecutionException.class,
+					() -> process(factory.create(), GET_NEXT_DATA_RESPONSE, SIGNATURE_RESPONSE).waitForVerify(0));
+			assertInstanceOf(UnableToConstructIssuerKeyException.class, ours.getCause());
+		}
 	}
 
 	@Test

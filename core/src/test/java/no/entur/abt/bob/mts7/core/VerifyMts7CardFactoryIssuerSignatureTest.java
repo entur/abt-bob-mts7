@@ -404,8 +404,10 @@ public class VerifyMts7CardFactoryIssuerSignatureTest {
 		byte[] header = header("HS256", "77", "77:test", tokenKeyPair);
 		byte[] getData = bundle(header, genuineSecondElement, signEc(issuerKeyPair.getPrivate(), signedData(header, genuineSecondElement)));
 
-		TrustChainInvalidCardMts7Exception e = assertThrows(TrustChainInvalidCardMts7Exception.class,
+		// malformed, as MTS1 does not have the algorithm: not a trust chain failure
+		InvalidCardMts7Exception e = assertThrows(InvalidCardMts7Exception.class,
 				() -> new VerifyMts7CardFactory(ecIssuer(77, "77:test", issuerKeyPair)).create(payloads(getData, internalAuthenticate(tokenKeyPair))));
+		assertEquals(InvalidCardMts7Exception.class, e.getClass());
 		assertEquals("Issuer signature algorithm HS256 is not ES256 or RS256", e.getMessage());
 	}
 

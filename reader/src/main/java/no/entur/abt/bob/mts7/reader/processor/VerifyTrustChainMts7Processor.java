@@ -98,6 +98,13 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 			throw new InvalidCardMts7Exception("Missing Issuer Signature Protected Header", result);
 		}
 
+		// MTS1 requires alg, the algorithm of the issuer signature, and has two. Checked before anything else in the header, so that a card which is
+		// not as in the specification is to blame, whatever happens on our side with the issuer key.
+		if (!Mts1Algorithms.isIssuerSignatureAlgorithm(header.getAlg())) {
+			throw new InvalidCardMts7Exception(
+					"Issuer signature algorithm " + header.getAlg() + " is not " + Mts1Algorithms.ES256 + " or " + Mts1Algorithms.RS256, result);
+		}
+
 		// note here what kind of algorithm the card uses: EC and RSA do not encode the input to the internal authenticate function in the same way. It
 		// follows from the type of the public key of the card, not from alg in the header, which is the algorithm of the issuer signature.
 

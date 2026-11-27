@@ -11,6 +11,7 @@ import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyBuilder;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.IssuerPublicKey;
+import no.entur.abt.bob.mts7.core.pki.Mts1Algorithms;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
 import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
 import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
@@ -157,12 +158,13 @@ public class VerifyMts7CardFactory {
 	 *                                                  <code>trustUnknownRootKeys</code>; a problem on the card side, or the participant metadata is out of
 	 *                                                  date)
 	 * @throws TrustChainInvalidCardMts7Exception       if the certificate of the card was not signed by a known issuer (door 2): the issuer signature is not
-	 *                                                  valid, the algorithm is missing or not as in MTS1, or (as the subclass above) the issuer key is unknown
+	 *                                                  valid, its algorithm does not match the issuer key, or (as the subclass above) the issuer key is unknown
 	 *                                                  (a problem on the card side)
 	 * @throws KeyPairInvalidCardMts7Exception          if the card did not prove that it has the private key (door 3; a problem on the card side)
 	 * @throws IccKeyInvalidCardMts7Exception           if the public key of the card in its certificate is missing or not valid (a problem on the card side)
-	 * @throws InvalidCardMts7Exception                 if a response from the card is missing or malformed (a problem on the card side). This is also the
-	 *                                                  superclass of the above, so catch it for any problem on the card side.
+	 * @throws InvalidCardMts7Exception                 if a response from the card is missing or malformed, including an issuer signature algorithm which is
+	 *                                                  missing or not as in MTS1 (a problem on the card side). This is also the superclass of the above, so
+	 *                                                  catch it for any problem on the card side.
 	 * @throws UnableToConstructIssuerKeyException      if the issuer key of the card is known, but could not be created, is not supported, or is not accepted
 	 *                                                  by the security provider (a problem on our side)
 	 * @throws NoSuchAlgorithmException                 if a signature algorithm is not available from the security provider (a problem on our side)
@@ -190,6 +192,13 @@ public class VerifyMts7CardFactory {
 		IssuerSignatureProtectedHeader header = mobileTicketBundle.getIssuerSignatureProtectedHeader();
 		if (header == null) {
 			throw new InvalidCardMts7Exception("Missing Issuer Signature Protected Header", result);
+		}
+
+		// MTS1 requires alg, the algorithm of the issuer signature, and has two. Checked before anything else in the header, so that a card which is
+		// not as in the specification is to blame, whatever happens on our side with the issuer key.
+		if (!Mts1Algorithms.isIssuerSignatureAlgorithm(header.getAlg())) {
+			throw new InvalidCardMts7Exception(
+					"Issuer signature algorithm " + header.getAlg() + " is not " + Mts1Algorithms.ES256 + " or " + Mts1Algorithms.RS256, result);
 		}
 
 		long iid;

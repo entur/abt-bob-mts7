@@ -8,6 +8,7 @@ import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
 import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
+import no.entur.abt.bob.mts7.core.pki.Mts1Algorithms;
 import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
 import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
 import no.entur.abt.bob.mts7.mtb.MobileTicketBundle;
@@ -70,8 +71,9 @@ public class VerifyKeyPairMts7CardFactory {
 	 * @return the verified card
 	 * @throws KeyPairInvalidCardMts7Exception         if the card did not prove that it has the private key (a problem on the card side)
 	 * @throws IccKeyInvalidCardMts7Exception          if the public key of the card in its certificate is missing or not valid (a problem on the card side)
-	 * @throws InvalidCardMts7Exception                if a response from the card is missing or malformed (a problem on the card side). This is also the
-	 *                                                 superclass of the above, so catch it for any problem on the card side.
+	 * @throws InvalidCardMts7Exception                if a response from the card is missing or malformed, including an issuer signature algorithm which is
+	 *                                                 missing or not as in MTS1 (a problem on the card side). This is also the superclass of the above, so
+	 *                                                 catch it for any problem on the card side.
 	 * @throws NoSuchAlgorithmException                if the signature algorithm of the card is not available from the security provider (a problem on our
 	 *                                                 side)
 	 * @throws UnableToConstructThumbprintKeyException if the thumbprint of the public key of the card could not be created, although the key could (a problem
@@ -97,6 +99,13 @@ public class VerifyKeyPairMts7CardFactory {
 		IssuerSignatureProtectedHeader header = mobileTicketBundle.getIssuerSignatureProtectedHeader();
 		if (header == null) {
 			throw new InvalidCardMts7Exception("Missing Issuer Signature Protected Header", result);
+		}
+
+		// MTS1 requires alg, the algorithm of the issuer signature, and has two. Checked before anything else in the header, so that a card which is
+		// not as in the specification is to blame, whatever happens on our side with the issuer key.
+		if (!Mts1Algorithms.isIssuerSignatureAlgorithm(header.getAlg())) {
+			throw new InvalidCardMts7Exception(
+					"Issuer signature algorithm " + header.getAlg() + " is not " + Mts1Algorithms.ES256 + " or " + Mts1Algorithms.RS256, result);
 		}
 
 		IccPublicKey iccPublicKey;

@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.api.BeforeAll;
@@ -29,6 +31,9 @@ import no.entur.abt.bob.mts7.test.mtb.InvalidMobileTicketBundles;
  */
 
 public class InvalidMobileTicketBundleTest {
+
+	// the cases where only alg, the algorithm of the issuer signature, is missing or not as in MTS1
+	private static final Set<String> ISSUER_SIGNATURE_ALGORITHM_ONLY = new HashSet<>(Arrays.asList("no alg", "empty alg", "unknown alg"));
 
 	private static InvalidMobileTicketBundles bundles;
 	private static ParticipantPublicKeys issuers;
@@ -63,12 +68,15 @@ public class InvalidMobileTicketBundleTest {
 	public Stream<DynamicTest> testLenient() throws Exception {
 		LenientMts7CardFactory factory = new LenientMts7CardFactory();
 
-		// never throws, and verifies the key pair as far as it can, also if the select application response is not valid (those cases have a valid bundle)
+		// never throws, and verifies the key pair as far as it can, also if the select application response is not valid (those cases have a valid bundle),
+		// or the algorithm of the issuer signature is not (it says nothing about the key of the card)
 		return bundles.cases.stream().map(c -> DynamicTest.dynamicTest(c.name, () -> {
 			Mts7Card card = factory.create(payloads(c));
 
 			boolean selectApplicationResponseOnly = c.selectApplicationResponse != null;
-			assertEquals(selectApplicationResponseOnly || InvalidMobileTicketBundles.VERIFIED.equals(c.keyPair), card.isVerifiedPrivateKeyPresent());
+			boolean issuerSignatureAlgorithmOnly = ISSUER_SIGNATURE_ALGORITHM_ONLY.contains(c.name);
+			assertEquals(selectApplicationResponseOnly || issuerSignatureAlgorithmOnly || InvalidMobileTicketBundles.VERIFIED.equals(c.keyPair),
+					card.isVerifiedPrivateKeyPresent());
 			assertFalse(card.isVerifiedTrustChain());
 		}));
 	}
