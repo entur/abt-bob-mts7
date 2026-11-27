@@ -259,6 +259,27 @@ public class IccPublicKeyTest {
 	}
 
 	@Test
+	public void testFactoryReportsCurveNotInTheSpecification() throws Exception {
+		// MTS1 has P-256 only
+		KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
+		generator.initialize(new ECGenParameterSpec("secp384r1"));
+		ECPublicKey publicKey = (ECPublicKey) generator.generateKeyPair().getPublic();
+
+		TokenPublicKey tpk = new TokenPublicKey();
+		tpk.setKty("EC");
+		tpk.setCrv("P-384");
+		tpk.setX(base64Url(publicKey.getW().getAffineX(), 48));
+		tpk.setY(base64Url(publicKey.getW().getAffineY(), 48));
+
+		IssuerSignatureProtectedHeader header = new IssuerSignatureProtectedHeader();
+		header.setAlg("ES256");
+		header.setTpk(tpk);
+
+		UnableToConstructIccKeyException e = assertThrows(UnableToConstructIccKeyException.class, () -> new IccPublicKeyFactory().create(header));
+		assertEquals("Curve P-384 is not P-256", e.getMessage());
+	}
+
+	@Test
 	public void testFactoryReportsUnknownKeyType() {
 		IssuerSignatureProtectedHeader header = ecHeader((ECPublicKey) ecKeyPair.getPublic());
 		header.getTpk().setKty("oct");

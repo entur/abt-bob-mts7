@@ -52,7 +52,8 @@ public class IccPublicKeyFactory {
 	 *
 	 * @param header the Issuer Signature Protected Header of the card
 	 * @return the public key of the card
-	 * @throws UnableToConstructIccKeyException if the token public key of the card is missing, of an unknown type, or invalid (a problem on the card side)
+	 * @throws UnableToConstructIccKeyException if the token public key of the card is missing, of a type which is not in MTS1 (EC with P-256, or RSA), or
+	 *                                          invalid (a problem on the card side)
 	 * @throws NoSuchAlgorithmException         if the signature algorithm is not available from the security provider (a problem on our side)
 	 */
 
@@ -91,7 +92,11 @@ public class IccPublicKeyFactory {
 		KeyType keyType = KeyType.parse(tpk.getKty());
 
 		if (KeyType.EC.equals(keyType)) {
-			return new ECKey.Builder(Curve.parse(tpk.getCrv()), new Base64URL(tpk.getX()), new Base64URL(tpk.getY())).build();
+			// MTS1 has P-256 only
+			if (!Curve.P_256.getName().equals(tpk.getCrv())) {
+				throw new UnableToConstructIccKeyException("Curve " + tpk.getCrv() + " is not " + Curve.P_256.getName());
+			}
+			return new ECKey.Builder(Curve.P_256, new Base64URL(tpk.getX()), new Base64URL(tpk.getY())).build();
 		} else if (KeyType.RSA.equals(keyType)) {
 			return new RSAKey.Builder(new Base64URL(tpk.getN()), new Base64URL(tpk.getE())).build();
 		}
