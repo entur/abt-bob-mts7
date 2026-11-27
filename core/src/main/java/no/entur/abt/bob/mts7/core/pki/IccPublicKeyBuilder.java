@@ -111,9 +111,7 @@ public class IccPublicKeyBuilder {
 
 		byte[] data = getSignedData();
 
-		if (!issuerPublicKey.verify(data, signature)) {
-			throw new TrustChainInvalidCardMts7Exception("Issuer signature is not valid");
-		}
+		issuerPublicKey.verify(data, signature);
 
 		return iccSignatureFactory.create(issuerSignatureProtectedHeader);
 	}

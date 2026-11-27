@@ -28,6 +28,7 @@ import com.nimbusds.jose.jwk.gen.ECKeyGenerator;
 
 import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
+import no.entur.abt.bob.mts7.core.TrustChainInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.VerifyMts7CardFactory;
 
 public class UpdatableVerifyMts7CardFactorySupplierTest {
@@ -211,7 +212,12 @@ public class UpdatableVerifyMts7CardFactorySupplierTest {
 		byte[] data = "issuer signed data".getBytes(StandardCharsets.UTF_8);
 		byte[] signature = new ECDSASigner(signer).sign(new JWSHeader(JWSAlgorithm.ES256), data).decode();
 		IssuerPublicKey issuerPublicKey = supplier.getParticipantPublicKeys().getIssuerPublicKey(pid, signer.getKeyID());
-		return issuerPublicKey.verify(data, signature);
+		try {
+			issuerPublicKey.verify(data, signature);
+			return true;
+		} catch (TrustChainInvalidCardMts7Exception e) {
+			return false;
+		}
 	}
 
 	private static ParticipantMetadata participant(long pid, String name, ECKey... keys) {

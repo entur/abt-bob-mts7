@@ -10,6 +10,7 @@ import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.crypto.impl.ECDSA;
 
 import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
+import no.entur.abt.bob.mts7.core.TrustChainInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
 
 /**
@@ -53,43 +54,48 @@ public class IssuerPublicKey {
 	}
 
 	/**
-	 * Verify a signature from a card.
+	 * Verify the issuer signature of a card (door 2).
 	 *
 	 * @param data signed data
 	 * @param sign signature
-	 * @return whether the signature is valid; false also if the data or the signature is malformed (a problem on the card side)
+	 * @throws TrustChainInvalidCardMts7Exception  if the signature is not valid, or the data or the signature is malformed (a problem on the card side)
 	 * @throws NoSuchAlgorithmMts7Exception        if the signature algorithm is not available from the security provider (a problem on our side)
 	 * @throws UnableToConstructIssuerKeyException if the key is not accepted by the security provider (a problem on our side)
 	 */
 
-	public boolean verify(byte[] data, byte[] sign) throws NoSuchAlgorithmMts7Exception, UnableToConstructIssuerKeyException {
-		return verify(data, 0, data == null ? 0 : data.length, sign);
+	public void verify(byte[] data, byte[] sign) throws TrustChainInvalidCardMts7Exception, NoSuchAlgorithmMts7Exception, UnableToConstructIssuerKeyException {
+		verify(data, 0, data == null ? 0 : data.length, sign);
 	}
 
 	/**
-	 * Verify a signature from a card.
+	 * Verify the issuer signature of a card (door 2).
 	 *
 	 * @param data   buffer with the signed data
 	 * @param offset offset of the signed data in the buffer
 	 * @param length length of the signed data
 	 * @param sign   signature
-	 * @return whether the signature is valid; false also if the data or the signature is malformed (a problem on the card side)
+	 * @throws TrustChainInvalidCardMts7Exception  if the signature is not valid, or the data or the signature is malformed (a problem on the card side)
 	 * @throws NoSuchAlgorithmMts7Exception        if the signature algorithm is not available from the security provider (a problem on our side)
 	 * @throws UnableToConstructIssuerKeyException if the key is not accepted by the security provider (a problem on our side)
 	 */
 
-	public boolean verify(byte[] data, int offset, int length, byte[] sign) throws NoSuchAlgorithmMts7Exception, UnableToConstructIssuerKeyException {
+	public void verify(byte[] data, int offset, int length, byte[] sign)
+			throws TrustChainInvalidCardMts7Exception, NoSuchAlgorithmMts7Exception, UnableToConstructIssuerKeyException {
 		// a signature is stateful, so use a new one: it is not shared with anyone, and there is no need to restore it to a known state if something goes
 		// wrong. A problem with the algorithm or the key is on our side, so it is not caught here.
 		Signature signature = newSignature();
+		boolean valid;
 		try {
 			byte[] encoded = encode(sign);
 
 			signature.update(data, offset, length);
-			return signature.verify(encoded);
+			valid = signature.verify(encoded);
 		} catch (Exception e) {
 			// the data or the signature from the card is malformed
-			return false;
+			throw new TrustChainInvalidCardMts7Exception("Malformed issuer signature", e);
+		}
+		if (!valid) {
+			throw new TrustChainInvalidCardMts7Exception("Issuer signature is not valid");
 		}
 	}
 

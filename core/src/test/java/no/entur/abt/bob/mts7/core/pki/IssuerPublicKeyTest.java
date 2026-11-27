@@ -1,11 +1,10 @@
 package no.entur.abt.bob.mts7.core.pki;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
@@ -24,6 +23,7 @@ import com.nimbusds.jose.crypto.impl.ECDSA;
 
 import no.entur.abt.bob.mts7.api.InfrastructureMts7Exception;
 import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
+import no.entur.abt.bob.mts7.core.TrustChainInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
 
 public class IssuerPublicKeyTest {
@@ -84,7 +84,7 @@ public class IssuerPublicKeyTest {
 
 	@Test
 	public void testEcSignature() throws Exception {
-		assertTrue(ecKey().verify(DATA, signEc(ecKeyPair.getPrivate(), DATA)));
+		assertDoesNotThrow(() -> ecKey().verify(DATA, signEc(ecKeyPair.getPrivate(), DATA)));
 	}
 
 	@Test
@@ -92,18 +92,18 @@ public class IssuerPublicKeyTest {
 		byte[] buffer = new byte[DATA.length + 10];
 		System.arraycopy(DATA, 0, buffer, 3, DATA.length);
 
-		assertTrue(ecKey().verify(buffer, 3, DATA.length, signEc(ecKeyPair.getPrivate(), DATA)));
-		assertFalse(ecKey().verify(buffer, 0, DATA.length, signEc(ecKeyPair.getPrivate(), DATA)));
+		assertDoesNotThrow(() -> ecKey().verify(buffer, 3, DATA.length, signEc(ecKeyPair.getPrivate(), DATA)));
+		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(buffer, 0, DATA.length, signEc(ecKeyPair.getPrivate(), DATA)));
 	}
 
 	@Test
 	public void testEcSignatureForOtherDataIsNotValid() throws Exception {
-		assertFalse(ecKey().verify(OTHER_DATA, signEc(ecKeyPair.getPrivate(), DATA)));
+		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(OTHER_DATA, signEc(ecKeyPair.getPrivate(), DATA)));
 	}
 
 	@Test
 	public void testEcSignatureFromOtherKeyIsNotValid() throws Exception {
-		assertFalse(ecKey().verify(DATA, signEc(otherEcKeyPair.getPrivate(), DATA)));
+		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(DATA, signEc(otherEcKeyPair.getPrivate(), DATA)));
 	}
 
 	@Test
@@ -113,30 +113,30 @@ public class IssuerPublicKeyTest {
 		signature.initSign(ecKeyPair.getPrivate());
 		signature.update(DATA);
 
-		assertFalse(ecKey().verify(DATA, signature.sign()));
+		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(DATA, signature.sign()));
 	}
 
 	@Test
 	public void testRsaSignature() throws Exception {
-		assertTrue(rsaKey().verify(DATA, signRsa(rsaKeyPair.getPrivate(), DATA)));
-		assertFalse(rsaKey().verify(OTHER_DATA, signRsa(rsaKeyPair.getPrivate(), DATA)));
+		assertDoesNotThrow(() -> rsaKey().verify(DATA, signRsa(rsaKeyPair.getPrivate(), DATA)));
+		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> rsaKey().verify(OTHER_DATA, signRsa(rsaKeyPair.getPrivate(), DATA)));
 	}
 
 	@Test
 	public void testRsaSignatureWithEcSignature() throws Exception {
-		assertFalse(rsaKey().verify(DATA, signEc(ecKeyPair.getPrivate(), DATA)));
-		assertFalse(ecKey().verify(DATA, signRsa(rsaKeyPair.getPrivate(), DATA)));
+		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> rsaKey().verify(DATA, signEc(ecKeyPair.getPrivate(), DATA)));
+		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(DATA, signRsa(rsaKeyPair.getPrivate(), DATA)));
 	}
 
 	@Test
 	public void testMalformedInputIsNotValid() throws Exception {
-		assertFalse(ecKey().verify(DATA, new byte[0]));
-		assertFalse(ecKey().verify(DATA, new byte[63]));
-		assertFalse(ecKey().verify(DATA, new byte[64]));
-		assertFalse(ecKey().verify(DATA, new byte[65]));
-		assertFalse(ecKey().verify(DATA, null));
-		assertFalse(ecKey().verify(DATA, 0, DATA.length + 1, signEc(ecKeyPair.getPrivate(), DATA)));
-		assertFalse(ecKey().verify(DATA, -1, 1, signEc(ecKeyPair.getPrivate(), DATA)));
+		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(DATA, new byte[0]));
+		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(DATA, new byte[63]));
+		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(DATA, new byte[64]));
+		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(DATA, new byte[65]));
+		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(DATA, null));
+		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(DATA, 0, DATA.length + 1, signEc(ecKeyPair.getPrivate(), DATA)));
+		assertThrows(TrustChainInvalidCardMts7Exception.class, () -> ecKey().verify(DATA, -1, 1, signEc(ecKeyPair.getPrivate(), DATA)));
 	}
 
 	@Test

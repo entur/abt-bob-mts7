@@ -20,4 +20,8 @@ public class TrustChainInvalidCardMts7Exception extends InvalidCardMts7Exception
 		super(message);
 	}
 
+	public TrustChainInvalidCardMts7Exception(String message, Throwable cause) {
+		super(message, cause);
+	}
+
 }
