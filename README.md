@@ -101,7 +101,7 @@ For a PC reader using `javax.smartcardio`, see the [example](examples/mts7-reade
 Overview:
  
  * issue three (logical) commands and store command/responses as raw APDUs
-   * some commands are split due to max transceive length (so checking the response status code is necessary: `61xx` means that there is more data, which is fetched with GET RESPONSE)
+   * the response to any command may be split due to max transceive length (so checking the response status code is necessary: `61xx` means that there is more data, which is fetched with GET RESPONSE, MTS7 2.1)
  * post to backend as a command/response train
    * split commands can be submitted together or in (original) parts; the library keeps the original parts
 
@@ -292,17 +292,17 @@ Every problem is the problem of one side, and is reported with one of three exce
 
 The card is only blamed when it is at fault. Every command is checked to be as MTS7 specifies it before the response of the card to it, so a card which rejects a command which is not as specified is not to blame. The processors throw the problems of the card and of the reader as they are, and a problem with the infrastructure as the cause of an `ExecutionException`.
 
-The exceptions in the order in which they can first occur: reading the card, sorting out the exchanges, what the card returned, door 2 and door 3.
+The exceptions in the order in which they can first occur: reading the card, sorting out the exchanges, what the card returned, door 2 and door 3. For the same problems one command at a time, see [Who is to blame, command by command](docs/BLAME_BY_COMMAND.md).
 
 | Exception | Description | Card | Reader | Infrastructure |
 | --- | --- | :---: | :---: | :---: |
 | `MalformedCardResponseException` | A response without a status word, which no card returns | | ✅ | |
 | `UnableToSelectApplicationException` | The card does not respond with success to SELECT, while it is read on the device | ✅ | | |
 | `MissingCardCommandsException` | Commands or responses are missing: fewer than three exchanges, no GET (NEXT) DATA of an MTB, a missing exchange, or a card which was not completely read before the processor was closed or within its lifetime | | ✅ | |
-| `MalformedCardCommandException` | A command which is not as MTS7 specifies it: shorter than its header or otherwise malformed, GET (NEXT) DATA or GET RESPONSE without Le or with data, or INTERNAL AUTHENTICATE without Le or with a challenge which is not a SHA-256 hash of 32 bytes (MTS7 4.1.4) | | ✅ | |
-| `UnexpectedCardCommandException` | A command which MTS7 does not have at that point: not SELECT first, not INTERNAL AUTHENTICATE last, something else than GET (NEXT) DATA, GET DATA of `6E` or GET RESPONSE in between, GET RESPONSE after a complete response, or SELECT of another application than `A0 00 00 07 81 01` | | ✅ | |
-| `UnexpectedCardResponseException` | The card does not respond with success to a command as MTS7 specifies it, such as `6A82` to SELECT (not an MTS7 card), or `6A88` to the first GET NEXT DATA (no MTB, MTS7 3.1.5) | ✅ | | |
-| `InsufficientCardCommandsException` | The reader did not retrieve what the card has: the rest of a response after `61xx` (MTS7 4.1.3), or the application-related data (`6E`) with GET DATA, when the select application response has none, as it need not (MTS7 4.1.1) | | ✅ | |
+| `MalformedCardCommandException` | A command which is not as MTS7 specifies it: shorter than its header or otherwise malformed, GET (NEXT) DATA or GET RESPONSE without Le or with data, or INTERNAL AUTHENTICATE without Le or with a challenge which is not a SHA-256 hash of 32 bytes (MTS7 4.1.4). Also a command which the card rejects, as it need not support it: SELECT of a longer application identifier than `A0 00 00 07 81 01` (MTS7 4.1.1), or INTERNAL AUTHENTICATE with an Le for less than the 256 bytes of an RSA signature, unless the card asked for that Le | | ✅ | |
+| `UnexpectedCardCommandException` | A command which MTS7 does not have at that point: not SELECT first, not INTERNAL AUTHENTICATE last (followed by GET RESPONSE if the card has more), something else than GET (NEXT) DATA or GET DATA of `6E` in between, GET RESPONSE after a complete response, or SELECT of another application than `A0 00 00 07 81 01` | | ✅ | |
+| `UnexpectedCardResponseException` | The card does not respond with success to a command as MTS7 specifies it, such as `6A82` to SELECT (not an MTS7 card), `6A88` to the first GET NEXT DATA (no MTB, MTS7 3.1.5), or `6700` (wrong length) to SELECT or INTERNAL AUTHENTICATE with the lengths of their examples in MTS7 | ✅ | | |
+| `InsufficientCardCommandsException` | The reader did not retrieve what the card has: the rest of a response after `61xx`, to any command (MTS7 2.1 and 4.1.3), a command which the card asked for again with other lengths (`6Cxx`, or `6700` to other lengths than in an example in MTS7 which every card must accept, also when the reader has no other lengths to send it with), or the application-related data (`6E`) with GET DATA, when the select application response has none, as it need not (MTS7 4.1.1) | | ✅ | |
 | `InvalidCardMts7Exception` | What the card returned is malformed: a select application response which is not well-formed BER-TLV, application-related data (`6E`) without a valid application identifier, a GET DATA response which is not a Mobile Ticket Bundle or has no Issuer Signature Protected Header, an `alg` which is missing or not `ES256` or `RS256` (MTS1 2.4), or an `iid` which is not a number | ✅ | | |
 | `UnableToConstructIssuerKeyException` | Door 2: the issuer key is among the issuer keys, but cannot be created, is not supported, or is not accepted by the security provider | | | ✅ |
 | `UnknownIssuerKeyInvalidCardMts7Exception` | Door 2: the issuer key is not among the issuer keys, and the `UnknownIssuerKeyPolicy` blames the card | ✅ | | |
@@ -317,8 +317,8 @@ The exceptions in the order in which they can first occur: reading the card, sor
 Not a problem of any side:
 
  * `TimeoutException` from `waitForVerify(..)` or `getMts7Card(..)`: the processing did not finish within the timeout, and goes on. A processor which is closed after the input has arrived still verifies the card.
- * `6700` (wrong length) to GET NEXT DATA with an extended Le: the reader repeats it with a short Le, and retrieves the rest with GET RESPONSE.
- * `61xx` without data: more of the response follows.
+ * `6700` (wrong length) to a command with other lengths than in an example in MTS7 which every card must accept, such as GET NEXT DATA with an extended Le, which the card need not support (MTS7 3.1.4), or `6Cxx` (wrong Le, ISO/IEC 7816-4 5.6): the reader sends the command again with other lengths. The card is only to blame for `6700` to SELECT with a short Le of `00` (MTS7 4.1.1) or without Le (appendix A), and to INTERNAL AUTHENTICATE with a short Le of `00` (MTS7 4.1.4). The examples of GET (NEXT) DATA and GET RESPONSE have an extended Le, and GET DATA of `6E` has none.
+ * `61xx`, also without data and to any command: more of the response follows, which the reader retrieves with GET RESPONSE (MTS7 2.1).
  * No application-related data in the select application response: the readers retrieve it with GET DATA (`00 CA 00 6E`).
  * `6A88` to GET NEXT DATA after the first MTB: there are no more MTBs. The card is authenticated with the public key of its first MTB (MTS7 appendix A).
  * An Issuer Signed Ticket Bundle in another CBOR representation than the recommended one: it is verified as it is encoded (MTS1 2.3).
