@@ -24,6 +24,7 @@ public class IssuerPublicKey {
 
 	private final PublicKey publicKey;
 	private final String algorithm;
+	private final String jwsAlgorithm;
 	private final Provider provider;
 
 	private final boolean ec;
@@ -44,6 +45,7 @@ public class IssuerPublicKey {
 
 		this.publicKey = publicKey;
 		this.algorithm = algorithm;
+		this.jwsAlgorithm = toJwsAlgorithm(algorithm);
 		this.provider = provider;
 
 		this.ec = algorithm.endsWith("ECDSA");
@@ -114,6 +116,26 @@ public class IssuerPublicKey {
 			return ECDSA.transcodeSignatureToDER(sign);
 		}
 		return sign;
+	}
+
+	private static String toJwsAlgorithm(String algorithm) {
+		if ("SHA256withECDSA".equalsIgnoreCase(algorithm)) {
+			return Mts1Algorithms.ES256;
+		}
+		if ("SHA256withRSA".equalsIgnoreCase(algorithm)) {
+			return Mts1Algorithms.RS256;
+		}
+		return null;
+	}
+
+	/**
+	 * The algorithm of the issuer signatures which this key verifies, as named by <code>alg</code> in the Issuer Signature Protected Header (MTS1).
+	 *
+	 * @return ES256, RS256, or null if the signature algorithm is neither
+	 */
+
+	public String getJwsAlgorithm() {
+		return jwsAlgorithm;
 	}
 
 	public long getPid() {

@@ -21,6 +21,7 @@ import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyBuilder;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.IssuerPublicKey;
+import no.entur.abt.bob.mts7.core.pki.Mts1Algorithms;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
 import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
 import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
@@ -97,11 +98,10 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 			throw new InvalidCardMts7Exception("Missing Issuer Signature Protected Header", result);
 		}
 
-		// note here what kind of algorithm we are using
-		// EC and RSA do not encode the input to the internal authenticate function
-		// in the same way.
+		// note here what kind of algorithm the card uses: EC and RSA do not encode the input to the internal authenticate function in the same way. It
+		// follows from the type of the public key of the card, not from alg in the header, which is the algorithm of the issuer signature.
 
-		setIccKeyAlgorithm(header.getAlg());
+		setIccKeyAlgorithm(Mts1Algorithms.getTokenAlgorithm(header.getTpk()));
 
 		long iid;
 		try {
@@ -125,7 +125,7 @@ public class VerifyTrustChainMts7Processor extends AbstractMts7Processor {
 			try {
 				iccPublicKey = iccPublicKeyBuilder.build();
 			} catch (SignatureException e) {
-				throw new TrustChainInvalidCardMts7Exception("Issuer signature is not valid", result);
+				throw new TrustChainInvalidCardMts7Exception(e.getMessage(), result);
 			} catch (UnableToConstructIccKeyException e) {
 				throw new IccKeyInvalidCardMts7Exception(result, e);
 			}

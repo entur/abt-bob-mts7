@@ -10,7 +10,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.math.BigInteger;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
+import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
+import java.security.Provider;
 import java.security.Signature;
 import java.security.SignatureException;
 import java.security.interfaces.ECPublicKey;
@@ -60,6 +62,14 @@ public class IccPublicKeyBuilderTest {
 	}
 
 	private static Map<String, Object> header() {
+		return header("ES256");
+	}
+
+	/**
+	 * @param alg the algorithm of the issuer signature, or null for none
+	 */
+
+	private static Map<String, Object> header(String alg) {
 		ECPublicKey publicKey = (ECPublicKey) tokenKeyPair.getPublic();
 		Base64.Encoder encoder = Base64.getUrlEncoder().withoutPadding();
 
@@ -70,7 +80,9 @@ public class IccPublicKeyBuilderTest {
 		tpk.put("y", encoder.encodeToString(unsigned(publicKey.getW().getAffineY())));
 
 		Map<String, Object> header = new LinkedHashMap<>();
-		header.put("alg", "ES256");
+		if (alg != null) {
+			header.put("alg", alg);
+		}
 		header.put("iid", "10");
 		header.put("kid", "10:test");
 		header.put("tpk", tpk);
@@ -78,7 +90,11 @@ public class IccPublicKeyBuilderTest {
 	}
 
 	private static IssuerSignatureProtectedHeader issuerSignatureProtectedHeader() {
-		return CBOR.convertValue(header(), IssuerSignatureProtectedHeader.class);
+		return issuerSignatureProtectedHeader(header());
+	}
+
+	private static IssuerSignatureProtectedHeader issuerSignatureProtectedHeader(Map<String, Object> header) {
+		return CBOR.convertValue(header, IssuerSignatureProtectedHeader.class);
 	}
 
 	private static byte[] sign(PrivateKey key, byte[] data) throws Exception {
@@ -101,7 +117,11 @@ public class IccPublicKeyBuilderTest {
 	 */
 
 	private IccPublicKeyBuilder signedBuilder() throws Exception {
-		byte[] header = CBOR.writeValueAsBytes(header());
+		return signedBuilder(header(), issuerKey());
+	}
+
+	private IccPublicKeyBuilder signedBuilder(Map<String, Object> headerMap, IssuerPublicKey issuerKey) throws Exception {
+		byte[] header = CBOR.writeValueAsBytes(headerMap);
 		byte[] second = new byte[] { (byte) 0xA0 };
 
 		byte[] signature = sign(issuerKeyPair.getPrivate(), CBOR.writeValueAsBytes(new byte[][] { header, second }));
@@ -109,8 +129,18 @@ public class IccPublicKeyBuilderTest {
 		return newBuilder().withSignedData(header, 0, header.length)
 				.withSignedData(second, 0, second.length)
 				.withSignature(signature)
-				.withIssuerPublicKey(issuerKey())
-				.withIssuerSignatureProtectedHeader(issuerSignatureProtectedHeader());
+				.withIssuerPublicKey(issuerKey)
+				.withIssuerSignatureProtectedHeader(issuerSignatureProtectedHeader(headerMap));
+	}
+
+	/**
+	 * The issuer key, with a security provider which does not have any algorithms, so that verifying fails on our side.
+	 */
+
+	private IssuerPublicKey issuerKeyWithoutAlgorithms() {
+		return new IssuerPublicKey(10, "10:test", issuerKeyPair.getPublic(), "SHA256withECDSA", new Provider("Empty", "1.0", "Without algorithms") {
+			private static final long serialVersionUID = 1L;
+		});
 	}
 
 	// signed data encoding
@@ -229,6 +259,52 @@ public class IccPublicKeyBuilderTest {
 				.withIssuerSignatureProtectedHeader(issuerSignatureProtectedHeader());
 
 		assertThrows(SignatureException.class, builder::build);
+	}
+
+	// the algorithm of the issuer signature
+
+	@Test
+	public void testBuildWithoutAlgorithm() throws Exception {
+		IccPublicKeyBuilder builder = signedBuilder(header(null), issuerKey());
+
+		SignatureException e = assertThrows(SignatureException.class, builder::build);
+		assertEquals("Issuer signature algorithm null is not ES256 or RS256", e.getMessage());
+	}
+
+	@Test
+	public void testBuildWithAlgorithmNotInTheSpecification() throws Exception {
+		// signed with the issuer key, but the card names an algorithm which is not in MTS1
+		for (String alg : new String[] { "", "none", "HS256", "ES384", "PS256", "es256" }) {
+			IccPublicKeyBuilder builder = signedBuilder(header(alg), issuerKey());
+
+			SignatureException e = assertThrows(SignatureException.class, builder::build, alg);
+			assertEquals("Issuer signature algorithm " + alg + " is not ES256 or RS256", e.getMessage());
+		}
+	}
+
+	@Test
+	public void testBuildWithAlgorithmWhichDoesNotMatchTheIssuerKey() throws Exception {
+		// RS256 is in MTS1, but the issuer key is EC
+		IccPublicKeyBuilder builder = signedBuilder(header("RS256"), issuerKey());
+
+		SignatureException e = assertThrows(SignatureException.class, builder::build);
+		assertEquals("Issuer signature algorithm RS256 does not match issuer public key 10:test of participant 10 (ES256)", e.getMessage());
+	}
+
+	@Test
+	public void testAlgorithmNotInTheSpecificationIsBlamedOnTheCard() throws Exception {
+		// verifying would fail on our side, but the card is checked first
+		IccPublicKeyBuilder builder = signedBuilder(header("HS256"), issuerKeyWithoutAlgorithms());
+
+		assertThrows(SignatureException.class, builder::build);
+	}
+
+	@Test
+	public void testAlgorithmInTheSpecificationIsNotBlamedOnTheCard() throws Exception {
+		// the card is as in the specification, so a problem when verifying is on our side
+		IccPublicKeyBuilder builder = signedBuilder(header(), issuerKeyWithoutAlgorithms());
+
+		assertThrows(NoSuchAlgorithmException.class, builder::build);
 	}
 
 	@Test

@@ -51,21 +51,20 @@ public class ThumbprintFactory {
 
 	public byte[] create(IssuerSignatureProtectedHeader header) throws UnableToConstructThumbprintKeyException {
 		TokenPublicKey tpk = header.getTpk();
-
-		String algorithm = header.getAlg();
-
-		if (tpk == null || algorithm == null) {
-			throw new UnableToConstructThumbprintKeyException("Missing token public key or algorithm");
+		if (tpk == null) {
+			throw new UnableToConstructThumbprintKeyException("Missing token public key");
 		}
 
-		byte[] message = null;
+		// by the type of the key, not alg in the header, which is the algorithm of the issuer signature
+		byte[] message;
 
-		if (algorithm.equals("RS256")) {
+		String algorithm = Mts1Algorithms.getTokenAlgorithm(tpk);
+		if (Mts1Algorithms.RS256.equals(algorithm)) {
 			message = createRSAMessage(tpk);
-		} else if (algorithm.equals("ES256")) {
+		} else if (Mts1Algorithms.ES256.equals(algorithm)) {
 			message = createECMessage(tpk);
 		} else {
-			throw new UnableToConstructThumbprintKeyException(algorithm);
+			throw new UnableToConstructThumbprintKeyException("Unknown key type " + tpk.getKty());
 		}
 
 		byte[] digest;

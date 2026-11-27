@@ -90,15 +90,21 @@ public class IccPublicKeyBuilder {
 
 	/**
 	 * Verify the issuer signature, and create the ICC public key.
+	 * <p>
+	 * The algorithm of the issuer signature (<code>alg</code> in the header) is checked first: it must be one of those in MTS1 (ES256 or RS256), and match the
+	 * issuer key. A card which is not as in the specification is to blame, whatever happens on our side when verifying.
 	 *
 	 * @return the ICC public key
-	 * @throws SignatureException                  if the issuer signature is not valid (a problem on the card side)
+	 * @throws SignatureException                  if the issuer signature is not valid, or its algorithm is missing, not as in MTS1, or does not match the
+	 *                                             issuer key (a problem on the card side)
 	 * @throws UnableToConstructIccKeyException    if the ICC public key could not be created from the certificate of the card (a problem on the card side)
 	 * @throws NoSuchAlgorithmException            if a signature algorithm is not available from the security provider (a problem on our side)
 	 * @throws UnableToConstructIssuerKeyException if the issuer key is not accepted by the security provider (a problem on our side)
 	 */
 
 	public IccPublicKey build() throws SignatureException, UnableToConstructIccKeyException, NoSuchAlgorithmException, UnableToConstructIssuerKeyException {
+		checkAlgorithm();
+
 		byte[] data = getSignedData();
 
 		if (!issuerPublicKey.verify(data, signature)) {
@@ -106,6 +112,24 @@ public class IccPublicKeyBuilder {
 		}
 
 		return iccSignatureFactory.create(issuerSignatureProtectedHeader);
+	}
+
+	/**
+	 * Check the algorithm of the issuer signature in the header of the card, before anything which could fail on our side.
+	 *
+	 * @throws SignatureException if the algorithm is missing, not as in MTS1, or does not match the issuer key (a problem on the card side)
+	 */
+
+	protected void checkAlgorithm() throws SignatureException {
+		String alg = issuerSignatureProtectedHeader.getAlg();
+		if (!Mts1Algorithms.isIssuerSignatureAlgorithm(alg)) {
+			throw new SignatureException("Issuer signature algorithm " + alg + " is not " + Mts1Algorithms.ES256 + " or " + Mts1Algorithms.RS256);
+		}
+		String expected = issuerPublicKey.getJwsAlgorithm();
+		if (expected != null && !expected.equals(alg)) {
+			throw new SignatureException("Issuer signature algorithm " + alg + " does not match issuer public key " + issuerPublicKey.getKid()
+					+ " of participant " + issuerPublicKey.getPid() + " (" + expected + ")");
+		}
 	}
 
 	/**

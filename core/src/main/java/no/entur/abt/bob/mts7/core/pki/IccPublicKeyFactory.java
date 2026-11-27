@@ -9,7 +9,6 @@ import java.security.interfaces.RSAPublicKey;
 import java.util.Arrays;
 import java.util.List;
 
-import com.nimbusds.jose.KeyTypeException;
 import com.nimbusds.jose.jwk.Curve;
 import com.nimbusds.jose.jwk.ECKey;
 import com.nimbusds.jose.jwk.JWK;
@@ -48,50 +47,39 @@ public class IccPublicKeyFactory {
 	}
 
 	/**
-	 * Create the public key of a card from its certificate.
+	 * Create the public key of a card from its certificate. The algorithm of the signatures of the card follows from the type of the key (EC or RSA), not from
+	 * <code>alg</code> in the header, which is the algorithm of the issuer signature (see {@linkplain Mts1Algorithms}).
 	 *
 	 * @param header the Issuer Signature Protected Header of the card
 	 * @return the public key of the card
-	 * @throws UnableToConstructIccKeyException if the token public key or the algorithm of the card is missing, unknown or invalid (a problem on the card side)
+	 * @throws UnableToConstructIccKeyException if the token public key of the card is missing, of an unknown type, or invalid (a problem on the card side)
 	 * @throws NoSuchAlgorithmException         if the signature algorithm is not available from the security provider (a problem on our side)
 	 */
 
 	public IccPublicKey create(IssuerSignatureProtectedHeader header) throws UnableToConstructIccKeyException, NoSuchAlgorithmException {
 		TokenPublicKey tpk = header.getTpk();
 
-		String algorithm = header.getAlg();
-
 		try {
 			if (tpk == null) {
 				throw new UnableToConstructIccKeyException("Missing token public key");
-			}
-			if (algorithm == null) {
-				throw new UnableToConstructIccKeyException("Missing algorithm");
 			}
 
 			JWK jwk = toJwk(tpk);
 
 			List<Key> keys = KeyConverter.toJavaKeys(Arrays.asList(jwk));
+			if (keys.isEmpty()) {
+				throw new UnableToConstructIccKeyException("Invalid token public key");
+			}
 
 			Key key = keys.get(0);
 
-			if (algorithm.equals("RS256")) {
-
-				if (!(key instanceof RSAPublicKey)) {
-					throw new KeyTypeException(RSAPublicKey.class);
-				}
-
-				return create((RSAPublicKey) key, "NONEwithRSA");
-			} else if (algorithm.equals("ES256")) {
-
-				if (!(key instanceof ECPublicKey)) {
-					throw new KeyTypeException(ECPublicKey.class);
-				}
-
+			if (key instanceof ECPublicKey) {
 				return create((ECPublicKey) key, "NoneWithECDSA");
-			} else {
-				throw new UnableToConstructIccKeyException("Unknown algorithm " + algorithm);
 			}
+			if (key instanceof RSAPublicKey) {
+				return create((RSAPublicKey) key, "NONEwithRSA");
+			}
+			throw new UnableToConstructIccKeyException("Unknown key type " + key.getAlgorithm());
 		} catch (UnableToConstructIccKeyException | NoSuchAlgorithmException e) {
 			throw e;
 		} catch (Exception e) {

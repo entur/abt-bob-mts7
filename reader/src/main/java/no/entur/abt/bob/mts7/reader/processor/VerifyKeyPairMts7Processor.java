@@ -15,6 +15,7 @@ import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
 import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
+import no.entur.abt.bob.mts7.core.pki.Mts1Algorithms;
 import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
 import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
 import no.entur.abt.bob.mts7.mtb.MobileTicketBundle;
@@ -79,11 +80,10 @@ public class VerifyKeyPairMts7Processor extends AbstractMts7Processor {
 			throw new InvalidCardMts7Exception("Missing Issuer Signature Protected Header", result);
 		}
 
-		// note here what kind of algorithm we are using
-		// EC and RSA do not encode the input to the internal authenticate function
-		// in the same way.
+		// note here what kind of algorithm the card uses: EC and RSA do not encode the input to the internal authenticate function in the same way. It
+		// follows from the type of the public key of the card, not from alg in the header, which is the algorithm of the issuer signature.
 
-		setIccKeyAlgorithm(header.getAlg());
+		setIccKeyAlgorithm(Mts1Algorithms.getTokenAlgorithm(header.getTpk()));
 
 		IccPublicKey iccPublicKey;
 		try {

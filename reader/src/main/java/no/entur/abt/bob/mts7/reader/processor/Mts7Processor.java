@@ -12,6 +12,15 @@ public interface Mts7Processor extends Runnable {
 
 	void close();
 
+	/**
+	 * Wait for the algorithm of the signatures of the card to be known, from the type of its public key (not from <code>alg</code> in the header, which is the
+	 * algorithm of the issuer signature).
+	 *
+	 * @param delay time to wait in milliseconds, or zero to wait until the algorithm is known or the processor is closed or has finished
+	 * @return ES256 for an EC key, RS256 for an RSA key, or null if it is not known (yet)
+	 * @throws InterruptedException if interrupted while waiting
+	 */
+
 	String waitForAlgorithm(long delay) throws InterruptedException;
 
 	/**

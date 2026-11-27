@@ -245,9 +245,23 @@ public class IccPublicKeyTest {
 	}
 
 	@Test
-	public void testFactoryReportsAlgorithmWhichDoesNotMatchTheKey() {
+	public void testFactoryDoesNotUseTheAlgorithmOfTheIssuerSignature() throws Exception {
+		// alg in the header is the algorithm of the issuer signature, so the key of the card follows from its type only
+		for (String alg : new String[] { "RS256", "HS256", null }) {
+			IssuerSignatureProtectedHeader header = ecHeader((ECPublicKey) ecKeyPair.getPublic());
+			header.setAlg(alg);
+
+			IccPublicKey key = new IccPublicKeyFactory().create(header);
+
+			assertEquals("EC", key.getAlgorithm(), alg);
+			assertTrue(key.verify(CHALLENGE, signEc(ecKeyPair.getPrivate(), CHALLENGE)), alg);
+		}
+	}
+
+	@Test
+	public void testFactoryReportsUnknownKeyType() {
 		IssuerSignatureProtectedHeader header = ecHeader((ECPublicKey) ecKeyPair.getPublic());
-		header.setAlg("RS256");
+		header.getTpk().setKty("oct");
 
 		assertThrows(UnableToConstructIccKeyException.class, () -> new IccPublicKeyFactory().create(header));
 	}

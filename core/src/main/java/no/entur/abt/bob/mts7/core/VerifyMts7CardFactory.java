@@ -157,7 +157,8 @@ public class VerifyMts7CardFactory {
 	 *                                                  <code>trustUnknownRootKeys</code>; a problem on the card side, or the participant metadata is out of
 	 *                                                  date)
 	 * @throws TrustChainInvalidCardMts7Exception       if the certificate of the card was not signed by a known issuer (door 2): the issuer signature is not
-	 *                                                  valid, or (as the subclass above) the issuer key is unknown (a problem on the card side)
+	 *                                                  valid, the algorithm is missing or not as in MTS1, or (as the subclass above) the issuer key is unknown
+	 *                                                  (a problem on the card side)
 	 * @throws KeyPairInvalidCardMts7Exception          if the card did not prove that it has the private key (door 3; a problem on the card side)
 	 * @throws IccKeyInvalidCardMts7Exception           if the public key of the card in its certificate is missing or not valid (a problem on the card side)
 	 * @throws InvalidCardMts7Exception                 if a response from the card is missing or malformed (a problem on the card side). This is also the
@@ -213,7 +214,7 @@ public class VerifyMts7CardFactory {
 			try {
 				iccPublicKey = iccPublicKeyBuilder.build();
 			} catch (SignatureException e) {
-				throw new TrustChainInvalidCardMts7Exception("Issuer signature is not valid", result);
+				throw new TrustChainInvalidCardMts7Exception(e.getMessage(), result);
 			} catch (UnableToConstructIccKeyException e) {
 				throw new IccKeyInvalidCardMts7Exception(result, e);
 			}

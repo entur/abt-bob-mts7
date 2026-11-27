@@ -142,8 +142,16 @@ public class VerifyMts7CardFactoryIssuerSignatureTest {
 	}
 
 	private byte[] header(String issuerId, String issuerKid, KeyPair tokenKeyPair) throws Exception {
+		return header("ES256", issuerId, issuerKid, tokenKeyPair);
+	}
+
+	/**
+	 * @param alg the algorithm of the issuer signature
+	 */
+
+	private byte[] header(String alg, String issuerId, String issuerKid, KeyPair tokenKeyPair) throws Exception {
 		Map<String, Object> header = new LinkedHashMap<>();
-		header.put("alg", "ES256");
+		header.put("alg", alg);
 		header.put("iid", issuerId);
 		header.put("kid", issuerKid);
 		header.put("miv", 6);
@@ -355,7 +363,8 @@ public class VerifyMts7CardFactoryIssuerSignatureTest {
 		KeyPair tokenKeyPair = generateEc();
 		KeyPair issuerKeyPair = generateRsa();
 
-		byte[] header = header("78", "78:test", tokenKeyPair);
+		// the card has an EC key, but the issuer signature is RS256
+		byte[] header = header("RS256", "78", "78:test", tokenKeyPair);
 		byte[] getData = bundle(header, genuineSecondElement, signRsa(issuerKeyPair.getPrivate(), signedData(header, genuineSecondElement)));
 
 		assertTrusted(rsaIssuer(78, "78:test", issuerKeyPair), payloads(getData, internalAuthenticate(tokenKeyPair)));
@@ -367,10 +376,37 @@ public class VerifyMts7CardFactoryIssuerSignatureTest {
 		KeyPair issuerKeyPair = generateRsa();
 		KeyPair attackerIssuerKeyPair = generateRsa();
 
-		byte[] header = header("78", "78:test", tokenKeyPair);
+		byte[] header = header("RS256", "78", "78:test", tokenKeyPair);
 		byte[] getData = bundle(header, genuineSecondElement, signRsa(attackerIssuerKeyPair.getPrivate(), signedData(header, genuineSecondElement)));
 
 		assertRejected(rsaIssuer(78, "78:test", issuerKeyPair), payloads(getData, internalAuthenticate(tokenKeyPair)));
+	}
+
+	@Test
+	public void testCardWithAlgorithmWhichDoesNotMatchTheIssuerKeyIsRejected() throws Exception {
+		// signed by the RSA issuer key, but the card says ES256
+		KeyPair tokenKeyPair = generateEc();
+		KeyPair issuerKeyPair = generateRsa();
+
+		byte[] header = header("ES256", "78", "78:test", tokenKeyPair);
+		byte[] getData = bundle(header, genuineSecondElement, signRsa(issuerKeyPair.getPrivate(), signedData(header, genuineSecondElement)));
+
+		TrustChainInvalidCardMts7Exception e = assertThrows(TrustChainInvalidCardMts7Exception.class,
+				() -> new VerifyMts7CardFactory(rsaIssuer(78, "78:test", issuerKeyPair)).create(payloads(getData, internalAuthenticate(tokenKeyPair))));
+		assertEquals("Issuer signature algorithm ES256 does not match issuer public key 78:test of participant 78 (RS256)", e.getMessage());
+	}
+
+	@Test
+	public void testCardWithAlgorithmNotInTheSpecificationIsRejected() throws Exception {
+		KeyPair tokenKeyPair = generateEc();
+		KeyPair issuerKeyPair = generateEc();
+
+		byte[] header = header("HS256", "77", "77:test", tokenKeyPair);
+		byte[] getData = bundle(header, genuineSecondElement, signEc(issuerKeyPair.getPrivate(), signedData(header, genuineSecondElement)));
+
+		TrustChainInvalidCardMts7Exception e = assertThrows(TrustChainInvalidCardMts7Exception.class,
+				() -> new VerifyMts7CardFactory(ecIssuer(77, "77:test", issuerKeyPair)).create(payloads(getData, internalAuthenticate(tokenKeyPair))));
+		assertEquals("Issuer signature algorithm HS256 is not ES256 or RS256", e.getMessage());
 	}
 
 	@Test

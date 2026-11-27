@@ -2,6 +2,7 @@ package no.entur.abt.bob.mts7.core.pki;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -133,6 +134,13 @@ public class IssuerPublicKeyTest {
 		assertFalse(ecKey().verify(DATA, null));
 		assertFalse(ecKey().verify(DATA, 0, DATA.length + 1, signEc(ecKeyPair.getPrivate(), DATA)));
 		assertFalse(ecKey().verify(DATA, -1, 1, signEc(ecKeyPair.getPrivate(), DATA)));
+	}
+
+	@Test
+	public void testJwsAlgorithm() throws Exception {
+		assertEquals("ES256", ecKey().getJwsAlgorithm());
+		assertEquals("RS256", rsaKey().getJwsAlgorithm());
+		assertNull(issuerKey("SHA384withECDSA", ecKeyPair.getPublic()).getJwsAlgorithm());
 	}
 
 	@Test
