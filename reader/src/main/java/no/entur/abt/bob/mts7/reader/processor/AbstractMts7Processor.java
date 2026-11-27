@@ -41,8 +41,8 @@ import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
  *
  * <p>
  * The processing reports a problem on the card side by throwing an {@linkplain InvalidCardMts7Exception} (or a subclass) from {@linkplain #process()}, which
- * {@linkplain #waitForVerify(long)} then throws as it is, and so with a problem with the reader ({@linkplain ReaderMts7Exception}). A problem on our side is an
- * {@linkplain no.entur.abt.bob.mts7.api.InfrastructureMts7Exception} (or a subclass), which {@linkplain #waitForVerify(long)} throws as the cause of an
+ * {@linkplain #waitForVerify(long)} then throws as it is, and so with a problem with the reader ({@linkplain ReaderMts7Exception}). A problem with the verifier
+ * is an {@linkplain no.entur.abt.bob.mts7.api.VerifierMts7Exception} (or a subclass), which {@linkplain #waitForVerify(long)} throws as the cause of an
  * {@linkplain ExecutionException}, as it does anything else, such as a {@linkplain java.util.concurrent.RejectedExecutionException} if the executor did not run
  * the processor, or a {@linkplain RuntimeException}, which is a bug.
  */
@@ -176,7 +176,7 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 		try {
 			executor.execute(this);
 		} catch (RuntimeException e) {
-			// not running, and never will: a problem on our side
+			// not running, and never will: a problem with the verifier
 			failure = e;
 			close();
 			finished.countDown();
@@ -259,8 +259,8 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 	 * @throws ReaderMts7Exception      if the input is not as a reader following MTS7 provides it, or the card was not completely read, as the processor was
 	 *                                  closed or the card was not read in time ({@linkplain MissingCardCommandsException}) (a problem with the reader)
 	 * @throws TimeoutException         if the processing did not finish within the timeout (nobody is to blame; try again, or wait longer)
-	 * @throws ExecutionException       if the processing failed because of a problem on our side, which is the cause: an
-	 *                                  {@linkplain no.entur.abt.bob.mts7.api.InfrastructureMts7Exception} (or a subclass), or anything else (see above)
+	 * @throws ExecutionException       if the processing failed because of a problem with the verifier, which is the cause: an
+	 *                                  {@linkplain no.entur.abt.bob.mts7.api.VerifierMts7Exception} (or a subclass), or anything else (see above)
 	 * @throws IllegalStateException    if the processor was never started
 	 */
 
@@ -453,8 +453,8 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 	 * card has passed all of the checks.
 	 *
 	 * @throws InvalidCardMts7Exception if the card is not valid, or could not be verified (a problem on the card side)
-	 * @throws Exception                if the processing failed because of a problem on our side: an
-	 *                                  {@linkplain no.entur.abt.bob.mts7.api.InfrastructureMts7Exception} (or a subclass)
+	 * @throws Exception                if the processing failed because of a problem with the verifier: an
+	 *                                  {@linkplain no.entur.abt.bob.mts7.api.VerifierMts7Exception} (or a subclass)
 	 */
 
 	protected abstract void process() throws Exception;
@@ -484,7 +484,7 @@ public abstract class AbstractMts7Processor implements Mts7Processor {
 
 			failure = e;
 		} catch (InterruptedException e) {
-			// for example when the executor is shut down: a problem on our side
+			// for example when the executor is shut down: a problem with the verifier
 			Thread.currentThread().interrupt();
 
 			failure = e;

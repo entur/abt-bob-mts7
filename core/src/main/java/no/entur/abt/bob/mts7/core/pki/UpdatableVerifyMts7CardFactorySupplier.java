@@ -36,7 +36,7 @@ import no.entur.abt.bob.mts7.core.VerifyMts7CardFactorySupplier;
  * <li>a required participant does not have an issuer key which can be used, or</li>
  * <li>more than a maximum number of its issuer keys cannot be used, so that a few keys which cannot be used do not stop an update, but many do.</li>
  * </ul>
- * A card whose issuer key cannot be used is a problem on our side ({@linkplain UnableToConstructIssuerKeyException}), not an invalid card.
+ * A card whose issuer key cannot be used is a problem with the verifier ({@linkplain UnableToConstructIssuerKeyException}), not an invalid card.
  * <p>
  * Instances are thread safe.
  */

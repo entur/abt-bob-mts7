@@ -3,13 +3,13 @@ package no.entur.abt.bob.mts7.core;
 import java.security.NoSuchAlgorithmException;
 import java.security.Provider;
 
-import no.entur.abt.bob.mts7.api.InfrastructureMts7Exception;
+import no.entur.abt.bob.mts7.api.VerifierMts7Exception;
 
 /**
- * An algorithm is not available from the security provider (a problem on our side). The cause is the {@linkplain NoSuchAlgorithmException}.
+ * An algorithm is not available from the security provider (a problem with the verifier). The cause is the {@linkplain NoSuchAlgorithmException}.
  */
 
-public class NoSuchAlgorithmMts7Exception extends InfrastructureMts7Exception {
+public class NoSuchAlgorithmMts7Exception extends VerifierMts7Exception {
 
 	private static final long serialVersionUID = 1L;
 

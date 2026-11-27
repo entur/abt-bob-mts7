@@ -52,8 +52,8 @@ public class IccPublicKey {
 	 * @param data     signed data (the challenge)
 	 * @param expected signature from the card
 	 * @throws KeyPairInvalidCardMts7Exception  if the signature is not valid, or malformed (a problem on the card side)
-	 * @throws UnableToConstructIccKeyException if the security provider does not accept the key of the card (a problem on our side)
-	 * @throws NoSuchAlgorithmMts7Exception     if the signature algorithm is not available from the security provider (a problem on our side)
+	 * @throws UnableToConstructIccKeyException if the security provider does not accept the key of the card (a problem with the verifier)
+	 * @throws NoSuchAlgorithmMts7Exception     if the signature algorithm is not available from the security provider (a problem with the verifier)
 	 */
 
 	public void verify(byte[] data, byte[] expected) throws KeyPairInvalidCardMts7Exception, UnableToConstructIccKeyException, NoSuchAlgorithmMts7Exception {
@@ -68,14 +68,14 @@ public class IccPublicKey {
 	 * @param length   length of the signed data
 	 * @param expected signature from the card
 	 * @throws KeyPairInvalidCardMts7Exception  if the signature is not valid, or malformed (a problem on the card side)
-	 * @throws UnableToConstructIccKeyException if the security provider does not accept the key of the card (a problem on our side)
-	 * @throws NoSuchAlgorithmMts7Exception     if the signature algorithm is not available from the security provider (a problem on our side)
+	 * @throws UnableToConstructIccKeyException if the security provider does not accept the key of the card (a problem with the verifier)
+	 * @throws NoSuchAlgorithmMts7Exception     if the signature algorithm is not available from the security provider (a problem with the verifier)
 	 */
 
 	public void verify(byte[] data, int offset, int length, byte[] expected)
 			throws KeyPairInvalidCardMts7Exception, UnableToConstructIccKeyException, NoSuchAlgorithmMts7Exception {
 		// a signature is stateful, so use a new one: it is not shared with anyone, and there is no need to restore it to a known state if something goes
-		// wrong. A missing algorithm is a problem on our side, so it is not caught here.
+		// wrong. A missing algorithm is a problem with the verifier, so it is not caught here.
 		Objects.requireNonNull(data, "data");
 		Objects.requireNonNull(expected, "expected");
 
@@ -124,7 +124,7 @@ public class IccPublicKey {
 	 * Create a signature which is initialized for verification with the key.
 	 *
 	 * @return a new signature
-	 * @throws NoSuchAlgorithmMts7Exception if the algorithm is not available (a problem on our side)
+	 * @throws NoSuchAlgorithmMts7Exception if the algorithm is not available (a problem with the verifier)
 	 * @throws InvalidKeyException          if the key is not accepted (a problem on the card side)
 	 */
 

@@ -1,14 +1,14 @@
 package no.entur.abt.bob.mts7.core;
 
-import no.entur.abt.bob.mts7.api.InfrastructureMts7Exception;
+import no.entur.abt.bob.mts7.api.VerifierMts7Exception;
 
 /**
  * The thumbprint of the public key of the card cannot be created, although the key itself is fine, for example because the digest algorithm is not available (a
- * problem on our side). A public key of the card which is missing or not valid is a problem on the card side:
+ * problem with the verifier). A public key of the card which is missing or not valid is a problem on the card side:
  * {@linkplain NonCompliantIccKeyInvalidCardMts7Exception}.
  */
 
-public class UnableToConstructThumbprintKeyException extends InfrastructureMts7Exception {
+public class UnableToConstructThumbprintKeyException extends VerifierMts7Exception {
 
 	private static final long serialVersionUID = 1L;
 

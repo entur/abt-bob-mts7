@@ -135,7 +135,7 @@ public class IccPublicKeyBuilderTest {
 	}
 
 	/**
-	 * The issuer key, with a security provider which does not have any algorithms, so that verifying fails on our side.
+	 * The issuer key, with a security provider which does not have any algorithms, so that verifying fails in the verifier.
 	 */
 
 	private IssuerPublicKey issuerKeyWithoutAlgorithms() {
@@ -296,7 +296,7 @@ public class IccPublicKeyBuilderTest {
 
 	@Test
 	public void testAlgorithmNotInTheSpecificationIsBlamedOnTheCard() throws Exception {
-		// verifying would fail on our side, but the card is checked first
+		// verifying would fail in the verifier, but the card is checked first
 		IccPublicKeyBuilder builder = signedBuilder(header("HS256"), issuerKeyWithoutAlgorithms());
 
 		assertEquals(InvalidCardMts7Exception.class, assertThrows(InvalidCardMts7Exception.class, builder::build).getClass());
@@ -304,7 +304,7 @@ public class IccPublicKeyBuilderTest {
 
 	@Test
 	public void testAlgorithmInTheSpecificationIsNotBlamedOnTheCard() throws Exception {
-		// the card is as in the specification, so a problem when verifying is on our side
+		// the card is as in the specification, so a problem when verifying is with the verifier
 		IccPublicKeyBuilder builder = signedBuilder(header(), issuerKeyWithoutAlgorithms());
 
 		assertThrows(NoSuchAlgorithmMts7Exception.class, builder::build);

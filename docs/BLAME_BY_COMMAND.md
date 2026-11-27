@@ -1,6 +1,6 @@
 # Who is to blame, command by command
 
-Every problem with a card read is blamed on one of three sides: the card (`InvalidCardMts7Exception`), the reader which read the card and sent the exchanges (`ReaderMts7Exception`), or the infrastructure: the issuer keys, the security provider and the configuration (`InfrastructureMts7Exception`). The [README](../README.md#who-is-to-blame) lists the exceptions in the order in which they occur. This page goes through the same problems one APDU command at a time: what can be wrong with the command, with the status word of the response, and with the data in it.
+Every problem with a card read is blamed on one of three sides: the card (`InvalidCardMts7Exception`), the reader which read the card and sent the exchanges (`ReaderMts7Exception`), or the verifier, which checks the card on the device or in the backend: its issuer keys, its security provider and its configuration (`VerifierMts7Exception`). The [README](../README.md#who-is-to-blame) lists the exceptions in the order in which they occur. This page goes through the same problems one APDU command at a time: what can be wrong with the command, with the status word of the response, and with the data in it.
 
 A reader following MTS7 exchanges these commands with the card:
 
@@ -38,7 +38,7 @@ The card is only to blame for `67 00` (`UnexpectedCardResponseException`) to a c
 
 ## The exchanges as a whole
 
-| What goes wrong | Exception | Card | Reader | Infrastructure |
+| What goes wrong | Exception | Card | Reader | Verifier |
 | --- | --- | :---: | :---: | :---: |
 | No exchanges, fewer than three, or a missing exchange | `MissingCardCommandsException` | | ✅ | |
 | The processor was closed before the card was read, or the card was not completely read within the lifetime of the processor (device) | `MissingCardCommandsException` | | ✅ | |
@@ -56,7 +56,7 @@ Not a problem of any side: a `TimeoutException` from `waitForVerify(..)` or `get
 
 `00 A4 04 00 06 A0 00 00 07 81 01 00` (MTS7 4.1.1). The first command.
 
-| What goes wrong | Exception | Card | Reader | Infrastructure |
+| What goes wrong | Exception | Card | Reader | Verifier |
 | --- | --- | :---: | :---: | :---: |
 | The first command is not SELECT by DF name (`00 A4 04 00`) (backend) | `UnexpectedCardCommandException` | | ✅ | |
 | SELECT of another application than `A0 00 00 07 81 01` (backend) | `UnexpectedCardCommandException` | | ✅ | |
@@ -71,7 +71,7 @@ Not a problem of any side: an empty response, or one without application-related
 
 `00 CA 00 6E 00` (MTS7 4.1.1 and 4.1.2). Only when the select application response has no `6E`.
 
-| What goes wrong | Exception | Card | Reader | Infrastructure |
+| What goes wrong | Exception | Card | Reader | Verifier |
 | --- | --- | :---: | :---: | :---: |
 | The select application response has no `6E`, and the reader did not send GET DATA of it, or could not retrieve it. Reported only once the card has passed door 2 and door 3 | `InsufficientCardCommandsException` | | ✅ | |
 | The command has data, or no Le | `MalformedCardCommandException` | | ✅ | |
@@ -84,7 +84,7 @@ Not a problem of any side: an empty response, or one without application-related
 
 The device sends GET NEXT DATA with an extended Le first, which saves GET RESPONSE round trips for a card which supports extended length.
 
-| What goes wrong | Exception | Card | Reader | Infrastructure |
+| What goes wrong | Exception | Card | Reader | Verifier |
 | --- | --- | :---: | :---: | :---: |
 | There is no GET (NEXT) DATA of `7F21` | `MissingCardCommandsException` | | ✅ | |
 | The command has data, or no Le | `MalformedCardCommandException` | | ✅ | |
@@ -114,7 +114,7 @@ Not a problem of any side:
 
 `00 C0 00 00 00 00 00`, or `00 C0 00 00 00` with a short Le (MTS7 2.1 and 4.1.3). After `61xx` to any command, for as long as the card has more.
 
-| What goes wrong | Exception | Card | Reader | Infrastructure |
+| What goes wrong | Exception | Card | Reader | Verifier |
 | --- | --- | :---: | :---: | :---: |
 | GET RESPONSE after a complete response (backend) | `UnexpectedCardCommandException` | | ✅ | |
 | The command has data, or no Le | `MalformedCardCommandException` | | ✅ | |
@@ -125,7 +125,7 @@ Not a problem of any side:
 
 `00 88 00 00 20 <32-byte challenge> 00` (MTS7 4.1.4). The last command, possibly followed by GET RESPONSE. The card signs the challenge with its private key, and the signature is checked with `tpk` at door 3.
 
-| What goes wrong | Exception | Card | Reader | Infrastructure |
+| What goes wrong | Exception | Card | Reader | Verifier |
 | --- | --- | :---: | :---: | :---: |
 | The last command is not INTERNAL AUTHENTICATE `00 88 00 00` (backend) | `UnexpectedCardCommandException` | | ✅ | |
 | The challenge is not a SHA-256 hash of 32 bytes (MTS7 4.1.4) | `MalformedCardCommandException` | | ✅ | |

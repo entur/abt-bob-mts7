@@ -7,13 +7,13 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
-import no.entur.abt.bob.mts7.api.InfrastructureMts7Exception;
 import no.entur.abt.bob.mts7.api.InsufficientCardCommandsException;
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.api.MalformedCardResponseException;
 import no.entur.abt.bob.mts7.api.ReaderMts7Exception;
 import no.entur.abt.bob.mts7.api.UnableToSelectApplicationException;
 import no.entur.abt.bob.mts7.api.UnexpectedCardResponseException;
+import no.entur.abt.bob.mts7.api.VerifierMts7Exception;
 
 /**
  * Each exception is a problem of exactly one side: the card, the reader, or us.
@@ -21,7 +21,7 @@ import no.entur.abt.bob.mts7.api.UnexpectedCardResponseException;
 
 public class Mts7ExceptionSidesTest {
 
-	private static final Class<?>[] SIDES = { InvalidCardMts7Exception.class, ReaderMts7Exception.class, InfrastructureMts7Exception.class };
+	private static final Class<?>[] SIDES = { InvalidCardMts7Exception.class, ReaderMts7Exception.class, VerifierMts7Exception.class };
 
 	private static void assertSide(Class<?> expected, Class<?>... exceptions) {
 		for (Class<?> c : exceptions) {
@@ -50,7 +50,7 @@ public class Mts7ExceptionSidesTest {
 
 	@Test
 	public void testOurSide() {
-		assertSide(InfrastructureMts7Exception.class, UnableToConstructIssuerKeyException.class, NoSuchAlgorithmMts7Exception.class,
+		assertSide(VerifierMts7Exception.class, UnableToConstructIssuerKeyException.class, NoSuchAlgorithmMts7Exception.class,
 				UnableToConstructThumbprintKeyException.class, UnableToConstructIccKeyException.class, OutdatedIssuerKeysException.class);
 	}
 

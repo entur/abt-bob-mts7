@@ -297,7 +297,7 @@ public class IccPublicKeyTest {
 
 	@Test
 	public void testUnavailableAlgorithmIsNotInvalidSignature() throws Exception {
-		// a problem on our side: the security provider does not have the algorithm
+		// a problem with the verifier: the security provider does not have the algorithm
 		IccPublicKey key = new IccPublicKey(ecKeyPair.getPublic(), "NoneWithECDSA", new Provider("Empty", "1.0", "Without algorithms") {
 			private static final long serialVersionUID = 1L;
 		});
@@ -310,7 +310,7 @@ public class IccPublicKeyTest {
 
 	@Test
 	public void testKeyNotAcceptedByTheProviderIsNotInvalidCard() throws Exception {
-		// a key which the factory created is as MTS7 specifies it, so a provider which does not accept it is a problem on our side
+		// a key which the factory created is as MTS7 specifies it, so a provider which does not accept it is a problem with the verifier
 		IccPublicKey key = new IccPublicKey(rsaKeyPair.getPublic(), "NoneWithECDSA", null);
 
 		assertThrows(UnableToConstructIccKeyException.class, () -> key.verify(CHALLENGE, signEc(ecKeyPair.getPrivate(), CHALLENGE)));
@@ -341,7 +341,7 @@ public class IccPublicKeyTest {
 
 	@Test
 	public void testFactoryWithoutTheKeyAlgorithmIsNotInvalidCard() {
-		// a problem on our side: the security provider does not have the key algorithm
+		// a problem with the verifier: the security provider does not have the key algorithm
 		Provider empty = new Provider("Empty", "1.0", "Without algorithms") {
 			private static final long serialVersionUID = 1L;
 		};

@@ -72,7 +72,7 @@ public class VerifyKeyPairMts7Processor extends AbstractMts7Processor {
 		}
 
 		// MTS1 requires alg, the algorithm of the issuer signature, and has two. Checked before anything else in the header, so that a card which is
-		// not as in the specification is to blame, whatever happens on our side with the issuer key.
+		// not as in the specification is to blame, whatever happens with the issuer key in the verifier.
 		if (!Mts1Algorithms.isIssuerSignatureAlgorithm(header.getAlg())) {
 			throw new InvalidCardMts7Exception(
 					"Issuer signature algorithm " + header.getAlg() + " is not " + Mts1Algorithms.ES256 + " or " + Mts1Algorithms.RS256);
@@ -86,7 +86,7 @@ public class VerifyKeyPairMts7Processor extends AbstractMts7Processor {
 		IccPublicKey iccPublicKey;
 		iccPublicKey = iccSignatureFactory.create(header);
 
-		// from the same token public key as the public key of the card, which could be created, so a problem here is expected to be on our side
+		// from the same token public key as the public key of the card, which could be created, so a problem here is expected to be with the verifier
 		byte[] thumbprint = thumbprintFactory.create(header);
 		updateResult(card -> card.setThumbprint(thumbprint));
 

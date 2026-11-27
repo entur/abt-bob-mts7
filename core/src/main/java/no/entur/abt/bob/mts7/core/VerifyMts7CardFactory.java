@@ -7,10 +7,10 @@ import java.util.Objects;
 
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
-import no.entur.abt.bob.mts7.api.InfrastructureMts7Exception;
 import no.entur.abt.bob.mts7.api.InsufficientCardCommandsException;
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.api.ReaderMts7Exception;
+import no.entur.abt.bob.mts7.api.VerifierMts7Exception;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyBuilder;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
@@ -213,17 +213,17 @@ public class VerifyMts7CardFactory {
 	 *                                                    missing or not as in MTS1 (a problem on the card side). This is also the superclass of the above, so
 	 *                                                    catch it for any problem on the card side.
 	 * @throws UnableToConstructIssuerKeyException        if the issuer key of the card is known, but could not be created, is not supported, or is not accepted
-	 *                                                    by the security provider (a problem on our side)
-	 * @throws NoSuchAlgorithmMts7Exception               if a signature algorithm is not available from the security provider (a problem on our side)
+	 *                                                    by the security provider (a problem with the verifier)
+	 * @throws NoSuchAlgorithmMts7Exception               if a signature algorithm is not available from the security provider (a problem with the verifier)
 	 * @throws UnableToConstructThumbprintKeyException    if the thumbprint of the public key of the card could not be created, although the key could (a
-	 *                                                    problem on our side)
+	 *                                                    problem with the verifier)
 	 * @throws ReaderMts7Exception                        if the input is incomplete or malformed, as it was not read as MTS7 specifies (a problem with the
 	 *                                                    reader)
-	 * @throws InfrastructureMts7Exception                if the card could not be verified because of a problem on our side. This is also the superclass of the
-	 *                                                    three above, so catch it for any problem on our side.
+	 * @throws VerifierMts7Exception                      if the card could not be verified because of a problem with the verifier. This is also the superclass
+	 *                                                    of the three above, so catch it for any problem with the verifier.
 	 */
 
-	public Mts7Card create(Mts7ApduPayloads card) throws InvalidCardMts7Exception, ReaderMts7Exception, InfrastructureMts7Exception {
+	public Mts7Card create(Mts7ApduPayloads card) throws InvalidCardMts7Exception, ReaderMts7Exception, VerifierMts7Exception {
 		Mts7Card result = new Mts7Card();
 
 		// The card is checked as far as it can be before a problem with the reader is reported, so that a card which is not valid is to blame for that,
@@ -247,7 +247,7 @@ public class VerifyMts7CardFactory {
 		}
 
 		// MTS1 requires alg, the algorithm of the issuer signature, and has two. Checked before anything else in the header, so that a card which is
-		// not as in the specification is to blame, whatever happens on our side with the issuer key.
+		// not as in the specification is to blame, whatever happens with the issuer key in the verifier.
 		if (!Mts1Algorithms.isIssuerSignatureAlgorithm(header.getAlg())) {
 			throw new InvalidCardMts7Exception(
 					"Issuer signature algorithm " + header.getAlg() + " is not " + Mts1Algorithms.ES256 + " or " + Mts1Algorithms.RS256);
@@ -287,7 +287,7 @@ public class VerifyMts7CardFactory {
 			throw new OutdatedIssuerKeysException(iid, header.getKid());
 		}
 
-		// from the same token public key as the public key of the card, which could be created, so a problem here is expected to be on our side
+		// from the same token public key as the public key of the card, which could be created, so a problem here is expected to be with the verifier
 		result.setThumbprint(thumbprintFactory.create(header));
 
 		verifyPrivateKey(card, iccPublicKey);
@@ -315,8 +315,7 @@ public class VerifyMts7CardFactory {
 	 * Door 3: check that the card has the private key, from its signature of the challenge.
 	 */
 
-	static void verifyPrivateKey(Mts7ApduPayloads card, IccPublicKey iccPublicKey)
-			throws InvalidCardMts7Exception, ReaderMts7Exception, InfrastructureMts7Exception {
+	static void verifyPrivateKey(Mts7ApduPayloads card, IccPublicKey iccPublicKey) throws InvalidCardMts7Exception, ReaderMts7Exception, VerifierMts7Exception {
 		if (!card.hasInternalAuthenticateOutput()) {
 			throw missing(card);
 		}

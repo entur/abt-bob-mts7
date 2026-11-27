@@ -61,8 +61,8 @@ public class IssuerPublicKey {
 	 * @param data signed data
 	 * @param sign signature
 	 * @throws TrustChainInvalidCardMts7Exception  if the signature is not valid, or the data or the signature is malformed (a problem on the card side)
-	 * @throws NoSuchAlgorithmMts7Exception        if the signature algorithm is not available from the security provider (a problem on our side)
-	 * @throws UnableToConstructIssuerKeyException if the key is not accepted by the security provider (a problem on our side)
+	 * @throws NoSuchAlgorithmMts7Exception        if the signature algorithm is not available from the security provider (a problem with the verifier)
+	 * @throws UnableToConstructIssuerKeyException if the key is not accepted by the security provider (a problem with the verifier)
 	 */
 
 	public void verify(byte[] data, byte[] sign) throws TrustChainInvalidCardMts7Exception, NoSuchAlgorithmMts7Exception, UnableToConstructIssuerKeyException {
@@ -77,14 +77,14 @@ public class IssuerPublicKey {
 	 * @param length length of the signed data
 	 * @param sign   signature
 	 * @throws TrustChainInvalidCardMts7Exception  if the signature is not valid, or the data or the signature is malformed (a problem on the card side)
-	 * @throws NoSuchAlgorithmMts7Exception        if the signature algorithm is not available from the security provider (a problem on our side)
-	 * @throws UnableToConstructIssuerKeyException if the key is not accepted by the security provider (a problem on our side)
+	 * @throws NoSuchAlgorithmMts7Exception        if the signature algorithm is not available from the security provider (a problem with the verifier)
+	 * @throws UnableToConstructIssuerKeyException if the key is not accepted by the security provider (a problem with the verifier)
 	 */
 
 	public void verify(byte[] data, int offset, int length, byte[] sign)
 			throws TrustChainInvalidCardMts7Exception, NoSuchAlgorithmMts7Exception, UnableToConstructIssuerKeyException {
 		// a signature is stateful, so use a new one: it is not shared with anyone, and there is no need to restore it to a known state if something goes
-		// wrong. A problem with the algorithm or the key is on our side, so it is not caught here.
+		// wrong. A problem with the algorithm or the key is with the verifier, so it is not caught here.
 		Objects.requireNonNull(data, "data");
 		Objects.requireNonNull(sign, "sign");
 

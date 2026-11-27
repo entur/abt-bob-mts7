@@ -160,7 +160,7 @@ Implementation:
  * Call on `InFlightMts7Card.getMts7Card(timeout)` (in milliseconds; zero waits until the processing has finished) to obtain a `Mts7Card`
  * Process card details (thumbprint, serial etc) locally
 
-`getMts7Card(..)` tells whose problem it is when a card is not verified: the card's, the reader's or the infrastructure's (see [Who is to blame](#who-is-to-blame) for every problem).
+`getMts7Card(..)` tells whose problem it is when a card is not verified: the card's, the reader's or the verifier's (see [Who is to blame](#who-is-to-blame) for every problem).
 
  * `InvalidCardMts7Exception` if the card cannot be trusted (a problem on the card side). For the details of such a card, use `LenientMts7CardFactory` (see below).
    * `TrustChainInvalidCardMts7Exception` (trust chain only) if the card certificate was not signed by a known issuer: the issuer signature is not valid or malformed, its algorithm (`alg` in the header) does not match the issuer key, or the issuer key is not among the public keys (unless the factory was created with `trustUnknownRootKeys`).
@@ -170,7 +170,7 @@ Implementation:
    * `InvalidCardMts7Exception` itself if what the card returned is malformed: an issuer signature algorithm `alg` which is missing or not `ES256` or `RS256` (checked by all factories and processors before the issuer key is looked up), or application-related data (6E) without a valid application identifier, which has the serial and the participant identifier.
  * `ReaderMts7Exception` if the card was not completely read, as the processor was closed or the card was not read in time (`MissingCardCommandsException`), or the input was not as a reader following MTS7 provides it: no application-related data, neither in the select application response nor from GET DATA (`InsufficientCardCommandsException`), or a challenge for internal authenticate which is not a SHA-256 hash of 32 bytes (`MalformedCardCommandException`).
  * `TimeoutException` if the processing did not finish within the timeout. Nobody is to blame; the processing goes on, so it can be waited for again. After `close()`, a processing which has begun is still waited for: it stops waiting for more input, but goes on with the input which has arrived.
- * `ExecutionException` if the processing failed because of a problem with the infrastructure, which is the cause: an `InfrastructureMts7Exception`, namely
+ * `ExecutionException` if the processing failed because of a problem with the verifier, which is the cause: a `VerifierMts7Exception`, namely
    * `UnableToConstructIssuerKeyException` if the issuer key of the card is among the public keys but cannot be created, is of a type which is not supported, or is not accepted by the security provider,
    * `UnableToConstructIccKeyException` if the public key of the card is as MTS7 specifies it, but not accepted by the security provider,
    * `NoSuchAlgorithmMts7Exception` if the security provider does not have a key or signature algorithm (the cause is the `NoSuchAlgorithmException`),
@@ -210,7 +210,7 @@ try (InFlightMts7Card inFlight = factory.create(exchange, null)) {
         } catch (TimeoutException e2) {
             // not processed in time: try again, or wait longer
         } catch (ExecutionException e2) {
-            // a problem with the infrastructure, see e2.getCause()
+            // a problem with the verifier, see e2.getCause()
         }
     }
 }
@@ -272,13 +272,13 @@ try {
     // a problem on the card side: it does not have the private key, was not issued by one of the issuers of the keys, or returned something malformed
 } catch (ReaderMts7Exception e) {
     // a problem with the reader: the exchanges are not as a reader following MTS7 sends them
-} catch (InfrastructureMts7Exception e) {
-    // a problem with the infrastructure: an issuer key which cannot be created, a security provider without a signature algorithm, or a thumbprint which cannot be created
+} catch (VerifierMts7Exception e) {
+    // a problem with the verifier: an issuer key which cannot be created, a security provider without a signature algorithm, or a thumbprint which cannot be created
 }
 ```
 </details>
 
-The card factories (`create(..)`) and the processors tell the sides apart in the same way, see [Who is to blame](#who-is-to-blame). The factories throw a problem with the infrastructure as it is, on the calling thread. Their constructors still throw `NoSuchAlgorithmException`, as the digest algorithm is checked when they are created. A verified card always has a thumbprint.
+The card factories (`create(..)`) and the processors tell the sides apart in the same way, see [Who is to blame](#who-is-to-blame). The factories throw a problem with the verifier as it is, on the calling thread. Their constructors still throw `NoSuchAlgorithmException`, as the digest algorithm is checked when they are created. A verified card always has a thumbprint.
 
 ## Who is to blame
 
@@ -288,9 +288,9 @@ Every problem is the problem of one side, and is reported with one of three exce
 | --- | --- | --- |
 | The card | `InvalidCardMts7Exception` | an invalid card (token) |
 | The reader which read the card and sent the exchanges, such as a control client | `ReaderMts7Exception` | an invalid request |
-| The infrastructure: the issuer keys, the security provider, the configuration | `InfrastructureMts7Exception` | an internal error |
+| The verifier, which checks the card on the device or in the backend: its issuer keys, its security provider, its configuration | `VerifierMts7Exception` | an internal error |
 
-The card is only blamed when it is at fault. Every command is checked to be as MTS7 specifies it before the response of the card to it, so a card which rejects a command which is not as specified is not to blame. The processors throw the problems of the card and of the reader as they are, and a problem with the infrastructure as the cause of an `ExecutionException`.
+The card is only blamed when it is at fault. Every command is checked to be as MTS7 specifies it before the response of the card to it, so a card which rejects a command which is not as specified is not to blame. The processors throw the problems of the card and of the reader as they are, and a problem with the verifier as the cause of an `ExecutionException`.
 
 A card which is not valid is to blame for that, whatever else it did, so that it cannot shift the blame to the reader by making the reader fail where it can. The card is checked as far as it can be before a problem with the reader is reported:
 
@@ -300,7 +300,7 @@ A card which is not valid is to blame for that, whatever else it did, so that it
 
 The exceptions in the order in which they can first occur: reading the card, sorting out the exchanges, what the card returned, door 2 and door 3. For the same problems one command at a time, see [Who is to blame, command by command](docs/BLAME_BY_COMMAND.md).
 
-| Exception | Description | Card | Reader | Infrastructure |
+| Exception | Description | Card | Reader | Verifier |
 | --- | --- | :---: | :---: | :---: |
 | `MalformedCardResponseException` | A response without a status word in the exchanges, which may not be as the card sent it. On the device, which reads the card as it is, a response shorter than a status word is the card's problem (`UnexpectedCardResponseException`) | | ✅ | |
 | `UnableToSelectApplicationException` | The card does not respond with success to SELECT, while it is read on the device | ✅ | | |
@@ -336,7 +336,7 @@ A bug, not to be reported as the problem of any side: a `RuntimeException`, such
 A card whose issuer key is not among the public keys may be forged, or genuine while the issuer keys are out of date, for example because the participant metadata could not be updated after the issuer started to use a new key. The card alone does not tell, so who is to blame is decided by an `UnknownIssuerKeyPolicy`, which is given to `VerifyMts7CardFactory`, `VerifyTrustChainMts7ProcessorFactory` or `UpdatableVerifyMts7CardFactorySupplier.newBuilder().withUnknownIssuerKeyPolicy(..)`:
 
  * `UnknownIssuerKeyPolicy.blameCard()` (the default): `UnknownIssuerKeyInvalidCardMts7Exception`.
- * `UnknownIssuerKeyPolicy.blameKeys()`: `OutdatedIssuerKeysException`, a problem with the infrastructure.
+ * `UnknownIssuerKeyPolicy.blameKeys()`: `OutdatedIssuerKeysException`, a problem with the verifier.
  * `UnknownIssuerKeyPolicy.blameCardIfConfirmedWithin(maximumAge, confirmedAt, clock)`: the card only if the keys were confirmed to be up to date (for example when the participant metadata was last downloaded or found unchanged) within the maximum age.
  * Your own, as the policy is a functional interface; policies can be combined with `and(..)`.
 

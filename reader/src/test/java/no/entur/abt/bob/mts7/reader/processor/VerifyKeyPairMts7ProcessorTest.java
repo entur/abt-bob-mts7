@@ -77,7 +77,7 @@ public class VerifyKeyPairMts7ProcessorTest extends AbstractExecutorTest {
 
 	@Test
 	public void testUnavailableSignatureAlgorithmIsNotInvalidCard() throws Exception {
-		// a problem on our side: the security provider does not have the signature algorithm of the card
+		// a problem with the verifier: the security provider does not have the signature algorithm of the card
 		Provider empty = new Provider("Empty", "1.0", "Without algorithms") {
 			private static final long serialVersionUID = 1L;
 		};

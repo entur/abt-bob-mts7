@@ -57,7 +57,7 @@ public class ThumbprintFactory {
 	 * @return the thumbprint
 	 * @throws NonCompliantIccKeyInvalidCardMts7Exception if the token public key of the card is missing or of a type which is not in MTS1 (a problem on the
 	 *                                                    card side)
-	 * @throws UnableToConstructThumbprintKeyException    if the thumbprint could not be created for a valid key (a problem on our side)
+	 * @throws UnableToConstructThumbprintKeyException    if the thumbprint could not be created for a valid key (a problem with the verifier)
 	 */
 
 	public byte[] create(IssuerSignatureProtectedHeader header) throws NonCompliantIccKeyInvalidCardMts7Exception, UnableToConstructThumbprintKeyException {

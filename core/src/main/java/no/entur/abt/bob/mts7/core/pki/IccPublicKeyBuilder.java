@@ -112,7 +112,7 @@ public class IccPublicKeyBuilder {
 	 * Verify the issuer signature, and create the ICC public key.
 	 * <p>
 	 * The algorithm of the issuer signature (<code>alg</code> in the header) is checked first: it must be one of those in MTS1 (ES256 or RS256), and match the
-	 * issuer key. A card which is not as in the specification is to blame, whatever happens on our side when verifying.
+	 * issuer key. A card which is not as in the specification is to blame, whatever happens in the verifier when verifying.
 	 *
 	 * @return the ICC public key
 	 * @throws TrustChainInvalidCardMts7Exception         if the issuer signature is not valid, or its algorithm does not match the issuer key (a problem on the
@@ -121,8 +121,8 @@ public class IccPublicKeyBuilder {
 	 *                                                    side)
 	 * @throws InvalidCardMts7Exception                   if the algorithm of the issuer signature is missing or not as in MTS1 (a problem on the card side).
 	 *                                                    This is also the superclass of the above.
-	 * @throws NoSuchAlgorithmMts7Exception               if a signature algorithm is not available from the security provider (a problem on our side)
-	 * @throws UnableToConstructIssuerKeyException        if the issuer key is not accepted by the security provider (a problem on our side)
+	 * @throws NoSuchAlgorithmMts7Exception               if a signature algorithm is not available from the security provider (a problem with the verifier)
+	 * @throws UnableToConstructIssuerKeyException        if the issuer key is not accepted by the security provider (a problem with the verifier)
 	 */
 
 	public IccPublicKey build()
@@ -137,7 +137,7 @@ public class IccPublicKeyBuilder {
 	}
 
 	/**
-	 * Check the algorithm of the issuer signature in the header of the card, before anything which could fail on our side.
+	 * Check the algorithm of the issuer signature in the header of the card, before anything which could fail in the verifier.
 	 *
 	 * @throws InvalidCardMts7Exception           if the algorithm is missing or not as in MTS1 (a problem on the card side)
 	 * @throws TrustChainInvalidCardMts7Exception if the algorithm does not match the issuer key (a problem on the card side)

@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 
 import com.nimbusds.jose.crypto.impl.ECDSA;
 
-import no.entur.abt.bob.mts7.api.InfrastructureMts7Exception;
+import no.entur.abt.bob.mts7.api.VerifierMts7Exception;
 import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
 import no.entur.abt.bob.mts7.core.TrustChainInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
@@ -154,7 +154,7 @@ public class IssuerPublicKeyTest {
 
 	@Test
 	public void testUnavailableAlgorithmIsNotInvalidSignature() throws Exception {
-		// a problem on our side: the security provider does not have the algorithm
+		// a problem with the verifier: the security provider does not have the algorithm
 		IssuerPublicKey key = new IssuerPublicKey(10, "10:test", ecKeyPair.getPublic(), "SHA256withECDSA", new Provider("Empty", "1.0", "Without algorithms") {
 			private static final long serialVersionUID = 1L;
 		});
@@ -163,12 +163,12 @@ public class IssuerPublicKeyTest {
 		NoSuchAlgorithmMts7Exception e = assertThrows(NoSuchAlgorithmMts7Exception.class, () -> key.verify(DATA, signature));
 		assertInstanceOf(NoSuchAlgorithmException.class, e.getCause());
 		assertEquals("SHA256withECDSA", e.getAlgorithm());
-		assertInstanceOf(InfrastructureMts7Exception.class, e);
+		assertInstanceOf(VerifierMts7Exception.class, e);
 	}
 
 	@Test
 	public void testKeyNotAcceptedIsNotInvalidSignature() throws Exception {
-		// a problem on our side: the issuer key does not fit the algorithm
+		// a problem with the verifier: the issuer key does not fit the algorithm
 		IssuerPublicKey key = issuerKey("SHA256withECDSA", rsaKeyPair.getPublic());
 
 		byte[] signature = signEc(ecKeyPair.getPrivate(), DATA);

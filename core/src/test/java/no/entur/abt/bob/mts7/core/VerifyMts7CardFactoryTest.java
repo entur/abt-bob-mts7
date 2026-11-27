@@ -105,7 +105,7 @@ public class VerifyMts7CardFactoryTest {
 
 	@Test
 	public void testUnknownRootKeyWithOutdatedKeysIsNotInvalidCard() throws Exception {
-		// the policy decides that our keys may be out of date: a problem on our side
+		// the policy decides that our keys may be out of date: a problem with the verifier
 		VerifyMts7CardFactory factory = new VerifyMts7CardFactory(ParticipantPublicKeys.newBuilder().build(), null, UnknownIssuerKeyPolicy.blameKeys());
 
 		OutdatedIssuerKeysException e = assertThrows(OutdatedIssuerKeysException.class, () -> factory.create(card(SIGNATURE_RESPONSE)));
@@ -177,7 +177,7 @@ public class VerifyMts7CardFactoryTest {
 
 	@Test
 	public void testKnownUnsupportedRootKeyIsNotInvalidCard() throws Exception {
-		// a problem on our side, also with the option: the key is known, so it is not an unknown key, and the card is not to blame
+		// a problem with the verifier, also with the option: the key is known, so it is not an unknown key, and the card is not to blame
 		VerifyMts7CardFactory factory = new VerifyMts7CardFactory(unsupportedRootKey(), null, true);
 
 		UnableToConstructIssuerKeyException e = assertThrows(UnableToConstructIssuerKeyException.class, () -> factory.create(card(SIGNATURE_RESPONSE)));
@@ -209,7 +209,7 @@ public class VerifyMts7CardFactoryTest {
 
 	@Test
 	public void testAlgorithmNotInTheSpecificationIsBlamedOnTheCardBeforeTheIssuerKey() throws Exception {
-		// the issuer key of the card is known but cannot be used (our side), but the card is not as in the specification, so it is to blame
+		// the issuer key of the card is known but cannot be used (the verifier), but the card is not as in the specification, so it is to blame
 		IssuerSignatureFactory broken = new IssuerSignatureFactory() {
 			@Override
 			public IssuerPublicKey createIssuerPublicKey(long pid, MtbJwkPublic jwkPublic) throws UnableToConstructIssuerKeyException {
@@ -224,14 +224,14 @@ public class VerifyMts7CardFactoryTest {
 			assertEquals(InvalidCardMts7Exception.class, e.getClass());
 			assertEquals("Issuer signature algorithm HS256 is not ES256 or RS256", e.getMessage());
 
-			// as in the specification, so the problem is on our side
+			// as in the specification, so the problem is with the verifier
 			assertThrows(UnableToConstructIssuerKeyException.class, () -> factory.create(card(SIGNATURE_RESPONSE)));
 		}
 	}
 
 	@Test
 	public void testIssuerKeyWhichCannotBeCreatedIsNotInvalidCard() throws Exception {
-		// a problem on our side: the root key of the card is among the issuer keys, but it cannot be created
+		// a problem with the verifier: the root key of the card is among the issuer keys, but it cannot be created
 		VerifyMts7CardFactory factory = new VerifyMts7CardFactory(rootKey(new IssuerSignatureFactory() {
 			@Override
 			public IssuerPublicKey createIssuerPublicKey(long pid, MtbJwkPublic jwkPublic) throws UnableToConstructIssuerKeyException {
@@ -244,7 +244,7 @@ public class VerifyMts7CardFactoryTest {
 
 	@Test
 	public void testUnavailableSignatureAlgorithmIsNotInvalidCard() throws Exception {
-		// a problem on our side: the security provider does not have the signature algorithm of the card
+		// a problem with the verifier: the security provider does not have the signature algorithm of the card
 		Provider empty = new Provider("Empty", "1.0", "Without algorithms") {
 			private static final long serialVersionUID = 1L;
 		};

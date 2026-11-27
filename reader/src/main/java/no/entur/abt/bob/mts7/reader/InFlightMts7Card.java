@@ -43,7 +43,7 @@ public class InFlightMts7Card implements Closeable {
 	 * @throws ReaderMts7Exception      if the card was not completely read, as it was closed or not read in time, or the input was not as MTS7 specifies (a
 	 *                                  problem with the reader)
 	 * @throws TimeoutException         if the processing did not finish within the timeout
-	 * @throws ExecutionException       if the processing failed because of a problem on our side, which is the cause
+	 * @throws ExecutionException       if the processing failed because of a problem with the verifier, which is the cause
 	 */
 
 	public Mts7Card getMts7Card(long timeout) throws InterruptedException, InvalidCardMts7Exception, ReaderMts7Exception, TimeoutException, ExecutionException {

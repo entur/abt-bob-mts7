@@ -85,7 +85,7 @@ public class InvalidMobileTicketBundleTest {
 
 	@Test
 	public void testThumbprintWhichCannotBeCreatedIsNotInvalidCard() throws Exception {
-		// the public key of a valid card can be created, so a thumbprint which cannot is a problem on our side
+		// the public key of a valid card can be created, so a thumbprint which cannot is a problem with the verifier
 		ThumbprintFactory thumbprintFactory = failingThumbprintFactory();
 		Mts7ApduPayloads payloads = payloads(bundle("valid"));
 
@@ -158,7 +158,7 @@ public class InvalidMobileTicketBundleTest {
 		return payloads;
 	}
 
-	// fails as with a problem on our side (the digest algorithm is checked when the factory is created, so this is not expected to happen)
+	// fails as with a problem with the verifier (the digest algorithm is checked when the factory is created, so this is not expected to happen)
 	private static ThumbprintFactory failingThumbprintFactory() throws Exception {
 		return new ThumbprintFactory(null) {
 			@Override

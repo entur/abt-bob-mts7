@@ -1,13 +1,13 @@
 package no.entur.abt.bob.mts7.core;
 
-import no.entur.abt.bob.mts7.api.InfrastructureMts7Exception;
+import no.entur.abt.bob.mts7.api.VerifierMts7Exception;
 
 /**
  * An issuer key which is among the public keys cannot be used: it cannot be created, is of a type which is not supported, or is not accepted by the security
- * provider (a problem on our side).
+ * provider (a problem with the verifier).
  */
 
-public class UnableToConstructIssuerKeyException extends InfrastructureMts7Exception {
+public class UnableToConstructIssuerKeyException extends VerifierMts7Exception {
 
 	private static final long serialVersionUID = 1L;
 

@@ -58,14 +58,15 @@ public class IccPublicKeyFactory {
 	 * <code>alg</code> in the header, which is the algorithm of the issuer signature (see {@linkplain Mts1Algorithms}).
 	 * <p>
 	 * The key is first checked to be as MTS7 (section 2.1) specifies it: an EC key on P-256, or an RSA key with a modulus of 2048 bits. Only then is it given
-	 * to the security provider, so that a key which the provider does not accept is a problem on our side.
+	 * to the security provider, so that a key which the provider does not accept is a problem with the verifier.
 	 *
 	 * @param header the Issuer Signature Protected Header of the card
 	 * @return the public key of the card
 	 * @throws NonCompliantIccKeyInvalidCardMts7Exception if the token public key of the card is missing, of a type which is not in MTS7 (EC with P-256, or RSA
 	 *                                                    with a modulus of 2048 bits), or invalid (a problem on the card side)
-	 * @throws NoSuchAlgorithmMts7Exception               if the key or signature algorithm is not available from the security provider (a problem on our side)
-	 * @throws UnableToConstructIccKeyException           if the security provider does not accept the key (a problem on our side)
+	 * @throws NoSuchAlgorithmMts7Exception               if the key or signature algorithm is not available from the security provider (a problem with the
+	 *                                                    verifier)
+	 * @throws UnableToConstructIccKeyException           if the security provider does not accept the key (a problem with the verifier)
 	 */
 
 	public IccPublicKey create(IssuerSignatureProtectedHeader header)

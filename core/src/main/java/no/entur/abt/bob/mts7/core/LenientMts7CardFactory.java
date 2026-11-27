@@ -8,9 +8,9 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
-import no.entur.abt.bob.mts7.api.InfrastructureMts7Exception;
 import no.entur.abt.bob.mts7.api.InsufficientCardCommandsException;
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.api.VerifierMts7Exception;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
@@ -93,7 +93,7 @@ public class LenientMts7CardFactory {
 				if (header != null) {
 					try {
 						iccPublicKey = iccPublicKeyFactory.create(header);
-					} catch (InvalidCardMts7Exception | InfrastructureMts7Exception e) {
+					} catch (InvalidCardMts7Exception | VerifierMts7Exception e) {
 						LOGGER.info("Unable to create ICC public key", e);
 					}
 

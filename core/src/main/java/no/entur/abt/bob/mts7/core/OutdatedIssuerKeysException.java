@@ -1,13 +1,13 @@
 package no.entur.abt.bob.mts7.core;
 
-import no.entur.abt.bob.mts7.api.InfrastructureMts7Exception;
+import no.entur.abt.bob.mts7.api.VerifierMts7Exception;
 
 /**
- * The issuer key of the card is not among the issuer public keys, which may be out of date (a problem on our side), as an {@linkplain UnknownIssuerKeyPolicy}
- * decided. If the keys are up to date, the card is to blame instead: {@linkplain UnknownIssuerKeyInvalidCardMts7Exception}.
+ * The issuer key of the card is not among the issuer public keys, which may be out of date (a problem with the verifier), as an
+ * {@linkplain UnknownIssuerKeyPolicy} decided. If the keys are up to date, the card is to blame instead: {@linkplain UnknownIssuerKeyInvalidCardMts7Exception}.
  */
 
-public class OutdatedIssuerKeysException extends InfrastructureMts7Exception {
+public class OutdatedIssuerKeysException extends VerifierMts7Exception {
 
 	private static final long serialVersionUID = 1L;
 

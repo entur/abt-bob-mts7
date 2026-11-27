@@ -199,7 +199,7 @@ public class ProcessorExecutorTest extends AbstractTest {
 		assertThrows(RejectedExecutionException.class, processor::start);
 
 		assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
-			// a problem on our side, not on the card side
+			// a problem with the verifier, not on the card side
 			ExecutionException e = assertThrows(ExecutionException.class, () -> processor.waitForVerify(0));
 			assertInstanceOf(RejectedExecutionException.class, e.getCause());
 		});

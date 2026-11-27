@@ -5,7 +5,7 @@ package no.entur.abt.bob.mts7.api;
  * verification (see the subclasses).
  * <p>
  * The other sides are {@linkplain ReaderMts7Exception}, for exchanges with the card which a reader following MTS7 would not send, and
- * {@linkplain InfrastructureMts7Exception}, for problems on our side.
+ * {@linkplain VerifierMts7Exception}, for problems with the verifier.
  */
 
 public class InvalidCardMts7Exception extends Mts7Exception {

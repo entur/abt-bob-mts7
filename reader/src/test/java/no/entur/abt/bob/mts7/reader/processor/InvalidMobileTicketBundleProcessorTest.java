@@ -36,7 +36,7 @@ import no.entur.abt.bob.mts7.test.mtb.InvalidMobileTicketBundles;
 
 /**
  * Verify the deliberately invalid Mobile Ticket Bundles (see {@linkplain InvalidMobileTicketBundles}) with the processors: each is either verified, or rejected
- * as a problem on the card side, with the expected exception (not wrapped in an ExecutionException, which is for problems on our side).
+ * as a problem on the card side, with the expected exception (not wrapped in an ExecutionException, which is for problems with the verifier).
  */
 
 public class InvalidMobileTicketBundleProcessorTest {
@@ -80,7 +80,7 @@ public class InvalidMobileTicketBundleProcessorTest {
 
 	@Test
 	public void testThumbprintWhichCannotBeCreatedIsNotInvalidCard() throws Exception {
-		// the public key of a valid card can be created, so a thumbprint which cannot is a problem on our side
+		// the public key of a valid card can be created, so a thumbprint which cannot is a problem with the verifier
 		ThumbprintFactory thumbprintFactory = failingThumbprintFactory();
 		InvalidMobileTicketBundles.Case valid = bundle("valid");
 
@@ -159,7 +159,7 @@ public class InvalidMobileTicketBundleProcessorTest {
 		return processor.waitForVerify(0);
 	}
 
-	// fails as with a problem on our side (the digest algorithm is checked when the factory is created, so this is not expected to happen)
+	// fails as with a problem with the verifier (the digest algorithm is checked when the factory is created, so this is not expected to happen)
 	private static ThumbprintFactory failingThumbprintFactory() throws Exception {
 		return new ThumbprintFactory(null) {
 			@Override

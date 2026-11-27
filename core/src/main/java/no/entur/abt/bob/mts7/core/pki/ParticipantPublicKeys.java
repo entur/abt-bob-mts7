@@ -283,7 +283,7 @@ public class ParticipantPublicKeys {
 	 * @param kid key id
 	 * @return the key, or null if the participant or key is unknown, or if the type of key is not supported (see
 	 *         {@linkplain #hasIssuerPublicKey(long, String)})
-	 * @throws UnableToConstructIssuerKeyException if the key is known, but could not be created (a problem on our side); this is only tried once, see
+	 * @throws UnableToConstructIssuerKeyException if the key is known, but could not be created (a problem with the verifier); this is only tried once, see
 	 *                                             {@linkplain Issuer#getKey(String)}
 	 */
 
