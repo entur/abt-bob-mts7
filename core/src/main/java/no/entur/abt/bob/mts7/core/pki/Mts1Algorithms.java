@@ -44,13 +44,25 @@ public final class Mts1Algorithms {
 	 */
 
 	public static String getTokenAlgorithm(TokenPublicKey tpk) {
-		if (tpk != null) {
-			if ("EC".equals(tpk.getKty())) {
-				return ES256;
-			}
-			if ("RSA".equals(tpk.getKty())) {
-				return RS256;
-			}
+		if (tpk == null) {
+			return null;
+		}
+		return getTokenAlgorithm(tpk.getKty());
+	}
+
+	/**
+	 * The algorithm of the signatures of the card, from the type of its public key.
+	 *
+	 * @param kty the type of the token public key of the card (<code>kty</code>), or null
+	 * @return ES256 for EC, RS256 for RSA, or null if the type is missing or another
+	 */
+
+	public static String getTokenAlgorithm(String kty) {
+		if ("EC".equals(kty)) {
+			return ES256;
+		}
+		if ("RSA".equals(kty)) {
+			return RS256;
 		}
 		return null;
 	}
