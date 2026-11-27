@@ -4,7 +4,7 @@ import java.util.Objects;
 
 /**
  * Supplies the same {@linkplain VerifyMts7CardFactory} every time, for issuer keys which do not change (see
- * {@linkplain no.entur.abt.bob.mts7.core.pki.UpdatableVerifyMts7CardFactorySupplier} for issuer keys which do).
+ * {@linkplain no.entur.abt.bob.mts7.core.UpdatableVerifyMts7CardFactorySupplier} for issuer keys which do).
  * <p>
  * Instances are thread safe.
  */

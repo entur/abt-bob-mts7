@@ -14,11 +14,11 @@ import org.slf4j.LoggerFactory;
 import no.entur.abt.bob.mts7.api.InsufficientCardCommandsException;
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.api.ReaderMts7Exception;
-import no.entur.abt.bob.mts7.core.MalformedCardCommandException;
-import no.entur.abt.bob.mts7.core.MissingCardCommandsException;
 import no.entur.abt.bob.mts7.core.Mts7ApduPayloadsFactory;
 import no.entur.abt.bob.mts7.core.Mts7Card;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
+import no.entur.abt.bob.mts7.core.exception.MalformedCardCommandException;
+import no.entur.abt.bob.mts7.core.exception.MissingCardCommandsException;
 
 /**
  * Base class for processors: the part which is about running alongside the card reader, i.e. receiving what the reader gets from the card on one thread, and

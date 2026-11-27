@@ -1,4 +1,4 @@
-package no.entur.abt.bob.mts7.core;
+package no.entur.abt.bob.mts7.core.exception;
 
 import no.entur.abt.bob.mts7.api.ReaderMts7Exception;
 

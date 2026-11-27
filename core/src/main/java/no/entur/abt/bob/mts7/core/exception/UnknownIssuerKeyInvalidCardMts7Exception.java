@@ -1,4 +1,4 @@
-package no.entur.abt.bob.mts7.core;
+package no.entur.abt.bob.mts7.core.exception;
 
 /**
  * The issuer key which the certificate of the card refers to is not among the known issuer keys (door 2), so the trust chain cannot be verified.

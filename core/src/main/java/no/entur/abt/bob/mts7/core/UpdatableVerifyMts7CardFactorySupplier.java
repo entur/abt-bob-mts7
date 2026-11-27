@@ -1,4 +1,4 @@
-package no.entur.abt.bob.mts7.core.pki;
+package no.entur.abt.bob.mts7.core;
 
 import java.security.Provider;
 import java.util.ArrayList;
@@ -16,10 +16,8 @@ import org.slf4j.LoggerFactory;
 
 import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
-import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
-import no.entur.abt.bob.mts7.core.UnknownIssuerKeyPolicy;
-import no.entur.abt.bob.mts7.core.VerifyMts7CardFactory;
-import no.entur.abt.bob.mts7.core.VerifyMts7CardFactorySupplier;
+import no.entur.abt.bob.mts7.core.exception.UnableToConstructIssuerKeyException;
+import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
 
 /**
  * Holds the current {@linkplain VerifyMts7CardFactory}, which verifies MTS7 cards against the issuer public keys (root keys) of a participant metadata set, and

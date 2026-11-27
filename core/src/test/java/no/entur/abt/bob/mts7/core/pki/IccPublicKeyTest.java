@@ -23,10 +23,10 @@ import org.junit.jupiter.api.Test;
 
 import com.nimbusds.jose.crypto.impl.ECDSA;
 
-import no.entur.abt.bob.mts7.core.KeyPairInvalidCardMts7Exception;
-import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
-import no.entur.abt.bob.mts7.core.NonCompliantIccKeyInvalidCardMts7Exception;
-import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
+import no.entur.abt.bob.mts7.core.exception.KeyPairInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.NoSuchAlgorithmMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.NonCompliantIccKeyInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.UnableToConstructIccKeyException;
 import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
 import no.entur.abt.bob.mts7.mtb.TokenPublicKey;
 import no.entur.abt.bob.mts7.test.util.ConcurrentRunner;

@@ -21,6 +21,8 @@ import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.api.ReaderMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.NonCompliantIccKeyInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.UnableToConstructThumbprintKeyException;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
 import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;

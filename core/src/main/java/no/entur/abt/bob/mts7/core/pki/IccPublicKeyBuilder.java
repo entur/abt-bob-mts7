@@ -5,11 +5,11 @@ import java.util.Arrays;
 import java.util.List;
 
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
-import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
-import no.entur.abt.bob.mts7.core.NonCompliantIccKeyInvalidCardMts7Exception;
-import no.entur.abt.bob.mts7.core.TrustChainInvalidCardMts7Exception;
-import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
-import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
+import no.entur.abt.bob.mts7.core.exception.NoSuchAlgorithmMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.NonCompliantIccKeyInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.TrustChainInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.UnableToConstructIccKeyException;
+import no.entur.abt.bob.mts7.core.exception.UnableToConstructIssuerKeyException;
 import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
 import no.entur.abt.bob.mts7.mtb.MobileTicketBundleWriter;
 

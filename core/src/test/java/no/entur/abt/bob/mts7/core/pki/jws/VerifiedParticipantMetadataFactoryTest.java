@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import com.nimbusds.jose.jwk.JWKSet;
 
-import no.entur.abt.bob.mts7.core.UnableToVerifyParticipantMetadataException;
+import no.entur.abt.bob.mts7.core.exception.UnableToVerifyParticipantMetadataException;
 
 public class VerifiedParticipantMetadataFactoryTest {
 

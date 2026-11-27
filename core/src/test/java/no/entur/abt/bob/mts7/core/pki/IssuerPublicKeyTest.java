@@ -22,9 +22,9 @@ import org.junit.jupiter.api.Test;
 import com.nimbusds.jose.crypto.impl.ECDSA;
 
 import no.entur.abt.bob.mts7.api.VerifierMts7Exception;
-import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
-import no.entur.abt.bob.mts7.core.TrustChainInvalidCardMts7Exception;
-import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
+import no.entur.abt.bob.mts7.core.exception.NoSuchAlgorithmMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.TrustChainInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.UnableToConstructIssuerKeyException;
 
 public class IssuerPublicKeyTest {
 

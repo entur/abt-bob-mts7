@@ -14,6 +14,10 @@ import org.junit.jupiter.api.Test;
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.KeyPairInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.MalformedCardCommandException;
+import no.entur.abt.bob.mts7.core.exception.MissingCardCommandsException;
+import no.entur.abt.bob.mts7.core.exception.NoSuchAlgorithmMts7Exception;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;
 import no.entur.abt.bob.mts7.core.pki.ThumbprintFactory;
 import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;

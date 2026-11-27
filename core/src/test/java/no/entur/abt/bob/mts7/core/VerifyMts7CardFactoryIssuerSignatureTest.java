@@ -30,6 +30,8 @@ import com.nimbusds.jose.crypto.impl.ECDSA;
 import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.TrustChainInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.UnknownIssuerKeyInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
 import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
 

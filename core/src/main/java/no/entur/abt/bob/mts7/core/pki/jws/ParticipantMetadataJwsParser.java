@@ -7,7 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nimbusds.jose.JWSObjectJSON;
 
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
-import no.entur.abt.bob.mts7.core.UnableToVerifyParticipantMetadataException;
+import no.entur.abt.bob.mts7.core.exception.UnableToVerifyParticipantMetadataException;
 
 /**
  * Parse participant metadata wrapped in a JWS (general JSON serialization). Parsing does not verify anything; see {@linkplain ParticipantMetadataJwsVerifier}.

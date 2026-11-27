@@ -11,9 +11,9 @@ import java.util.Objects;
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.crypto.impl.ECDSA;
 
-import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
-import no.entur.abt.bob.mts7.core.TrustChainInvalidCardMts7Exception;
-import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
+import no.entur.abt.bob.mts7.core.exception.NoSuchAlgorithmMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.TrustChainInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.UnableToConstructIssuerKeyException;
 
 /**
  * Public key of an issuer, for verifying the issuer signature of a card.

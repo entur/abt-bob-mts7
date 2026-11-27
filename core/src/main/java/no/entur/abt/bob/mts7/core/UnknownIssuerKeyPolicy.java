@@ -6,6 +6,8 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.function.Supplier;
 
+import no.entur.abt.bob.mts7.core.exception.OutdatedIssuerKeysException;
+import no.entur.abt.bob.mts7.core.exception.UnknownIssuerKeyInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
 
 /**

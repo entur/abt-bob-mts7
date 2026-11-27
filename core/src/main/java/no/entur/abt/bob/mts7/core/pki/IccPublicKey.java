@@ -11,9 +11,9 @@ import java.util.Objects;
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.crypto.impl.ECDSA;
 
-import no.entur.abt.bob.mts7.core.KeyPairInvalidCardMts7Exception;
-import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
-import no.entur.abt.bob.mts7.core.UnableToConstructIccKeyException;
+import no.entur.abt.bob.mts7.core.exception.KeyPairInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.NoSuchAlgorithmMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.UnableToConstructIccKeyException;
 
 /**
  * Public key of a single card, for verifying that the card has the private key.

@@ -1,6 +1,7 @@
-package no.entur.abt.bob.mts7.core;
+package no.entur.abt.bob.mts7.core.exception;
 
 import no.entur.abt.bob.mts7.api.VerifierMts7Exception;
+import no.entur.abt.bob.mts7.core.UnknownIssuerKeyPolicy;
 
 /**
  * The issuer key of the card is not among the issuer public keys, which may be out of date (a problem with the verifier), as an

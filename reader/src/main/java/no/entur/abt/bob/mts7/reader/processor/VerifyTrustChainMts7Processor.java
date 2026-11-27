@@ -11,10 +11,10 @@ import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.Mts7CardEnricher;
-import no.entur.abt.bob.mts7.core.OutdatedIssuerKeysException;
-import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
-import no.entur.abt.bob.mts7.core.UnknownIssuerKeyInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.UnknownIssuerKeyPolicy;
+import no.entur.abt.bob.mts7.core.exception.OutdatedIssuerKeysException;
+import no.entur.abt.bob.mts7.core.exception.UnableToConstructIssuerKeyException;
+import no.entur.abt.bob.mts7.core.exception.UnknownIssuerKeyInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKey;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyBuilder;
 import no.entur.abt.bob.mts7.core.pki.IccPublicKeyFactory;

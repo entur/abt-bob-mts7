@@ -1,4 +1,4 @@
-package no.entur.abt.bob.mts7.core.pki;
+package no.entur.abt.bob.mts7.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -28,9 +28,9 @@ import com.nimbusds.jose.jwk.gen.ECKeyGenerator;
 
 import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
-import no.entur.abt.bob.mts7.core.TrustChainInvalidCardMts7Exception;
-import no.entur.abt.bob.mts7.core.UnknownIssuerKeyPolicy;
-import no.entur.abt.bob.mts7.core.VerifyMts7CardFactory;
+import no.entur.abt.bob.mts7.core.exception.TrustChainInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.pki.IssuerPublicKey;
+import no.entur.abt.bob.mts7.core.pki.ParticipantPublicKeys;
 
 public class UpdatableVerifyMts7CardFactorySupplierTest {
 

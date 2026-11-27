@@ -1,4 +1,4 @@
-package no.entur.abt.bob.mts7.core;
+package no.entur.abt.bob.mts7.core.exception;
 
 import java.security.NoSuchAlgorithmException;
 import java.security.Provider;

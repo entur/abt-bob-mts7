@@ -12,7 +12,7 @@ import java.util.TreeSet;
 
 import no.entur.abt.bob.api.pm.model.MtbJwkPublic;
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
-import no.entur.abt.bob.mts7.core.UnableToConstructIssuerKeyException;
+import no.entur.abt.bob.mts7.core.exception.UnableToConstructIssuerKeyException;
 
 /**
  * 

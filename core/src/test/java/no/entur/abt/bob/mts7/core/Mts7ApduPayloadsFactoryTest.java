@@ -19,6 +19,9 @@ import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.api.MalformedCardResponseException;
 import no.entur.abt.bob.mts7.api.Mts7Exception;
 import no.entur.abt.bob.mts7.api.UnexpectedCardResponseException;
+import no.entur.abt.bob.mts7.core.exception.MalformedCardCommandException;
+import no.entur.abt.bob.mts7.core.exception.MissingCardCommandsException;
+import no.entur.abt.bob.mts7.core.exception.UnexpectedCardCommandException;
 import no.entur.abt.bob.mts7.simple.api.Mts7ApduExchanges;
 import no.entur.abt.bob.mts7.utils.ByteArrayHexStringConverter;
 

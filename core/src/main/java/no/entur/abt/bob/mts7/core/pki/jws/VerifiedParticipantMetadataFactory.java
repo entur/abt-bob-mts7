@@ -6,7 +6,7 @@ import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.JWSObjectJSON;
 
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
-import no.entur.abt.bob.mts7.core.UnableToVerifyParticipantMetadataException;
+import no.entur.abt.bob.mts7.core.exception.UnableToVerifyParticipantMetadataException;
 
 /**
  * Parse and verify participant metadata wrapped in a JWS. The payload is only parsed after the signatures have been verified.

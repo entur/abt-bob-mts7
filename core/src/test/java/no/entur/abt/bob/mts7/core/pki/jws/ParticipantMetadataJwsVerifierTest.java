@@ -21,7 +21,7 @@ import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator;
 
 import no.entur.abt.bob.api.pm.model.ParticipantMetadata;
-import no.entur.abt.bob.mts7.core.UnableToVerifyParticipantMetadataException;
+import no.entur.abt.bob.mts7.core.exception.UnableToVerifyParticipantMetadataException;
 
 public class ParticipantMetadataJwsVerifierTest {
 

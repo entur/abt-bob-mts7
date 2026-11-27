@@ -26,8 +26,8 @@ import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 import com.nimbusds.jose.crypto.impl.ECDSA;
 
 import no.entur.abt.bob.mts7.api.InvalidCardMts7Exception;
-import no.entur.abt.bob.mts7.core.NoSuchAlgorithmMts7Exception;
-import no.entur.abt.bob.mts7.core.TrustChainInvalidCardMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.NoSuchAlgorithmMts7Exception;
+import no.entur.abt.bob.mts7.core.exception.TrustChainInvalidCardMts7Exception;
 import no.entur.abt.bob.mts7.mtb.IssuerSignatureProtectedHeader;
 
 public class IccPublicKeyBuilderTest {
